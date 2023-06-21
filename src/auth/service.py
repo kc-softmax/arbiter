@@ -1,8 +1,22 @@
-# example
-
 import typer
 
 app = typer.Typer()
+
+# def registerUserByEmail
+
+# def loginByEmail
+
+# def registerUserByDeviceId? (guest)
+
+# def loginByDeviceId? (guest)
+
+# def deleteUser
+
+# def getUser
+
+# def createAuthToken
+
+# def refreshAuthToken
 
 
 @app.command()
