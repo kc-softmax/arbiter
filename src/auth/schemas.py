@@ -1,24 +1,19 @@
 from pydantic import BaseModel
-from datetime import datetime
 
 
-class Token(BaseModel):
+class TokenSchema(BaseModel):
     access_token: str
     refresh_token: str
 
 
-class TokenData(BaseModel):
+class TokenDataSchema(BaseModel):
     email: str
     exp: int
 
 
-class User(BaseModel):
-    email: str | None = None
-
-
-class UserInDB(User):
+class UserSchema(BaseModel):
     id: str
-    hashed_password: str
+    email: str | None = None
 
 
 class CreateUserRequest(BaseModel):
@@ -26,5 +21,7 @@ class CreateUserRequest(BaseModel):
     password: str
 
 
-class CreateUserResponse(BaseModel):
+class UserInDB(BaseModel):  # TODO model의 User 이용
     id: str
+    email: str | None = None
+    hashed_password: str
