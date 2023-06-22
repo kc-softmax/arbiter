@@ -14,10 +14,11 @@ def register_user_by_device_id(device_id: str) -> User:
         user = User(device_id=device_id)
         session.add(user)
         session.commit()
-        #table 값을 객체에 부여해준다.
+        # table 값을 객체에 부여해준다.
         session.refresh(user)
     print(user)
     return user
+
 
 @app.command('login_by_device_id')
 def login_by_device_id(device_id: str) -> User:
@@ -29,26 +30,30 @@ def login_by_device_id(device_id: str) -> User:
     print(user)
     return user
 
+
 @app.command('resister_user_by_email')
 def resister_user_by_email(email: str, password: str) -> User:
     with Session(engine) as session:
         user = User(email=email, password=password)
         session.add(user)
         session.commit()
-        #table 값을 객체에 부여해준다.
+        # table 값을 객체에 부여해준다.
         session.refresh(user)
     print(user)
     return user
+
 
 @app.command('login_by_email')
 def login_by_email(email: str, password: str) -> User | None:
     with Session(engine) as session:
         # first or None
-        statement = select(User).where(User.email == email).where(User.password == password)
+        statement = select(User).where(
+            User.email == email).where(User.password == password)
         results = session.exec(statement)
         user = results.first()
     print(user)
     return user
+
 
 @app.command('check_user_by_email')
 def check_user_by_email(email: str) -> User | None:
@@ -78,6 +83,7 @@ def delete_user(user_id: int) -> bool:
     print(is_success)
     return is_success
 
+
 @app.command('get_user')
 def get_user(user_id: int) -> User | None:
     with Session(engine) as session:
@@ -85,8 +91,10 @@ def get_user(user_id: int) -> User | None:
     print(user)
     return user
 
+
 def parse_custom_class(value: str):
     return User.parse_raw(value)
+
 
 @app.command('update_user')
 def update_user(
