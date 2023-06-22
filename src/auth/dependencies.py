@@ -6,8 +6,9 @@ from jose import jwt, JWTError
 from pydantic import ValidationError
 
 from .schemas import TokenData, User
-from .utils import ALGORITHM, JWT_SECRET_KEY
+from .utils import ALGORITHM
 from .service import get_user
+import config
 
 reuseable_oauth = OAuth2PasswordBearer(
     tokenUrl="/login",
@@ -18,7 +19,7 @@ reuseable_oauth = OAuth2PasswordBearer(
 async def get_current_user(token: str = Depends(reuseable_oauth)) -> User:
     try:
         payload = jwt.decode(
-            token, JWT_SECRET_KEY, algorithms=[ALGORITHM]
+            token, config.settings.JWT_SECRET_KEY, algorithms=[ALGORITHM]
         )
 
         token_data = TokenData(email=payload.get("sub"),
