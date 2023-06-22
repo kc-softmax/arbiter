@@ -81,14 +81,6 @@ def check_user_by_email(email: str) -> User | None:
 
 
 @app.command()
-def create_auth_token(user_id: int):
-    return "this is auth token"
-
-@app.command()
-def refresh_auth_token(auth_token: str):
-    return "this is refresh token"
-
-@app.command()
 def delete_user(user_id: int) -> bool:
     is_success = False
     with Session(engine) as session:
