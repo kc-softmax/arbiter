@@ -1,8 +1,7 @@
 from typing import Union
-
 from fastapi import FastAPI
+from database import create_db_and_tables
 from auth.service import login_by_device_id, register_user_by_device_id
-from src.auth.models import create_db_and_tables
 
 app = FastAPI()
 

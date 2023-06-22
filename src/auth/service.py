@@ -1,6 +1,7 @@
 import typer
 from sqlmodel import Session, select
-from auth.models import User, create_db_and_tables, engine
+from database import create_db_and_tables, engine
+from auth.models import User
 
 app = typer.Typer()
 
