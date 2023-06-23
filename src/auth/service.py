@@ -27,7 +27,7 @@ def supersede_get_click_type(
 
 typer.main.get_click_type = supersede_get_click_type
 
-@app.command()
+@app.command('register_user_by_device_id')
 def register_user_by_device_id(device_id: str) -> User:
     with Session(engine) as session:
         user = User(device_id=device_id)
@@ -48,7 +48,7 @@ def login_by_device_id(device_id: str) -> User:
         print(user)
         return user
 
-@app.command()
+@app.command('resister_user_by_email')
 def resister_user_by_email(email: str, password: str) -> User:
     with Session(engine) as session:
         user = User(email=email, password=password)
@@ -59,7 +59,7 @@ def resister_user_by_email(email: str, password: str) -> User:
         print(user)
         return user
 
-@app.command()
+@app.command('login_by_email')
 def login_by_email(email: str, password: str) -> User | None:
     with Session(engine) as session:
         # first or None
@@ -69,7 +69,7 @@ def login_by_email(email: str, password: str) -> User | None:
         print(user)
         return user
 
-@app.command()
+@app.command('check_user_by_email')
 def check_user_by_email(email: str) -> User | None:
     with Session(engine) as session:
         # first or None
@@ -96,14 +96,14 @@ def delete_user(user_id: int) -> bool:
             print(e)
         return is_success
 
-@app.command()
+@app.command('get_user')
 def get_user(user_id: int) -> User | None:
     with Session(engine) as session:
         user = session.get(User, user_id)
         print(user)
         return user
 
-@app.command()
+@app.command('update_user')
 def update_user(user_id: int, user: User) -> User | None:
     with Session(engine) as session:
         db_user = session.get(User, user_id)
