@@ -20,8 +20,10 @@ class User(SQLModel, table=True):
     email: Optional[str] = Field(sa_column=Column(String(128)), unique=True)
     password: Optional[str] = Field(sa_column=Column(String(128)))
     display_name: Optional[str] = Field(sa_column=Column(String(128)))
-    device_id: Optional[str] = Field(sa_column=Column(String(128)))
+    device_id: Optional[str] = Field(sa_column=Column(String(128)), unique=True)
     verified: bool = False
-    login_type: Optional[LoginType] = LoginType.GUEST
+    login_type: LoginType = LoginType.GUEST
+    access_token: Optional[str] = Field(sa_column=Column(String(128)))
+    refresh_token: Optional[str] = Field(sa_column=Column(String(128)))
     created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
