@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Annotated, Any
 import click
 import typer
 from sqlmodel import Session, select
@@ -7,25 +7,6 @@ from auth.models import User
 
 app = typer.Typer()
 
-
-# click custom type 가능하게
-_get_click_type = typer.main.get_click_type
-
-
-def supersede_get_click_type(
-    *, annotation: Any, parameter_info: typer.main.ParameterInfo
-) -> click.ParamType:
-    if hasattr(annotation, "parse_raw"):
-
-        class CustomParamType(click.ParamType):
-            def convert(self, value, param, ctx):
-                return annotation.parse_raw(value)
-
-        return CustomParamType()
-    else:
-        return _get_click_type(annotation=annotation, parameter_info=parameter_info)
-
-typer.main.get_click_type = supersede_get_click_type
 
 @app.command('register_user_by_device_id')
 def register_user_by_device_id(device_id: str) -> User:
@@ -103,8 +84,14 @@ def get_user(user_id: int) -> User | None:
         print(user)
         return user
 
+def parse_custom_class(value: str):
+    return User.parse_raw(value)
+
 @app.command('update_user')
-def update_user(user_id: int, user: User) -> User | None:
+def update_user(
+    user_id: int,
+    user: User = typer.Argument(parser=parse_custom_class)
+) -> User | None:
     with Session(engine) as session:
         db_user = session.get(User, user_id)
         if not db_user:
