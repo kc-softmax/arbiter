@@ -96,8 +96,8 @@ def update_user(
         db_user = session.get(User, user_id)
         if not db_user:
             return None
-        hero_data = user.dict(exclude_unset=True)
-        for key, value in hero_data.items():
+        user_data = user.dict(exclude_unset=True)
+        for key, value in user_data.items():
             setattr(db_user, key, value)
         session.add(db_user)
         session.commit()
