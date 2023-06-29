@@ -1,9 +1,13 @@
 from typing import Union
-
 from fastapi import FastAPI
+from database import create_db_and_tables
+from auth.service import login_by_device_id, register_user_by_device_id
 
 app = FastAPI()
 
+@app.on_event("startup")
+def on_startup():
+    create_db_and_tables()
 
 @app.get("/")
 def read_root():
