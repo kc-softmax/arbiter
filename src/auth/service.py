@@ -16,18 +16,18 @@ def register_user_by_device_id(device_id: str) -> User:
         session.commit()
         #table 값을 객체에 부여해준다.
         session.refresh(user)
-        print(user)
-        return user
+    print(user)
+    return user
 
-@app.command()
+@app.command('login_by_device_id')
 def login_by_device_id(device_id: str) -> User:
     with Session(engine) as session:
         # first or None
         statement = select(User).where(User.device_id == device_id)
         results = session.exec(statement)
         user = results.first()
-        print(user)
-        return user
+    print(user)
+    return user
 
 @app.command('resister_user_by_email')
 def resister_user_by_email(email: str, password: str) -> User:
@@ -37,8 +37,8 @@ def resister_user_by_email(email: str, password: str) -> User:
         session.commit()
         #table 값을 객체에 부여해준다.
         session.refresh(user)
-        print(user)
-        return user
+    print(user)
+    return user
 
 @app.command('login_by_email')
 def login_by_email(email: str, password: str) -> User | None:
@@ -47,8 +47,8 @@ def login_by_email(email: str, password: str) -> User | None:
         statement = select(User).where(User.email == email).where(User.password == password)
         results = session.exec(statement)
         user = results.first()
-        print(user)
-        return user
+    print(user)
+    return user
 
 @app.command('check_user_by_email')
 def check_user_by_email(email: str) -> User | None:
@@ -57,11 +57,11 @@ def check_user_by_email(email: str) -> User | None:
         statement = select(User).where(User.email == email)
         results = session.exec(statement)
         user = results.first()
-        print(user)
-        return user
+    print(user)
+    return user
 
 
-@app.command()
+@app.command('delete_user')
 def delete_user(user_id: int) -> bool:
     is_success = False
     with Session(engine) as session:
@@ -75,14 +75,15 @@ def delete_user(user_id: int) -> bool:
             is_success = True
         except Exception as e:
             print(e)
-        return is_success
+    print(is_success)
+    return is_success
 
 @app.command('get_user')
 def get_user(user_id: int) -> User | None:
     with Session(engine) as session:
         user = session.get(User, user_id)
-        print(user)
-        return user
+    print(user)
+    return user
 
 def parse_custom_class(value: str):
     return User.parse_raw(value)
@@ -94,15 +95,15 @@ def update_user(
 ) -> User | None:
     with Session(engine) as session:
         db_user = session.get(User, user_id)
-        if not db_user:
-            return None
-        user_data = user.dict(exclude_unset=True)
-        for key, value in user_data.items():
-            setattr(db_user, key, value)
-        session.add(db_user)
-        session.commit()
-        session.refresh(db_user)
-        return db_user
+        if db_user:
+            user_data = user.dict(exclude_unset=True)
+            for key, value in user_data.items():
+                setattr(db_user, key, value)
+            session.add(db_user)
+            session.commit()
+            session.refresh(db_user)
+    print(db_user)
+    return db_user
 
 
 if __name__ == "__main__":
