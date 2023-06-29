@@ -3,7 +3,7 @@ from typing import Union, Any
 from jose import jwt
 from passlib.context import CryptContext
 
-import config
+from ..config import settings
 
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 REFRESH_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7
@@ -26,7 +26,7 @@ def create_access_token(subject: Union[str, Any], expires_delta: timedelta | Non
     else:
         expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode = {"exp": expire, "sub": str(subject)}
-    encoded_jwt = jwt.encode(to_encode, config.settings.JWT_SECRET_KEY,
+    encoded_jwt = jwt.encode(to_encode, settings.JWT_SECRET_KEY,
                              algorithm=ALGORITHM)
     return encoded_jwt
 
@@ -38,5 +38,5 @@ def create_refresh_token(subject: Union[str, Any], expires_delta: timedelta | No
         expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode = {"exp": expire, "sub": str(subject)}
     encoded_jwt = jwt.encode(
-        to_encode, config.settings.JWT_REFRESH_SECRET_KEY, algorithm=ALGORITHM)
+        to_encode, settings.JWT_REFRESH_SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
