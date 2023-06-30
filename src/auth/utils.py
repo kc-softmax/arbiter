@@ -26,17 +26,21 @@ def create_access_token(subject: Union[str, Any], expires_delta: timedelta | Non
     else:
         expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode = {"exp": expire, "sub": str(subject)}
-    encoded_jwt = jwt.encode(to_encode, settings.JWT_SECRET_KEY,
+    encoded_jwt = jwt.encode(to_encode,
+                             settings.JWT_ACCESS_SECRET_KEY,
                              algorithm=ALGORITHM)
     return encoded_jwt
+
+# TODO 굳이 2개로 나눌 필요 없으면 하나로 합치기
 
 
 def create_refresh_token(subject: Union[str, Any], expires_delta: timedelta | None = None):
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.utcnow() + timedelta(minutes=REFRESH_TOKEN_EXPIRE_MINUTES)
     to_encode = {"exp": expire, "sub": str(subject)}
-    encoded_jwt = jwt.encode(
-        to_encode, settings.JWT_REFRESH_SECRET_KEY, algorithm=ALGORITHM)
+    encoded_jwt = jwt.encode(to_encode,
+                             settings.JWT_REFRESH_SECRET_KEY,
+                             algorithm=ALGORITHM)
     return encoded_jwt

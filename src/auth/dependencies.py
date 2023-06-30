@@ -7,20 +7,14 @@ from pydantic import ValidationError
 from ..config import settings
 from .schemas import TokenDataSchema, UserInDB
 from .utils import ALGORITHM
-from .service import get_user
+from .service import check_user_by_email
 from .exceptions import InvalidToken, AuthorizationFailed, NotFoundUser
 
 
-reuseable_oauth = OAuth2PasswordBearer(
-    tokenUrl="/auth/login",
-    scheme_name="JWT",
-)
-
-
-async def get_current_user(token: str = Depends(reuseable_oauth)) -> UserInDB:
+async def get_current_user(token: str = Depends(OAuth2PasswordBearer(tokenUrl=""))) -> UserInDB:
     try:
         payload = jwt.decode(
-            token, settings.JWT_SECRET_KEY, algorithms=[ALGORITHM]
+            token, settings.JWT_ACCESS_SECRET_KEY, algorithms=[ALGORITHM]
         )
 
         token_data = TokenDataSchema(
@@ -33,8 +27,7 @@ async def get_current_user(token: str = Depends(reuseable_oauth)) -> UserInDB:
     except (JWTError, ValidationError):
         raise AuthorizationFailed
 
-    user = get_user(token_data.email)
-
+    user = check_user_by_email(token_data.email)
     if user is None:
         raise NotFoundUser
 
