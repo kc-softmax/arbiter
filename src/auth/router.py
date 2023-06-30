@@ -3,7 +3,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 
 from .dependencies import get_current_user
 from .schemas import CreateUserRequest, UserSchema, UserInDB, TokenSchema
-from .service import create_user, get_user, authenticate_user
+from .service import check_user_by_email, resister_user_by_email, login_by_email
 from .utils import create_access_token, create_refresh_token
 from .exceptions import UserAlready, InvalidCredentials, InvalidToken, AuthorizationFailed, NotFoundUser
 
@@ -15,23 +15,18 @@ router = APIRouter(prefix="/auth")
              operation_id="signup",
              responses={**UserAlready.to_openapi_response()})
 async def signup(data: CreateUserRequest):
-    # TODO service의 구현에 따라 달라질 수 있음
-    user = get_user(data.email)
-
+    user = check_user_by_email(data.email)
     if user is not None:
         raise UserAlready
 
-    # TODO service의 구현에 따라 달라질 수 있음
-    user = create_user(data.email, data.password)
+    user = resister_user_by_email(data.email, data.password)
     return UserSchema(**user.dict())
 
 
 @router.post('/login', response_model=TokenSchema, responses={**InvalidCredentials.to_openapi_response()})
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
-    # TODO service의 구현에 따라 달라질 수 있음
-    user = authenticate_user(form_data.username, form_data.password)
-
-    if user is False:
+    user = login_by_email(form_data.username, form_data.password)
+    if user is None:
         raise InvalidCredentials
 
     return TokenSchema(
