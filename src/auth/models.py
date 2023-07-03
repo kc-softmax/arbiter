@@ -4,6 +4,7 @@ from database import engine
 from sqlmodel import Column, Field, SQLModel, String
 from enum import StrEnum
 
+
 class LoginType(StrEnum):
     GUEST = "guest"
     EMAIL = "email"
@@ -17,10 +18,10 @@ class User(SQLModel, table=True):
     __tablename__ = "user"
     # auto increment
     id: Optional[int] = Field(default=None, primary_key=True)
-    email: Optional[str] = Field(sa_column=Column(String(128)), unique=True)
+    email: Optional[str] = Field(sa_column=Column(String(128), unique=True))
     password: Optional[str] = Field(sa_column=Column(String(128)))
     display_name: Optional[str] = Field(sa_column=Column(String(128)))
-    device_id: Optional[str] = Field(sa_column=Column(String(128)), unique=True)
+    device_id: Optional[str] = Field(sa_column=Column(String(128), unique=True))
     verified: bool = False
     login_type: LoginType = LoginType.GUEST
     access_token: Optional[str] = Field(sa_column=Column(String(128)))
