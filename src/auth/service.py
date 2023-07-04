@@ -1,9 +1,6 @@
-import typer
 from sqlmodel import Session, select
 from database import engine
 from auth.models import User, LoginType
-
-app = typer.Typer()
 
 
 def register_user_by_device_id(device_id: str) -> User:
