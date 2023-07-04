@@ -5,6 +5,12 @@ from sqlmodel import Column, Field, SQLModel, String
 from enum import StrEnum
 
 
+class Role(StrEnum):
+    OWNER = "owner"
+    MAINTAINER = "maintainer"
+    GAMER = "gamer"
+
+
 class LoginType(StrEnum):
     GUEST = "guest"
     EMAIL = "email"
@@ -23,6 +29,7 @@ class User(SQLModel, table=True):
     display_name: Optional[str] = Field(sa_column=Column(String(128)))
     device_id: Optional[str] = Field(sa_column=Column(String(128), unique=True))
     verified: bool = False
+    role: Role = Role.GAMER
     login_type: LoginType = LoginType.GUEST
     access_token: Optional[str] = Field(sa_column=Column(String(128)))
     refresh_token: Optional[str] = Field(sa_column=Column(String(128)))
