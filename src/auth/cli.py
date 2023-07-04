@@ -78,9 +78,9 @@ def delete_user(user_id: int = typer.Argument(1)):
 @app.command('get_user')
 def get_user(user_id: int = typer.Argument(1)):
     if user := service.get_user(user_id=user_id):
-        print("[green]{0} Success! User: {1}".format(sys._getframe(0).f_code.co_name, dict(user)))
+        print("[green]{0} Success! User ID: {1}".format(get_current_function(), dict(user)))
     else:
-        print("[red]{0} Failed!".format(sys._getframe(0).f_code.co_name))
+        print("[red]{0} Failed!".format(get_current_function()))
 
 
 @app.command('update_user')
@@ -94,7 +94,7 @@ def update_user(
     ):
         print("[green]{0} Success! User: {1}".format(get_current_function(), dict(user)))
     else:
-        print("[red]{0} Failed!".format(sys._getframe(0).f_code.co_name))
+        print("[red]{0} Failed!".format(get_current_function()))
 
 
 def get_current_function():
