@@ -10,7 +10,7 @@ from ..config import settings
 from .schemas import TokenDataSchema
 from .utils import ALGORITHM
 from .service import check_user_by_email
-from .exceptions import InvalidToken, AuthorizationFailed, NotFoundUser
+from .exceptions import InvalidToken, AuthorizationFailed, NotFoundUser, InvalidCredentials
 
 
 async def get_current_user(token: str = Depends(OAuth2PasswordBearer(tokenUrl=""))) -> User:
@@ -25,7 +25,7 @@ async def get_current_user(token: str = Depends(OAuth2PasswordBearer(tokenUrl=""
         if datetime.fromtimestamp(token_data.exp) < datetime.now():
             raise InvalidToken
     except (JWTError, ValidationError):
-        raise InvalidToken
+        raise InvalidCredentials
 
     user = check_user_by_email(token_data.email)
     if user is None:
