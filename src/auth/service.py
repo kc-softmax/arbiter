@@ -1,4 +1,5 @@
 from sqlmodel import Session, select
+
 from database import engine
 from auth.models import User, LoginType
 
@@ -70,7 +71,6 @@ def delete_user(user_id: int) -> bool:
 def get_user(user_id: int) -> User | None:
     with Session(engine) as session:
         user = session.get(User, user_id)
-    print(user)
     return user
 
 
