@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends
 from fastapi.security import OAuth2PasswordRequestForm
 
-from .dependencies import get_current_user
-from .schemas import CreateUserRequest, UserSchema, UserInDB, TokenSchema
+from auth.models import User
+from .dependencies import allowed_only_for_admin
+from .schemas import CreateUserRequest, UserSchema, TokenSchema
 from .service import check_user_by_email, resister_user_by_email, login_by_email
 from .utils import create_access_token, create_refresh_token
 from .exceptions import UserAlready, InvalidCredentials, InvalidToken, AuthorizationFailed, NotFoundUser
+
 
 router = APIRouter(prefix="/auth")
 
@@ -41,5 +43,5 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
             responses={**InvalidToken.to_openapi_response(),
                        **AuthorizationFailed.to_openapi_response(),
                        **NotFoundUser.to_openapi_response()})
-async def get_me(user: UserInDB = Depends(get_current_user)):
+async def get_me(user: User = Depends(allowed_only_for_admin)):
     return UserSchema(**user.dict())

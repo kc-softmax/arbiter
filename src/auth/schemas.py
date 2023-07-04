@@ -19,9 +19,3 @@ class UserSchema(BaseModel):
 class CreateUserRequest(BaseModel):
     email: str
     password: str
-
-
-class UserInDB(BaseModel):  # TODO model의 User 이용
-    id: str
-    email: str | None = None
-    hashed_password: str
