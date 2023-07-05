@@ -7,12 +7,13 @@ from .exceptions import BadRequest
 from .utils import FastAPIWrapper
 
 app_wrapper = FastAPIWrapper()
-# customize swagger schema
-app_wrapper.update_openapi_schema_name(login, "LoginRequest")
-
 
 app = app_wrapper()
 app.include_router(auth_router)
+
+# customize swagger schema
+# it should be done after all routers are included
+app_wrapper.update_openapi_schema_name(login, "LoginRequest")
 
 
 @app.exception_handler(RequestValidationError)
