@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends
 from fastapi.security import OAuth2PasswordRequestForm
 
 from auth.models import User
-from .dependencies import allowed_only_for_admin
+from .dependencies import allowed_only_for_admin, get_user_service
 from .schemas import CreateUserRequest, UserSchema, TokenSchema
-from .service import check_user_by_email, resister_user_by_email, login_by_email
+from .service import UserService
 from .utils import create_access_token, create_refresh_token
 from .exceptions import UserAlready, InvalidCredentials, InvalidToken, AuthorizationFailed, NotFoundUser
 
@@ -16,18 +16,18 @@ router = APIRouter(prefix="/auth")
              response_model=UserSchema,
              operation_id="signup",
              responses={**UserAlready.to_openapi_response()})
-async def signup(data: CreateUserRequest):
-    user = check_user_by_email(data.email)
+async def signup(data: CreateUserRequest, user_service: UserService = Depends(get_user_service)):
+    user = user_service.check_user_by_email(data.email)
     if user is not None:
         raise UserAlready
 
-    user = resister_user_by_email(data.email, data.password)
+    user = user_service.resister_user_by_email(data.email, data.password)
     return UserSchema(**user.dict())
 
 
 @router.post('/login', response_model=TokenSchema, responses={**InvalidCredentials.to_openapi_response()})
-async def login(form_data: OAuth2PasswordRequestForm = Depends()):
-    user = login_by_email(form_data.username, form_data.password)
+async def login(form_data: OAuth2PasswordRequestForm = Depends(), user_service: UserService = Depends(get_user_service)):
+    user = user_service.login_by_email(form_data.username, form_data.password)
     if user is None:
         raise InvalidCredentials
 

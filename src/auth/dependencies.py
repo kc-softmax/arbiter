@@ -9,11 +9,18 @@ from auth.models import User, Role
 from ..config import settings
 from .schemas import TokenDataSchema
 from .utils import ALGORITHM
-from .service import check_user_by_email
+from .service import UserService
 from .exceptions import InvalidToken, AuthorizationFailed, NotFoundUser, InvalidCredentials
 
 
-async def get_current_user(token: str = Depends(OAuth2PasswordBearer(tokenUrl=""))) -> User:
+def get_user_service() -> 'UserService':
+    return UserService()
+
+
+async def get_current_user(
+    token: str = Depends(OAuth2PasswordBearer(tokenUrl="")),
+    user_service: UserService = Depends(get_user_service)
+) -> User:
     try:
         payload = jwt.decode(
             token, settings.JWT_ACCESS_SECRET_KEY, algorithms=[ALGORITHM]
@@ -27,7 +34,7 @@ async def get_current_user(token: str = Depends(OAuth2PasswordBearer(tokenUrl=""
     except (JWTError, ValidationError):
         raise InvalidCredentials
 
-    user = check_user_by_email(token_data.email)
+    user = user_service.resister_user_by_email(token_data.email)
     if user is None:
         raise NotFoundUser
     return user
