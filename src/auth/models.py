@@ -53,6 +53,7 @@ class User(PKModel, TimestampModel, CommonModel, table=True):
     login_type: LoginType = LoginType.GUEST
     access_token: Optional[str] = Field(sa_column=Column(String(128)))
     refresh_token: Optional[str] = Field(sa_column=Column(String(128)))
+    role: Role = Role.GAMER
 
 
 class ConsoleUser(PKModel, TimestampModel, CommonModel, table=True):
