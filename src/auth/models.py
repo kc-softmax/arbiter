@@ -1,8 +1,8 @@
 from datetime import datetime
 from typing import Optional
-from database import engine
-from sqlmodel import Column, Field, SQLModel, String
 from enum import StrEnum
+
+from sqlmodel import Column, Field, SQLModel, String
 
 
 class Role(StrEnum):
@@ -20,18 +20,44 @@ class LoginType(StrEnum):
     GOOGLE = "google"
 
 
-class User(SQLModel, table=True):
-    __tablename__ = "user"
-    # auto increment
+class PKModel(SQLModel):
     id: Optional[int] = Field(default=None, primary_key=True)
+
+
+class TimestampModel(SQLModel):
+    created_at: datetime = Field(
+        default_factory=datetime.utcnow,
+        nullable=False
+    )
+
+    updated_at: datetime = Field(
+        default_factory=datetime.utcnow,
+        nullable=False
+    )
+
+    deprecated_at: datetime = Field(
+        nullable=True
+    )
+
+
+class CommonModel(SQLModel):
+    deprecated: bool = False
+
+
+class User(PKModel, TimestampModel, CommonModel, table=True):
+    __tablename__ = "user"
     email: Optional[str] = Field(sa_column=Column(String(128), unique=True))
     password: Optional[str] = Field(sa_column=Column(String(128)))
     display_name: Optional[str] = Field(sa_column=Column(String(128)))
     device_id: Optional[str] = Field(sa_column=Column(String(128), unique=True))
-    verified: bool = False
-    role: Role = Role.GAMER
     login_type: LoginType = LoginType.GUEST
     access_token: Optional[str] = Field(sa_column=Column(String(128)))
     refresh_token: Optional[str] = Field(sa_column=Column(String(128)))
-    created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
-    updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
+
+
+class ConsoleUser(PKModel, TimestampModel, CommonModel, table=True):
+    __tablename__ = "console_user"
+    email: str = Field(sa_column=Column(String(128), unique=True))
+    password: str = Field(sa_column=Column(String(128)))
+    user_name: str = Field(sa_column=Column(String(128)))
+    role: Role = Role.GAMER
