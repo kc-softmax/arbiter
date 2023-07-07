@@ -18,7 +18,7 @@ def get_user_service() -> 'UserService':
 
 
 async def get_current_user(
-    token: str = Depends(OAuth2PasswordBearer(tokenUrl="")),
+    token: str = Depends(OAuth2PasswordBearer(tokenUrl="/auth/login")),
     user_service: UserService = Depends(get_user_service)
 ) -> User:
     try:
