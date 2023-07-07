@@ -21,7 +21,7 @@ async def signup(data: CreateUserRequest, user_service: UserService = Depends(ge
     if user is not None:
         raise UserAlready
 
-    user = user_service.resister_user_by_email(data.email, data.password)
+    user = user_service.register_user_by_email(data.email, data.password)
     return UserSchema(**user.dict())
 
 

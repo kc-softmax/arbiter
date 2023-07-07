@@ -26,7 +26,7 @@ class UserService:
             user = results.first()
         return user
 
-    def resister_user_by_email(
+    def register_user_by_email(
             self,
             email: str,
             password: str
