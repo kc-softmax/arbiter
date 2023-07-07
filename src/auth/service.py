@@ -5,6 +5,10 @@ from auth.models import User, LoginType, ConsoleUser, Role
 
 
 class UserService:
+    # TODO: Session 관리 로직 추가, 함수 내 context 로직 제거
+    def __init__(self) -> None:
+        pass
+
     def register_user_by_device_id(self, device_id: str) -> User:
         with Session(engine) as session:
             user = User(device_id=device_id, login_type=LoginType.GUEST)
@@ -89,6 +93,10 @@ class UserService:
 
 
 class ConsoleUserService:
+    # TODO: Session 관리 로직 추가, 함수 내 context 로직 제거
+    def __init__(self) -> None:
+        pass
+
     def register_console_user(
             self,
             email: str,
@@ -128,19 +136,19 @@ class ConsoleUserService:
         with Session(engine) as session:
             statement = select(ConsoleUser)
             console_users = session.exec(statement).all()
-            return console_users
+        return console_users
 
     def get_console_by_role(self, role: Role) -> list[ConsoleUser]:
         with Session(engine) as session:
             statement = select(ConsoleUser).where(ConsoleUser.role == role)
             console_users = session.exec(statement).all()
-            return console_users
+        return console_users
 
     def get_console_user_by_id(self, console_user_id: int) -> ConsoleUser | None:
         with Session(engine) as session:
             statement = select(ConsoleUser).where(ConsoleUser.id == console_user_id)
             console_users = session.exec(statement).first()
-            return console_users
+        return console_users
 
     def delete_console_user(self, console_user_id: int) -> bool:
         is_success = False
