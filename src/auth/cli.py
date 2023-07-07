@@ -30,12 +30,12 @@ def login_by_device_id(device_id: str = typer.Argument('')):
         print("[red]{0} Failed!".format(get_current_function()))
 
 
-@app.command('resister_user_by_email')
-def resister_user_by_email(
+@app.command('register_user_by_email')
+def register_user_by_email(
     email: str = typer.Argument('test@test.com'),
     password: str = typer.Argument('password')
 ):
-    if user := UserService().resister_user_by_email(
+    if user := UserService().register_user_by_email(
         email=email,
         password=password
     ):
