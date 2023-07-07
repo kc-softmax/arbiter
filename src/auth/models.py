@@ -61,4 +61,4 @@ class ConsoleUser(PKModel, TimestampModel, CommonModel, table=True):
     email: str = Field(sa_column=Column(String(128), unique=True))
     password: str = Field(sa_column=Column(String(128)))
     user_name: str = Field(sa_column=Column(String(128)))
-    role: Role = Role.GAMER
+    role: Role = Role.MAINTAINER
