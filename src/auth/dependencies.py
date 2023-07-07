@@ -34,7 +34,7 @@ async def get_current_user(
     except (JWTError, ValidationError):
         raise InvalidCredentials
 
-    user = user_service.resister_user_by_email(token_data.email)
+    user = user_service.check_user_by_email(token_data.email)
     if user is None:
         raise NotFoundUser
     return user
