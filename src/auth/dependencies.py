@@ -17,7 +17,7 @@ from database import get_async_session
 
 def get_user_service(
     session: AsyncSession = Depends(get_async_session)
-) -> 'UserService':
+) -> UserService:
     return UserService(session=session)
 
 
