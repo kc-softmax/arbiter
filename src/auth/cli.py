@@ -11,9 +11,10 @@ from functools import wraps
 
 from auth.service import UserService, ConsoleUserService
 from auth.models import User
-from database import make_async_session
+from database import create_db_and_tables, make_async_session
 
 
+# typer command 비동기 실행
 class UTyper(typer.Typer):
     def __init__(self, *args, loop_factory=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -211,9 +212,10 @@ def get_current_function():
     return sys._getframe(1).f_code.co_name
 
 
-def main():
-    asyncio.run(register_user_by_device_id())
+async def main():
+    await create_db_and_tables()
 
 
 if __name__ == "__main__":
+    asyncio.run(main())
     app()
