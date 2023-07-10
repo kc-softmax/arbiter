@@ -1,10 +1,11 @@
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from database import create_db_and_tables
 
 from .auth.router import router as auth_router, login
 from .exceptions import BadRequest
 from .utils import FastAPIWrapper
+from database import create_db_and_tables
+
 
 app_wrapper = FastAPIWrapper()
 
@@ -22,5 +23,5 @@ async def validation_exception_handler(request, exc):
 
 
 @app.on_event("startup")
-def on_startup():
-    create_db_and_tables()
+async def on_startup():
+    await create_db_and_tables()

@@ -4,6 +4,7 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from pydantic import ValidationError
 from typing import List
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from auth.models import User, Role
 from ..config import settings
@@ -11,10 +12,13 @@ from .schemas import TokenDataSchema
 from .utils import ALGORITHM
 from .service import UserService
 from .exceptions import InvalidToken, AuthorizationFailed, NotFoundUser, InvalidCredentials
+from database import get_async_session
 
 
-def get_user_service() -> 'UserService':
-    return UserService()
+def get_user_service(
+    session: AsyncSession = Depends(get_async_session)
+) -> 'UserService':
+    return UserService(session=session)
 
 
 async def get_current_user(

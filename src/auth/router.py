@@ -17,17 +17,17 @@ router = APIRouter(prefix="/auth")
              operation_id="signup",
              responses={**UserAlready.to_openapi_response()})
 async def signup(data: CreateUserRequest, user_service: UserService = Depends(get_user_service)):
-    user = user_service.check_user_by_email(data.email)
+    user = await user_service.check_user_by_email(data.email)
     if user is not None:
         raise UserAlready
 
-    user = user_service.register_user_by_email(data.email, data.password)
+    user = await user_service.register_user_by_email(data.email, data.password)
     return UserSchema(**user.dict())
 
 
 @router.post('/login', response_model=TokenSchema, responses={**InvalidCredentials.to_openapi_response()})
 async def login(form_data: OAuth2PasswordRequestForm = Depends(), user_service: UserService = Depends(get_user_service)):
-    user = user_service.login_by_email(form_data.username, form_data.password)
+    user = await user_service.login_by_email(form_data.username, form_data.password)
     if user is None:
         raise InvalidCredentials
 
