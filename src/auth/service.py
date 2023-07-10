@@ -49,6 +49,13 @@ class UserService:
         user = results.first()
         return user
 
+    async def check_user_by_device_id(self, device_id: str) -> User | None:
+        # first or None
+        statement = select(User).where(User.device_id == device_id)
+        results = await self.session.exec(statement)
+        user = results.first()
+        return user
+
     async def delete_user(self, user_id: int) -> bool:
         is_success = False
         statement = select(User).where(User.id == user_id)
