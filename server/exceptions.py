@@ -1,7 +1,7 @@
 from typing import Any
 from fastapi import HTTPException, status
 
-from .utils import exceptions_to_openapi_response
+from server.utils import exceptions_to_openapi_response
 
 
 class DetailedHTTPException(HTTPException):

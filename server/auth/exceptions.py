@@ -1,5 +1,5 @@
-from ..exceptions import BadRequest, NotAuthenticated, PermissionDenied, NotFound
-from .constants import ErrorCode
+from server.exceptions import BadRequest, NotAuthenticated, PermissionDenied, NotFound
+from server.auth.constants import ErrorCode
 
 
 class AuthRequired(NotAuthenticated):

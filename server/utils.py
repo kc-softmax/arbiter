@@ -1,7 +1,6 @@
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 from typing import Callable
-
 
 def exceptions_to_openapi_response(code: int, detail: str) -> dict:
     response = {}

@@ -6,13 +6,13 @@ from pydantic import ValidationError
 from typing import List
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from auth.models import User, Role, LoginType
-from ..config import settings
-from .constants import TOKEN_GENERATE_ALGORITHM
-from .schemas import TokenDataSchema
-from .service import UserService
-from .exceptions import InvalidToken, AuthorizationFailed, NotFoundUser, InvalidCredentials
-from database import get_async_session
+from server.config import settings
+from server.database import get_async_session
+from server.auth.models import User, Role, LoginType
+from server.auth.constants import TOKEN_GENERATE_ALGORITHM
+from server.auth.schemas import TokenDataSchema
+from server.auth.service import UserService
+from server.auth.exceptions import InvalidToken, AuthorizationFailed, NotFoundUser, InvalidCredentials
 
 
 def get_user_service(
@@ -48,9 +48,9 @@ async def get_current_user(
 
     user = None
     if token_data.login_type == LoginType.EMAIL:
-        user = user_service.check_user_by_email(token_data.sub)
+        user = await user_service.check_user_by_email(token_data.sub)
     if token_data.login_type == LoginType.GUEST:
-        user = user_service.check_user_by_device_id(token_data.sub)
+        user = await user_service.check_user_by_device_id(token_data.sub)
     if user is None:
         raise NotFoundUser
     # 저장된 액세스토큰과 같은 토큰인지 확인
