@@ -3,7 +3,6 @@ from fastapi import Depends
 from fastapi.security import OAuth2PasswordBearer, OAuth2AuthorizationCodeBearer
 from jose import jwt, JWTError
 from pydantic import ValidationError
-from typing import List
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.config import settings
@@ -60,7 +59,7 @@ async def get_current_user(
 
 
 class RoleChecker:
-    def __init__(self, allowed_roles: List):
+    def __init__(self, allowed_roles: list):
         self.allowed_roles = allowed_roles
 
     def __call__(self, user: User = Depends(get_current_user)):
