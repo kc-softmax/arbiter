@@ -6,10 +6,11 @@ import uuid
 
 from auth.models import User, LoginType
 from ..config import settings
+from ..exceptions import BadRequest
 from .schemas import CreateEmailUserRequest, UserSchema, TokenSchema, UpdateUserRequest, LoginGuestUserRequest
 from .service import UserService
 from .utils import create_token
-from .exceptions import UserAlready, InvalidCredentials, InvalidToken, NotFoundUser, AuthorizationFailed, BadRequest
+from .exceptions import UserAlready, InvalidCredentials, InvalidToken, NotFoundUser, AuthorizationFailed
 from .dependencies import get_user_service, allowed_only_for_gamer
 from .constants import ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_MINUTES
 
