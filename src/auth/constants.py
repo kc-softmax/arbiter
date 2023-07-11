@@ -1,4 +1,7 @@
-class ErrorCode:
+from enum import StrEnum
+
+
+class ErrorCode(StrEnum):
     AUTHENTICATION_REQUIRED = "Authentication required."
     AUTHORIZATION_FAILED = "Authorization failed. User has no access."
     INVALID_TOKEN = "Invalid token."
@@ -8,6 +11,9 @@ class ErrorCode:
     USER_NOT_FOUND = "User not found."
 
 
+class TOKEN_GENERATE_ALGORITHM(StrEnum):
+    HS256 = "HS256"
+
+
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 REFRESH_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7
-ALGORITHM = "HS256"

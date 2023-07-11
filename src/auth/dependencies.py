@@ -8,8 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from auth.models import User, Role, LoginType
 from ..config import settings
+from .constants import TOKEN_GENERATE_ALGORITHM
 from .schemas import TokenDataSchema
-from .utils import ALGORITHM
 from .service import UserService
 from .exceptions import InvalidToken, AuthorizationFailed, NotFoundUser, InvalidCredentials
 from database import get_async_session
@@ -34,7 +34,7 @@ async def get_current_user(
     '''
     try:
         payload = jwt.decode(
-            token, settings.JWT_ACCESS_SECRET_KEY, algorithms=[ALGORITHM]
+            token, settings.JWT_ACCESS_SECRET_KEY, algorithms=[TOKEN_GENERATE_ALGORITHM.HS256]
         )
         token_data = TokenDataSchema(
             sub=payload.get("sub"),
@@ -47,9 +47,9 @@ async def get_current_user(
         raise InvalidCredentials
 
     user = None
-    if token_data.login_type is LoginType.EMAIL:
+    if token_data.login_type == LoginType.EMAIL:
         user = user_service.check_user_by_email(token_data.sub)
-    if token_data.login_type is LoginType.GUEST:
+    if token_data.login_type == LoginType.GUEST:
         user = user_service.check_user_by_device_id(token_data.sub)
     if user is None:
         raise NotFoundUser
