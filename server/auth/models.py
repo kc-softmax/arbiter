@@ -1,7 +1,6 @@
 from datetime import datetime
 from typing import Optional
 from enum import StrEnum
-
 from sqlmodel import Column, Field, SQLModel, String
 
 

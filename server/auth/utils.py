@@ -2,8 +2,8 @@ from datetime import datetime, timedelta
 from jose import jwt
 from passlib.context import CryptContext
 
-from auth.models import LoginType
-from .constants import TOKEN_GENERATE_ALGORITHM
+from server.auth.models import LoginType
+from server.auth.constants import TOKEN_GENERATE_ALGORITHM
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 

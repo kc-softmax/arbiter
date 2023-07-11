@@ -4,15 +4,15 @@ from http import HTTPStatus
 from datetime import timedelta
 import uuid
 
-from auth.models import User, LoginType
-from ..config import settings
-from ..exceptions import BadRequest
-from .schemas import CreateEmailUserRequest, UserSchema, TokenSchema, UpdateUserRequest, LoginGuestUserRequest
-from .service import UserService
-from .utils import create_token
-from .exceptions import UserAlready, InvalidCredentials, InvalidToken, NotFoundUser, AuthorizationFailed
-from .dependencies import get_user_service, allowed_only_for_gamer
-from .constants import ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_MINUTES
+from server.config import settings
+from server.exceptions import BadRequest
+from server.auth.models import User, LoginType
+from server.auth.schemas import CreateEmailUserRequest, UserSchema, TokenSchema, UpdateUserRequest, LoginGuestUserRequest
+from server.auth.service import UserService
+from server.auth.utils import create_token
+from server.auth.exceptions import UserAlready, InvalidCredentials, InvalidToken, NotFoundUser, AuthorizationFailed
+from server.auth.dependencies import get_user_service, allowed_only_for_gamer
+from server.auth.constants import ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_MINUTES
 
 
 router = APIRouter(prefix="/auth")
@@ -49,7 +49,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), user_service: 
                                    settings.JWT_REFRESH_SECRET_KEY,
                                    timedelta(minutes=REFRESH_TOKEN_EXPIRE_MINUTES)))
     # 로그인 시, 갱신한 토큰을 DB에 저장
-    user_service.update_user(user.id, User(**token.dict()))
+    await user_service.update_user(user.id, User(**token.dict()))
     return token
 
 
@@ -60,7 +60,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), user_service: 
 async def signup_guest(user_service: UserService = Depends(get_user_service)):
     # 임의의 id 생성
     device_id = uuid.uuid4()
-    user = user_service.register_user_by_device_id(str(device_id))
+    user = await user_service.register_user_by_device_id(str(device_id))
     return user
 
 
@@ -68,7 +68,7 @@ async def signup_guest(user_service: UserService = Depends(get_user_service)):
              response_model=TokenSchema)
 # 게스트 게이머 로그인
 async def login_guest(data: LoginGuestUserRequest, user_service: UserService = Depends(get_user_service)):
-    user = user_service.login_by_device_id(data.device_id)
+    user = await user_service.login_by_device_id(data.device_id)
     if user is None:
         raise InvalidCredentials
     token = TokenSchema(
@@ -80,7 +80,7 @@ async def login_guest(data: LoginGuestUserRequest, user_service: UserService = D
                                    LoginType.GUEST,
                                    settings.JWT_REFRESH_SECRET_KEY,
                                    timedelta(minutes=REFRESH_TOKEN_EXPIRE_MINUTES)))
-    user_service.update_user(user.id, User(**token.dict()))
+    await user_service.update_user(user.id, User(**token.dict()))
     return token
 
 
@@ -105,7 +105,7 @@ async def get_me(user: User = Depends(allowed_only_for_gamer)):
 # 회원 탈퇴(삭제) 정책이 아직 미정.
 # 만약 DB에서 삭제한다면 'DELETE' 요청도 고려
 async def leave(user: User = Depends(allowed_only_for_gamer), user_service: UserService = Depends(get_user_service)):
-    if not user_service.delete_user(user.id):
+    if not await user_service.delete_user(user.id):
         raise BadRequest
     return UserSchema(**user.dict())
 
@@ -117,7 +117,7 @@ async def leave(user: User = Depends(allowed_only_for_gamer), user_service: User
                          **NotFoundUser.to_openapi_response()})
 # 게이머 본인 정보 수정
 async def leave(data: UpdateUserRequest, user: User = Depends(allowed_only_for_gamer), user_service: UserService = Depends(get_user_service)):
-    user = user_service.update_user(user.id, User(**data.dict()))
+    user = await user_service.update_user(user.id, User(**data.dict()))
     if user is None:
         raise BadRequest
     return UserSchema(**user.dict())

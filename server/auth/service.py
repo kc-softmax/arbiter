@@ -1,7 +1,7 @@
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from auth.models import User, LoginType, ConsoleUser, Role
+from server.auth.models import User, LoginType, ConsoleUser, Role
 
 
 class UserService:

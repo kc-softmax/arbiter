@@ -1,11 +1,10 @@
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from .auth.router import router as auth_router, login
-from .exceptions import BadRequest
-from .utils import FastAPIWrapper
-from database import create_db_and_tables
-
+from server.exceptions import BadRequest
+from server.utils import FastAPIWrapper
+from server.database import create_db_and_tables
+from server.auth.router import router as auth_router, login
 
 app_wrapper = FastAPIWrapper()
 

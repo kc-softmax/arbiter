@@ -8,10 +8,9 @@ import inspect
 import uvloop
 from functools import wraps
 
-
-from auth.service import UserService, ConsoleUserService
-from auth.models import User
-from database import create_db_and_tables, make_async_session
+from server.database import create_db_and_tables, make_async_session
+from server.auth.service import UserService, ConsoleUserService
+from server.auth.models import User
 
 
 # typer command 비동기 실행

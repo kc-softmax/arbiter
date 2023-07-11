@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-from auth.models import LoginType
+from server.auth.models import LoginType
 
 
 class UserSchema(BaseModel):
