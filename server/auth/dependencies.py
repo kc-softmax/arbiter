@@ -46,10 +46,11 @@ async def get_current_user(
         raise InvalidCredentials
 
     user = None
-    if token_data.login_type == LoginType.EMAIL:
-        user = await user_service.check_user_by_email(token_data.sub)
-    if token_data.login_type == LoginType.GUEST:
-        user = await user_service.check_user_by_device_id(token_data.sub)
+    match token_data.login_type:
+        case LoginType.EMAIL:
+            user = await user_service.check_user_by_email(token_data.sub)
+        case LoginType.GUEST:
+            user = await user_service.check_user_by_device_id(token_data.sub)            
     if user is None:
         raise NotFoundUser
     # 저장된 액세스토큰과 같은 토큰인지 확인
