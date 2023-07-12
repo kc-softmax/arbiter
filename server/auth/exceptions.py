@@ -2,12 +2,12 @@ from server.exceptions import BadRequest, NotAuthenticated, PermissionDenied, No
 from server.auth.constants import ErrorCode
 
 
-class AuthRequired(NotAuthenticated):
-    DETAIL = ErrorCode.AUTHENTICATION_REQUIRED
-
-
 class AuthorizationFailed(PermissionDenied):
     DETAIL = ErrorCode.AUTHORIZATION_FAILED
+
+
+class AuthRequired(NotAuthenticated):
+    DETAIL = ErrorCode.AUTHENTICATION_REQUIRED
 
 
 class InvalidToken(NotAuthenticated):
@@ -18,13 +18,21 @@ class InvalidCredentials(NotAuthenticated):
     DETAIL = ErrorCode.INVALID_CREDENTIALS
 
 
+class NotFoundUser(NotFound):
+    DETAIL = ErrorCode.USER_NOT_FOUND
+
+
+class NotFoundUserForDelete(NotFound):
+    DETAIL = ErrorCode.USER_NOT_FOUND_FOR_DELETE
+
+
+class NotFoundUserForUpdate(NotFound):
+    DETAIL = ErrorCode.USER_NOT_FOUND_FOR_UPDATE
+
+
 class UserAlready(BadRequest):
     DETAIL = ErrorCode.USER_ALREADY
 
 
-class RefreshTokenNotValid(NotAuthenticated):
-    DETAIL = ErrorCode.REFRESH_TOKEN_NOT_VALID
-
-
-class NotFoundUser(NotFound):
-    DETAIL = ErrorCode.USER_NOT_FOUND
+class AtLeastOneOwner(BadRequest):
+    DETAIL = ErrorCode.PROTECT_OWNER

@@ -5,8 +5,8 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import sessionmaker
 
 from server.config import settings
-from server.auth.models import ConsoleUser, Role
-
+from server.auth.models import ConsoleUser, ConsoleRole
+from server.auth.utils import get_password_hash
 
 # sqllite는 쓰레드 통신을 지원하지 않기 때문에, 아래와 같이 connect_args를 추가해줘야 한다.
 connect_args = {"check_same_thread": False}
@@ -48,7 +48,7 @@ async def set_default_console_user():
     async with make_async_session() as session:
         result = await session.exec(
             # 오너 유저가 한명도 없으면, 오너 유저를 생성한다.
-            select(ConsoleUser).where(ConsoleUser.role == Role.OWNER).limit(1)
+            select(ConsoleUser).where(ConsoleUser.role == ConsoleRole.OWNER).limit(1)
         )
 
         if result.first() is None:
@@ -62,8 +62,9 @@ async def set_default_console_user():
             session.add(
                 ConsoleUser(
                     email=settings.INITIAL_CONSOLE_USER_EMAIL,
-                    password=settings.INITIAL_CONSOLE_USER_PASSWORD,
-                    role=Role.OWNER
+                    password=get_password_hash(settings.INITIAL_CONSOLE_USER_PASSWORD),
+                    user_name=settings.INITIAL_CONSOLE_USERNAME,
+                    role=ConsoleRole.OWNER
                 )
             )
             await session.commit()

@@ -1,7 +1,7 @@
 from sqlmodel import func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from server.auth.models import User, LoginType, ConsoleUser, Role
+from server.auth.models import User, LoginType, ConsoleUser, ConsoleRole
 
 
 class BaseService:
@@ -112,7 +112,7 @@ class ConsoleUserService(BaseService):
         self,
         email: str,
         password: str,
-        role: Role,
+        role: ConsoleRole,
         user_name: str = ''
     ) -> ConsoleUser:
         console_user = ConsoleUser(
@@ -157,7 +157,7 @@ class ConsoleUserService(BaseService):
         console_users = results.all()
         return console_users
 
-    async def get_console_by_role(self, role: Role) -> list[ConsoleUser]:
+    async def get_console_by_role(self, role: ConsoleRole) -> list[ConsoleUser]:
         statement = select(ConsoleUser).where(ConsoleUser.role == role)
         result = await self.session.exec(statement)
         console_users = result.all()
@@ -169,7 +169,12 @@ class ConsoleUserService(BaseService):
         console_user = results.first()
         return console_user
 
-    # TODO: 삭제
+    async def get_console_user_by_email(self, email: str) -> ConsoleUser | None:
+        statement = select(ConsoleUser).where(ConsoleUser.email == email)
+        results = await self.session.exec(statement)
+        console_user = results.first()
+        return console_user
+
     async def delete_console_user(self, console_user_id: int) -> bool:
         is_success = False
         statement = select(ConsoleUser).where(ConsoleUser.id == console_user_id)
@@ -200,7 +205,7 @@ class ConsoleUserService(BaseService):
 
     # 마지막 owner 인지 확인
     async def check_last_console_owner_for_update(self, console_user_id: int) -> bool:
-        consol_users = await self.get_console_by_role(Role.OWNER)
+        consol_users = await self.get_console_by_role(ConsoleRole.OWNER)
         if len(consol_users) == 1:
             if console_user_id == consol_users[0].id:
                 return True
@@ -210,12 +215,12 @@ class ConsoleUserService(BaseService):
     async def check_last_console_owner_for_delete(self, console_user_ids: list[int]) -> bool:
         console_user_count = await self.session.scalar(
             select(func.count(ConsoleUser.id))
-            .where(ConsoleUser.role == Role.OWNER)
+            .where(ConsoleUser.role == ConsoleRole.OWNER)
         )
         request_console_user_count = await self.session.scalar(
             select(func.count(ConsoleUser.id))
             .where(ConsoleUser.id.in_(console_user_ids))
-            .where(ConsoleUser.role == Role.OWNER)
+            .where(ConsoleUser.role == ConsoleRole.OWNER)
         )
         # 1개 이하로 남으면 삭제 불가
         if console_user_count - request_console_user_count < 1:
