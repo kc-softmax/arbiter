@@ -116,7 +116,7 @@ async def leave(user: User = Depends(allowed_only_for_gamer), user_service: User
                          **AuthorizationFailed.to_openapi_response(),
                          **NotFoundUser.to_openapi_response()})
 # 게이머 본인 정보 수정
-async def leave(data: UpdateUserRequest, user: User = Depends(allowed_only_for_gamer), user_service: UserService = Depends(get_user_service)):
+async def update_user_info(data: UpdateUserRequest, user: User = Depends(allowed_only_for_gamer), user_service: UserService = Depends(get_user_service)):
     user = await user_service.update_user(user.id, User(**data.dict()))
     if user is None:
         raise BadRequest
