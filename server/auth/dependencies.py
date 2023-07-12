@@ -1,17 +1,12 @@
-from datetime import datetime
 from fastapi import Depends
-from fastapi.security import OAuth2PasswordBearer, OAuth2AuthorizationCodeBearer
-from jose import jwt, JWTError
-from pydantic import ValidationError
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from server.config import settings
 from server.database import get_async_session
-from server.auth.models import User, Role, LoginType
-from server.auth.constants import TOKEN_GENERATE_ALGORITHM
-from server.auth.schemas import TokenDataSchema
+from server.auth.models import User, ConsoleUser, ConsoleRole
 from server.auth.service import ConsoleUserService, UserService
-from server.auth.exceptions import InvalidToken, AuthorizationFailed, NotFoundUser, InvalidCredentials
+from server.auth.exceptions import InvalidToken, NotFoundUser, AuthorizationFailed
+from server.auth.utils import verify_token
 
 
 def get_user_service(
@@ -23,6 +18,7 @@ def get_user_service(
 def get_console_user_service(
     session: AsyncSession = Depends(get_async_session)
 ) -> ConsoleUserService:
+    # TODO generic으로 합치기
     return ConsoleUserService(session=session)
 
 
@@ -37,26 +33,8 @@ async def get_current_user(
     이 때 유저가 없거나 저장된 토큰과 헤더에 담겨 온 토큰이 다를 경우, 예외를 발생시킨다.
     (저장된 토큰과 헤더에 담겨 온 토큰이 다르다는 것은 이미 deprecated된 토큰으로 요청을 보냈다는 뜻)
     '''
-    try:
-        payload = jwt.decode(
-            token, settings.JWT_ACCESS_SECRET_KEY, algorithms=[TOKEN_GENERATE_ALGORITHM.HS256]
-        )
-        token_data = TokenDataSchema(
-            sub=payload.get("sub"),
-            exp=payload.get("exp"),
-            login_type=LoginType(payload.get("login_type"))
-        )
-        if datetime.fromtimestamp(token_data.exp) < datetime.now():
-            raise InvalidToken
-    except (JWTError, ValidationError):
-        raise InvalidCredentials
-
-    user = None
-    match token_data.login_type:
-        case LoginType.EMAIL:
-            user = await user_service.check_user_by_email(token_data.sub)
-        case LoginType.GUEST:
-            user = await user_service.check_user_by_device_id(token_data.sub)
+    token_data = verify_token(token)
+    user = await user_service.get_user(token_data.sub)
     if user is None:
         raise NotFoundUser
     # 저장된 액세스토큰과 같은 토큰인지 확인
@@ -65,15 +43,27 @@ async def get_current_user(
     return user
 
 
-class RoleChecker:
+async def get_current_console_user(
+    token: str = Depends(OAuth2PasswordBearer(tokenUrl="/auth/console/login")),
+    user_service: ConsoleUserService = Depends(get_console_user_service)
+) -> ConsoleUser:
+    token_data = verify_token(token)
+    user = await user_service.get_console_user_by_id(token_data.sub)
+    if user is None:
+        raise NotFoundUser
+    if user.access_token != token:
+        raise InvalidToken
+    return user
+
+
+class ConsoleRoleChecker:
     def __init__(self, allowed_roles: list):
         self.allowed_roles = allowed_roles
 
-    def __call__(self, user: User = Depends(get_current_user)):
-        if user.role not in self.allowed_roles:
+    def __call__(self, console_user: ConsoleUser = Depends(get_current_console_user)):
+        if console_user.role not in self.allowed_roles:
             raise AuthorizationFailed
-        return user
+        return console_user
 
 
-allowed_only_for_admin = RoleChecker([Role.OWNER, Role.MAINTAINER])
-allowed_only_for_gamer = RoleChecker([Role.GAMER])
+allowed_only_for_owner = ConsoleRoleChecker([ConsoleRole.OWNER])

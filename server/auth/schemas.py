@@ -1,14 +1,15 @@
 from pydantic import BaseModel
 
-from server.auth.models import LoginType
+from server.utils import Pick, Omit
+from server.auth.models import ConsoleUserBase, UserBase
 
 
-class UserSchema(BaseModel):
+class SingleId(BaseModel):
     id: str
-    email: str | None = None
-    display_name: str | None = None
-    device_id: str | None = None
-    login_type: LoginType
+
+
+class ConsoleRequest(BaseModel):
+    is_console: bool = False
 
 
 class TokenSchema(BaseModel):
@@ -19,17 +20,46 @@ class TokenSchema(BaseModel):
 class TokenDataSchema(BaseModel):
     sub: str
     exp: int
-    login_type: LoginType
 
 
-class CreateEmailUserRequest(BaseModel):
-    email: str
-    password: str
+class TokenRefreshRequest(TokenSchema, ConsoleRequest):
+    pass
 
 
-class UpdateUserRequest(BaseModel):
-    display_name: str
+class GamerUserSchema(SingleId, UserBase, metaclass=Omit):
+    class Config:
+        omit_fields = {"password"}
 
 
-class LoginGuestUserRequest(BaseModel):
-    device_id: str
+class GamerUserCreateByEmail(UserBase, metaclass=Pick):
+    class Config:
+        pick_fields = {"email", "password"}
+
+
+class GamerUserUpdate(UserBase, metaclass=Pick):
+    class Config:
+        pick_fields = {"user_name"}
+
+
+class GamerUserLoginByGuest(UserBase, metaclass=Pick):
+    class Config:
+        pick_fields = {"device_id"}
+
+
+class ConsoleUserSchema(SingleId, ConsoleUserBase, metaclass=Omit):
+    class Config:
+        omit_fields = {"password", "access_token", "refresh_token"}
+
+
+class ConsoleUserGet(SingleId):
+    pass
+
+
+class ConsoleUserCreate(ConsoleUserBase, metaclass=Pick):
+    class Config:
+        pick_fields = {"email", "password", "user_name", "role"}
+
+
+class ConsoleUserUpdate(SingleId, ConsoleUserBase, metaclass=Pick):
+    class Config:
+        pick_fields = {"id", "email", "user_name", "role"}

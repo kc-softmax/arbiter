@@ -1,7 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
-from typing import Callable
+from fastapi.middleware.cors import CORSMiddleware
+from sqlmodel.main import SQLModelMetaclass
+from typing import Callable, Optional
+from starlette.middleware.base import BaseHTTPMiddleware
+
+from server.logging import log_middleware
 
 
 def exceptions_to_openapi_response(code: int, detail: str) -> dict:
@@ -17,16 +22,21 @@ def exceptions_to_openapi_response(code: int, detail: str) -> dict:
 
 
 class FastAPIWrapper:
-    def __init__(self):
+    def __init__(self) -> None:
         self.app = FastAPI()
-        self.app.openapi = self.create_custom_openapi
+        # self.app.openapi = self.create_custom_openapi
         self.app.add_middleware(
             CORSMiddleware,
-            allow_origins=["*"],
+            allow_origins=[
+                "*",
+                "http://localhost",
+                "http://localhost:3000",
+            ],
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
         )
+        self.app.add_middleware(BaseHTTPMiddleware, dispatch=log_middleware)
 
     def __call__(self):
         return self.app
@@ -58,3 +68,57 @@ class FastAPIWrapper:
                 if '422' in responses:
                     del responses['422']
         return self.app.openapi_schema
+
+
+class Omit(SQLModelMetaclass):
+    def __new__(self, name, bases, namespaces, **kwargs):
+        omit_fields = getattr(namespaces.get("Config", {}), "omit_fields", {})
+        fields = namespaces.get('__fields__', {})
+        annotations = namespaces.get('__annotations__', {})
+        for base in bases:
+            fields.update(base.__fields__)
+            annotations.update(base.__annotations__)
+        merged_keys = fields.keys() & annotations.keys()
+        [merged_keys.add(field) for field in fields]
+        new_fields = {}
+        new_annotations = {}
+        for field in merged_keys:
+            if not field.startswith('__') and field not in omit_fields:
+                new_annotations[field] = annotations.get(field, fields[field].type_)
+                new_fields[field] = fields[field]
+        namespaces['__annotations__'] = new_annotations
+        namespaces['__fields__'] = new_fields
+        return super().__new__(self, name, bases, namespaces, **kwargs)
+
+
+class Pick(SQLModelMetaclass):
+    def __new__(self, name, bases, namespaces, **kwargs):
+        pick_fields = getattr(namespaces.get("Config", {}), "pick_fields", {})
+        fields = namespaces.get('__fields__', {})
+        annotations = namespaces.get('__annotations__', {})
+        for base in bases:
+            fields.update(base.__fields__)
+            annotations.update(base.__annotations__)
+        merged_keys = fields.keys() & annotations.keys()
+        [merged_keys.add(field) for field in fields]
+        new_fields = {}
+        new_annotations = {}
+        for field in merged_keys:
+            if not field.startswith('__') and field in pick_fields:
+                new_annotations[field] = annotations.get(field, fields[field].type_)
+                new_fields[field] = fields[field]
+        namespaces['__annotations__'] = new_annotations
+        namespaces['__fields__'] = new_fields
+        return super().__new__(self, name, bases, namespaces, **kwargs)
+
+
+class AllOptional(SQLModelMetaclass):
+    def __new__(self, name, bases, namespaces, **kwargs):
+        annotations = namespaces.get('__annotations__', {})
+        for base in bases:
+            annotations.update(base.__annotations__)
+        for field in annotations:
+            if not field.startswith('__'):
+                annotations[field] = Optional[annotations[field]]
+        namespaces['__annotations__'] = annotations
+        return super().__new__(self, name, bases, namespaces, **kwargs)

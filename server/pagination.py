@@ -1,9 +1,11 @@
 from enum import Enum
 from math import ceil
-from typing import Any, Generic, Optional, TypeVar
+from typing import Generic, Optional, TypeVar
 from pydantic import BaseModel, Field, parse_obj_as
 from sqlalchemy.ext.asyncio.session import AsyncSession
 from sqlmodel import func, select
+
+# from server.utils import BaseRequestSchema
 
 T = TypeVar('T')
 K = TypeVar('K')
@@ -19,7 +21,7 @@ class PaginationRequest(BaseModel):
     page: int = Field(1, ge=1)
     size: int = Field(15, ge=1, le=100)
     field: str = Field('id')
-    sort: SortType = Field(SortType.DESC)
+    sort: Optional[SortType] = Field(SortType.DESC)
 
 
 class PaginationResponse(BaseModel, Generic[K]):

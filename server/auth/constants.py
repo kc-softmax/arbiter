@@ -7,8 +7,10 @@ class ErrorCode(StrEnum):
     INVALID_TOKEN = "Invalid token."
     INVALID_CREDENTIALS = "Invalid credentials."
     USER_ALREADY = "User already exists"
-    REFRESH_TOKEN_NOT_VALID = "Refresh token is not valid."
-    USER_NOT_FOUND = "User not found."
+    USER_NOT_FOUND = "User not found.",
+    USER_NOT_FOUND_FOR_UPDATE = "There is no user you want to update"
+    USER_NOT_FOUND_FOR_DELETE = "There are no users you want to delete"
+    PROTECT_OWNER = "At least one OWNER permission must be maintained."
 
 
 class TOKEN_GENERATE_ALGORITHM(StrEnum):

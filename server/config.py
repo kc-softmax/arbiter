@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     JWT_REFRESH_SECRET_KEY: str = ""
     INITIAL_CONSOLE_USER_EMAIL: str = ""
     INITIAL_CONSOLE_USER_PASSWORD: str = ""
+    INITIAL_CONSOLE_USERNAME: str = ""
     RDB_CONNECTION_URL: str = ""
     TEST_RDB_CONNECTION_URL: str = ""
 
