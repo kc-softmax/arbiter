@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends
-from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from http import HTTPStatus
 from datetime import timedelta
@@ -9,10 +8,10 @@ from server.config import settings
 from server.exceptions import BadRequest
 from server.auth.models import User, LoginType
 from server.auth.schemas import CreateEmailUserRequest, UserSchema, TokenSchema, UpdateUserRequest, LoginGuestUserRequest
-from server.auth.service import UserService, ConsoleUserService
+from server.auth.service import UserService
 from server.auth.utils import create_token
 from server.auth.exceptions import UserAlready, InvalidCredentials, InvalidToken, NotFoundUser, AuthorizationFailed
-from server.auth.dependencies import get_user_service, allowed_only_for_gamer, get_console_user_service
+from server.auth.dependencies import get_user_service, allowed_only_for_gamer
 from server.auth.constants import ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_MINUTES
 
 
@@ -129,11 +128,3 @@ async def update_user_info(data: UpdateUserRequest, user: User = Depends(allowed
 # 메인테이너 리스트 불러오기(권한: 오너, 메인테이너)
 # 게이머 리스트 불러오기(권한: 오너, 메인테이너)
 # 게이머 수정?(Ex_블럭처리)
-
-
-@router.post("/login/console")
-# 게스트 게이머 가입
-async def signup_guest(console_user_service: ConsoleUserService = Depends(get_console_user_service)):
-    # 임의의 id 생성
-    user = await console_user_service.login_by_email(email='admin@admin.com', password='password')
-    print('abcd', user)
