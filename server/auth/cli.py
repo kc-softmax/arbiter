@@ -211,10 +211,10 @@ def get_current_function():
     return sys._getframe(1).f_code.co_name
 
 
-async def main():
+async def create_db_and_tables_for_cli():
     await create_db_and_tables()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(create_db_and_tables_for_cli())
     app()
