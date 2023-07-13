@@ -1,4 +1,3 @@
-import asyncio
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -10,8 +9,8 @@ class UserService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def register_user_by_device_id(self, device_id: str) -> User:
-        user = User(device_id=device_id, login_type=LoginType.GUEST)
+    async def register_user_by_device_id(self, device_id: str, display_name: str = '') -> User:
+        user = User(device_id=device_id, login_type=LoginType.GUEST, display_name=display_name)
         self.session.add(user)
         await self.session.commit()
         # table 값을 객체에 부여해준다.
@@ -28,9 +27,10 @@ class UserService:
     async def register_user_by_email(
             self,
             email: str,
-            password: str
+            password: str,
+            display_name: str = ''
     ) -> User:
-        user = User(email=email, password=password, login_type=LoginType.EMAIL)
+        user = User(email=email, password=password, login_type=LoginType.EMAIL, display_name=display_name)
         self.session.add(user)
         await self.session.commit()
         # table 값을 객체에 부여해준다.
@@ -100,8 +100,8 @@ class ConsoleUserService:
             self,
             email: str,
             password: str,
-            user_name: str,
-            role: Role
+            role: Role,
+            user_name: str = ''
     ) -> ConsoleUser:
         console_user = ConsoleUser(
             email=email,
