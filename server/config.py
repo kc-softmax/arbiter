@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     INITIAL_CONSOLE_USER_PASSWORD: str = ""
 
     class Config:
-        env_file = ".local.env", ".prod.env"
+        env_file = "server/.local.env", "server/.prod.env"
         env_file_encoding = 'utf-8'
 
 
