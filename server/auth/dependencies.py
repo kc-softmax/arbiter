@@ -10,14 +10,21 @@ from server.database import get_async_session
 from server.auth.models import User, Role, LoginType
 from server.auth.constants import TOKEN_GENERATE_ALGORITHM
 from server.auth.schemas import TokenDataSchema
-from server.auth.service import UserService
+from server.auth.service import UserService, ConsoleUserService
 from server.auth.exceptions import InvalidToken, AuthorizationFailed, NotFoundUser, InvalidCredentials
 
 
+# TODO: 정리 필요
 def get_user_service(
     session: AsyncSession = Depends(get_async_session)
 ) -> UserService:
     return UserService(session=session)
+
+
+def get_console_user_service(
+    session: AsyncSession = Depends(get_async_session)
+) -> ConsoleUserService:
+    return ConsoleUserService(session=session)
 
 
 async def get_current_user(
@@ -50,7 +57,7 @@ async def get_current_user(
         case LoginType.EMAIL:
             user = await user_service.check_user_by_email(token_data.sub)
         case LoginType.GUEST:
-            user = await user_service.check_user_by_device_id(token_data.sub)            
+            user = await user_service.check_user_by_device_id(token_data.sub)
     if user is None:
         raise NotFoundUser
     # 저장된 액세스토큰과 같은 토큰인지 확인

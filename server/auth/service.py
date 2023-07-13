@@ -1,7 +1,9 @@
+import asyncio
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from server.auth.models import User, LoginType, ConsoleUser, Role
+from server.database import make_async_session
 
 
 class UserService:
@@ -110,6 +112,16 @@ class ConsoleUserService:
         self.session.add(console_user)
         await self.session.commit()
         self.session.refresh(console_user)
+        return console_user
+
+    async def login_by_email(self, email: str, password: str) -> User | None:
+        statement = (
+            select(ConsoleUser)
+            .where(ConsoleUser.email == email)
+            .where(ConsoleUser.password == password)
+        )
+        results = await self.session.exec(statement)
+        console_user = results.first()
         return console_user
 
     async def update_console_user(
