@@ -25,7 +25,7 @@ async_engine = create_async_engine(
 # TODO: 마이그레이션 로직 추가되면 제거
 async def create_db_and_tables():
     async with async_engine.begin() as conn:
-        # await conn.run_sync(SQLModel.metadata.drop_all)
+        await conn.run_sync(SQLModel.metadata.drop_all)
         await conn.run_sync(SQLModel.metadata.create_all)
         await set_default_console_user()
 
@@ -45,23 +45,23 @@ async def get_async_session() -> AsyncSession:
 # TODO: 마이그레이션 로직 추가되면 마이그레이션 로직으로 이동
 async def set_default_console_user():
     async with make_async_session() as session:
-        if not settings.FIRST_CONSOLE_USER_EMAIL:
-            print('first_console_user_email is Blank')
-            return
-
-        if not settings.FIRST_CONSOLE_USER_PASSWORD:
-            print('first_console_user_password is Blank')
-            return
-
         result = await session.exec(
             # 오너 유저가 한명도 없으면, 오너 유저를 생성한다.
             select(ConsoleUser).where(ConsoleUser.role == Role.OWNER).limit(1)
         )
+
         if result.first() is None:
+            if not settings.INITIAL_CONSOLE_USER_EMAIL:
+                print('initial_console_user_email is Blank')
+                return
+            if not settings.INITIAL_CONSOLE_USER_PASSWORD:
+                print('initial_console_user_password is Blank')
+                return
+
             session.add(
                 ConsoleUser(
-                    email=settings.FIRST_CONSOLE_USER_EMAIL,
-                    password=settings.FIRST_CONSOLE_USER_PASSWORD,
+                    email=settings.INITIAL_CONSOLE_USER_EMAIL,
+                    password=settings.INITIAL_CONSOLE_USER_PASSWORD,
                     role=Role.OWNER
                 )
             )
