@@ -6,8 +6,8 @@ class Settings(BaseSettings):
     JWT_ACCESS_SECRET_KEY: str = ""
     JWT_REFRESH_SECRET_KEY: str = ""
     # 사용자가 최초 아이디 생성시 사용할 이메일과 패스워드
-    FIRST_CONSOLE_USER_EMAIL: str = "admin@admin.com"
-    FIRST_CONSOLE_USER_PASSWORD: str = "password"
+    INITIAL_CONSOLE_USER_EMAIL: str = ""
+    INITIAL_CONSOLE_USER_PASSWORD: str = ""
 
     class Config:
         env_file = ".local.env", ".prod.env"
