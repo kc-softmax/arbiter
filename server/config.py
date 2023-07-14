@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     JWT_REFRESH_SECRET_KEY: str = ""
     INITIAL_CONSOLE_USER_EMAIL: str = ""
     INITIAL_CONSOLE_USER_PASSWORD: str = ""
-    RDB_CONNECTION_URL: str = "sqlite+aiosqlite:///arbiter_test.db"
+    RDB_CONNECTION_URL: str = ""
 
     class Config:
         env_file = "server/.local.env", "server/.prod.env"
