@@ -7,15 +7,12 @@ from server.config import settings
 from server.auth.models import ConsoleUser, Role
 
 
-sqlite_file_name = "arbiter_test.db"
-sqlite_url = f"sqlite+aiosqlite:///{sqlite_file_name}"
-
 # sqllite는 쓰레드 통신을 지원하지 않기 때문에, 아래와 같이 connect_args를 추가해줘야 한다.
 connect_args = {"check_same_thread": False}
 
 
 async_engine = create_async_engine(
-    sqlite_url,
+    settings.RDB_CONNECTION_URL,  # "sqlite+aiosqlite:///arbiter_test.db"
     echo=True,
     future=True,
     connect_args=connect_args
@@ -52,10 +49,10 @@ async def set_default_console_user():
 
         if result.first() is None:
             if not settings.INITIAL_CONSOLE_USER_EMAIL:
-                print('initial_console_user_email is Blank')
+                print('initial_console_user_email is blank')
                 return
             if not settings.INITIAL_CONSOLE_USER_PASSWORD:
-                print('initial_console_user_password is Blank')
+                print('initial_console_user_password is blank')
                 return
 
             session.add(
