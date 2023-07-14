@@ -12,6 +12,7 @@ class GymAdapter:
         self.actions: deque = deque()
     
     def add_client_action(self, agent_id: int | str, action: int) -> None:
+        # action은 미리 env에서 정의한 gym.spaces.Discrete의 범위내 값이다.
         self.actions.append((agent_id, action))
     
     async def run(self) -> None:
