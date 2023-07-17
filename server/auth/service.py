@@ -184,7 +184,7 @@ class PaginationService:
         params = CustomCursorParams(**request.query_params)
         result = None
         for _ in range(self.get_page_step(request)):
-            result = await paginate(self.session, select(model).order_by(model.id), params=params)
+            result = await paginate(self.session, select(model).order_by(model.id.desc()), params=params)
             params.cursor = result.next_page if result.next_page else result.previous_page
         result.total = await self.session.scalar(select(func.count(model.id)))
         return result
