@@ -10,7 +10,7 @@ from server.database import get_async_session
 from server.auth.models import User, Role, LoginType
 from server.auth.constants import TOKEN_GENERATE_ALGORITHM
 from server.auth.schemas import TokenDataSchema
-from server.auth.service import UserService
+from server.auth.service import ConsoleUserService, PaginationService, UserService
 from server.auth.exceptions import InvalidToken, AuthorizationFailed, NotFoundUser, InvalidCredentials
 
 
@@ -18,6 +18,18 @@ def get_user_service(
     session: AsyncSession = Depends(get_async_session)
 ) -> UserService:
     return UserService(session=session)
+
+
+def get_console_user_service(
+    session: AsyncSession = Depends(get_async_session)
+) -> ConsoleUserService:
+    return ConsoleUserService(session=session)
+
+
+def get_pagination_service(
+    session: AsyncSession = Depends(get_async_session)
+) -> PaginationService:
+    return PaginationService(session=session)
 
 
 async def get_current_user(

@@ -3,6 +3,8 @@ from typing import Any, ClassVar, Generic, Optional, Sequence
 
 from fastapi.params import Query
 from fastapi_pagination.bases import AbstractPage, AbstractParams, CursorRawParams
+
+from fastapi_pagination.bases import AbstractPage, AbstractParams, CursorRawParams
 from fastapi_pagination.types import Cursor, ParamsType
 from fastapi_pagination.cursor import decode_cursor, encode_cursor, T, CursorPage
 from pydantic import BaseModel, Field

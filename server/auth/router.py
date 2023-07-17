@@ -1,17 +1,18 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from http import HTTPStatus
 from datetime import timedelta
 import uuid
 
 from server.config import settings
+from server.custom_cursor import CustomCursorPage, CustomCursorParams
 from server.exceptions import BadRequest
-from server.auth.models import User, LoginType
+from server.auth.models import ConsoleUser, User, LoginType
 from server.auth.schemas import CreateEmailUserRequest, UserSchema, TokenSchema, UpdateUserRequest, LoginGuestUserRequest
-from server.auth.service import UserService
+from server.auth.service import ConsoleUserService, UserService, PaginationService
 from server.auth.utils import create_token
 from server.auth.exceptions import UserAlready, InvalidCredentials, InvalidToken, NotFoundUser, AuthorizationFailed
-from server.auth.dependencies import get_user_service, allowed_only_for_gamer
+from server.auth.dependencies import get_console_user_service, get_pagination_service, get_user_service, allowed_only_for_gamer
 from server.auth.constants import ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_MINUTES
 
 
@@ -128,3 +129,11 @@ async def update_user_info(data: UpdateUserRequest, user: User = Depends(allowed
 # 메인테이너 리스트 불러오기(권한: 오너, 메인테이너)
 # 게이머 리스트 불러오기(권한: 오너, 메인테이너)
 # 게이머 수정?(Ex_블럭처리)
+
+
+@router.post('/console/user_pagination')
+async def get_console_user_pagination(
+    request: Request,
+    pagination_service: PaginationService = Depends(get_pagination_service)
+) -> CustomCursorPage[User]:
+    return await pagination_service.get_pagination(request, User)

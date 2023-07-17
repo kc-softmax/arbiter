@@ -1,5 +1,6 @@
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi_pagination import add_pagination
 
 from server.exceptions import BadRequest
 from server.utils import FastAPIWrapper
@@ -9,6 +10,8 @@ from server.auth.router import router as auth_router, login
 app_wrapper = FastAPIWrapper()
 
 app = app_wrapper()
+add_pagination(app)
+
 app.include_router(auth_router)
 
 # customize swagger schema

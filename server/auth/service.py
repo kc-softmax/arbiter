@@ -1,8 +1,12 @@
-from sqlmodel import select
+from typing import Any
+from fastapi import Request
+from sqlmodel import func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
+from fastapi_pagination.ext.sqlmodel import paginate
+
 
 from server.auth.models import User, LoginType, ConsoleUser, Role
-from server.database import make_async_session
+from server.custom_cursor import CustomCursorPage, CustomCursorParams
 
 
 class UserService:
@@ -111,7 +115,7 @@ class ConsoleUserService:
         )
         self.session.add(console_user)
         await self.session.commit()
-        self.session.refresh(console_user)
+        await self.session.refresh(console_user)
         return console_user
 
     async def login_by_email(self, email: str, password: str) -> User | None:
@@ -129,14 +133,14 @@ class ConsoleUserService:
         console_user_id: int,
         console_user: ConsoleUser
     ) -> ConsoleUser:
-        db_console_user = self.session.get(ConsoleUser, console_user_id)
+        db_console_user = await self.session.get(ConsoleUser, console_user_id)
         if db_console_user:
             user_data = console_user.dict(exclude_unset=True)
             for key, value in user_data.items():
                 setattr(db_console_user, key, value)
             self.session.add(db_console_user)
             await self.session.commit()
-            self.session.refresh(db_console_user)
+            await self.session.refresh(db_console_user)
         return db_console_user
 
     async def get_console_user_all(self) -> list[ConsoleUser]:
@@ -170,3 +174,22 @@ class ConsoleUserService:
         except Exception as e:
             print(e)
         return is_success
+
+
+class PaginationService:
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def get_pagination(self, request: Request, model: Any) -> CustomCursorPage[Any]:
+        params = CustomCursorParams(**request.query_params)
+        result = None
+        for _ in range(self.get_page_step(request)):
+            result = await paginate(self.session, select(model).order_by(model.id), params=params)
+            params.cursor = result.next_page if result.next_page else result.previous_page
+        result.total = await self.session.scalar(select(func.count(model.id)))
+        return result
+
+    def get_page_step(self, request) -> int:
+        request_args = dict(request.query_params)
+        page_step = int(request_args['target_page']) - int(request_args['current_page'])
+        return abs(page_step)
