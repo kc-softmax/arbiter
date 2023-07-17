@@ -35,6 +35,7 @@ class TimestampModel(SQLModel):
     )
 
     deprecated_at: datetime = Field(
+        default=None,
         nullable=True
     )
 
