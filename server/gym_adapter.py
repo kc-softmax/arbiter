@@ -1,7 +1,7 @@
-from typing import Dict
 import asyncio
 import timeit
 import gymnasium as gym
+from typing import Dict
 from collections import deque
 
 
