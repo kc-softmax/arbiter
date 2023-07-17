@@ -19,10 +19,10 @@ class GymAdapter:
         waiting_time: float = 0.1
         loop_per_sec: float = 0.1
         turn_start_time: float = timeit.default_timer()
-        terminated: bool = False
+        terminateds: bool = False
         # multiagent일 경우에 dict으로 처리해야한다
         # 모든 유저가 죽었을 경우에도 terminated가 True가 되어 종료된다.
-        while not terminated:
+        while not terminateds:
             # 약 1초에 10번 처리한다.
             await asyncio.sleep(waiting_time)
             turn_start_time: float = timeit.default_timer()
@@ -32,10 +32,10 @@ class GymAdapter:
             }
             # env의 step에서 action에 대한 타입 체크를 해야한다.
             # multiagent일 경우 step에서 dict으로 처리해야한다.
-            obs, rewards, terminated, truncateds, infos = self.env.step(actions)
+            obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
             # TODO: multiagent의 경우를 생각해야한다.
-            if type(terminated) == dict:
-                terminated = all(terminated.values())
+            if type(terminateds) == dict:
+                terminateds = all(terminateds.values())
             # step의 결과인 update된 state를 queue에 넣는다. 
             await self.message.put(obs)
             elapsed_time = timeit.default_timer() - turn_start_time            
