@@ -3,10 +3,13 @@ from fastapi.security import OAuth2PasswordRequestForm
 from http import HTTPStatus
 from datetime import timedelta
 import uuid
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.config import settings
+from server.database import get_async_session
 from server.exceptions import BadRequest
-from server.auth.models import User, LoginType
+from server.auth.models import ConsoleUser, User, LoginType
+from server.pagination import PaginationRequest, PaginationResponse, create_pagination
 from server.auth.schemas import CreateEmailUserRequest, UserSchema, TokenSchema, UpdateUserRequest, LoginGuestUserRequest
 from server.auth.service import UserService
 from server.auth.utils import create_token
@@ -128,3 +131,16 @@ async def update_user_info(data: UpdateUserRequest, user: User = Depends(allowed
 # 메인테이너 리스트 불러오기(권한: 오너, 메인테이너)
 # 게이머 리스트 불러오기(권한: 오너, 메인테이너)
 # 게이머 수정?(Ex_블럭처리)
+
+
+# 테스트용
+@router.post('/page_user_test', response_model=PaginationResponse[User])
+async def page_user_test(
+    data: PaginationRequest,
+    session: AsyncSession = Depends(get_async_session)
+):
+    return await create_pagination(
+        session,
+        User,
+        data
+    )

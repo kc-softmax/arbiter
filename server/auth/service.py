@@ -1,14 +1,23 @@
-from sqlmodel import select
+from abc import ABC
+from pydantic import BaseModel
+from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from server.auth.models import User, LoginType, ConsoleUser, Role
-from server.database import make_async_session
+from server.pagination import T, create_pagination, PaginationRequest, PaginationResponse
 
 
-class UserService:
-    def __init__(self, session: AsyncSession):
+class BaseService:
+    def __init__(
+        self,
+        session: AsyncSession,
+    ) -> None:
         self.session = session
 
+    # TODO: 서비스 CRUD 함수 통일하기
+
+
+class UserService(BaseService):
     async def register_user_by_device_id(self, device_id: str, display_name: str = '') -> User:
         user = User(device_id=device_id, login_type=LoginType.GUEST, display_name=display_name)
         self.session.add(user)
@@ -92,10 +101,7 @@ class UserService:
         return db_user
 
 
-class ConsoleUserService:
-    def __init__(self, session: AsyncSession):
-        self.session = session
-
+class ConsoleUserService(BaseService):
     async def register_console_user(
             self,
             email: str,
