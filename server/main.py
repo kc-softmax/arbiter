@@ -5,11 +5,13 @@ from server.exceptions import BadRequest
 from server.utils import FastAPIWrapper
 from server.database import create_db_and_tables
 from server.auth.router import router as auth_router, login
+from reference.router import router as reference_router
 
 app_wrapper = FastAPIWrapper()
 
 app = app_wrapper()
 app.include_router(auth_router)
+app.include_router(reference_router)
 
 # customize swagger schema
 # it should be done after all routers are included
