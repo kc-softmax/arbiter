@@ -5,6 +5,8 @@ from datetime import timedelta
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlmodel import func, select
+
 from server.config import settings
 from server.database import get_async_session
 from server.exceptions import BadRequest
@@ -145,3 +147,19 @@ async def page_user_test(
         UserSchema,
         data
     )
+
+# 테스트용
+
+
+@router.delete('/test_user_delete')
+async def test_user_delete(user_service: UserService = Depends(get_user_service)):
+    for _ in range(5):
+        await user_service.register_user_by_device_id(device_id=str(uuid.uuid4()))
+
+    # 삭제 대상이 전부 존재하는 경우
+    is_success = await user_service.delete_users([1, 2])
+    print(is_success)
+
+    # 삭제 대싱이 없는 경우
+    is_success = await user_service.delete_users([6, 7])
+    print(is_success)
