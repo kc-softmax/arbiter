@@ -8,8 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from server.config import settings
 from server.database import get_async_session
 from server.exceptions import BadRequest
-from server.auth.models import ConsoleUser, User, LoginType
 from server.pagination import PaginationRequest, PaginationResponse, create_pagination
+from server.auth.models import User, LoginType
 from server.auth.schemas import CreateEmailUserRequest, UserSchema, TokenSchema, UpdateUserRequest, LoginGuestUserRequest
 from server.auth.service import UserService
 from server.auth.utils import create_token
