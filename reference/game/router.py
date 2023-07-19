@@ -8,7 +8,7 @@ from typing import Dict, Any
 import asyncio
 import names
 
-from server.gym_adapter import GymAdapter
+from server.adapter import GymAdapter
 from reference.service import Room
 
 
@@ -44,7 +44,7 @@ async def client_event(websocket: WebSocket, room_id: str, user_name: str) -> No
     # 한 게임에 들어올 수 있는 숫자를 정의한다 현재는 2명
     # 최대 인원수가 들어오면 게임을 시작한다
     if room.number_of_player[room_id] == room.maximum_players:
-        asyncio.create_task(room.adapter[room_id].run())
+        asyncio.create_task(room.adapters[room_id].run())
         room.game_state[room_id] = True
     while True:
         # 클라이언트가 나갔을 때 exception 처리가 되어 종료된다

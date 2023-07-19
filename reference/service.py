@@ -1,37 +1,44 @@
 from starlette.websockets import WebSocket, WebSocketState
-from classic_snake_env.agents.agent import Snake
 from typing import Dict
 from collections import defaultdict
 
-from server.gym_adapter import GymAdapter
+from server.adapter import Adapter
 
 
 class Room:
     
     # adapter와 플레이어 수를 관리한다
     def __init__(self):
-        self.adapter: Dict[str, GymAdapter] = {}
+        self.adapters: Dict[str, Adapter] = {}
         self.number_of_player: Dict[str, int] = defaultdict(int)
         self.clients: Dict[str, Dict[str, WebSocket]] = {}
-        self.maximum_players: int = 2
+        self.maximum_players: int = 4
         self.game_state: Dict[str, bool] = {}
     
-    def attach_adapter(self, room_id: str, adapter: GymAdapter) -> None:
-        self.adapter[room_id] = adapter
+    def attach_adapter(self, room_id: str, adapter: Adapter) -> None:
+        self.adapters[room_id] = adapter
         self.game_state[room_id] = False
         
     def detach_adapter(self, room_id: str) -> None:
-        self.adapter.pop(room_id)
+        self.adapters.pop(room_id)
     
-    def join_room(self, room_id: str, user_name: str, websocket: WebSocket) -> None:
+    def join_room(self,
+        room_id: str,
+        user_name: str,
+        user: object,
+        websocket: WebSocket
+    ) -> bool:
         # 유저가 접속하면 snake 객체를 adapter에 추가한다
+        if self.number_of_player[room_id] == self.maximum_players:
+            return False
+        
         self.number_of_player[room_id] += 1
-        snake: Snake = Snake(user_name, user_name, (0, 0, 0), False)
-        self.adapter[room_id].env.add_snake(snake)
+        self.adapters[room_id].env.add_user(user)
         if self.clients.get(room_id):
             self.clients[room_id][user_name] = websocket
         else:
             self.clients[room_id] = {user_name: websocket}
+        return True
     
     def leave_room(self, room_id: str) -> None:
         self.number_of_player[room_id] -= 1
