@@ -134,7 +134,7 @@ async def update_user_info(data: UpdateUserRequest, user: User = Depends(allowed
 
 
 # 테스트용
-@router.post('/page_user_test', response_model=PaginationResponse[User])
+@router.post('/page_user_test', response_model=PaginationResponse[UserSchema])
 async def page_user_test(
     data: PaginationRequest,
     session: AsyncSession = Depends(get_async_session)
@@ -142,5 +142,6 @@ async def page_user_test(
     return await create_pagination(
         session,
         User,
+        UserSchema,
         data
     )
