@@ -1,4 +1,4 @@
-from sqlmodel import select
+from sqlmodel import delete, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from server.auth.models import User, LoginType, ConsoleUser, Role
@@ -64,6 +64,7 @@ class UserService(BaseService):
         user = results.first()
         return user
 
+    # TODO: 삭제
     async def delete_user(self, user_id: int) -> bool:
         is_success = False
         statement = select(User).where(User.id == user_id)
@@ -77,6 +78,20 @@ class UserService(BaseService):
         except Exception as e:
             print(e)
         return is_success
+
+    async def delete_users(self, ids: list[int]):
+        try:
+            for id in ids:
+                statement = select(User).where(User.id == id)
+                result = await self.session.exec(statement)
+                user = result.one()
+                await self.session.delete(user)
+        except Exception as e:
+            print(e)
+            await self.session.rollback()
+            return False
+        await self.session.commit()
+        return True
 
     async def get_user(self, user_id: int) -> User | None:
         user = await self.session.get(User, user_id)
