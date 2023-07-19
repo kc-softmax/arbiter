@@ -23,7 +23,7 @@ class PaginationRequest(BaseModel):
 
 
 class PaginationResponse(BaseModel, Generic[K]):
-    items: list[T]
+    items: list[K]
     total: int
     page: int
     size: int
@@ -35,13 +35,13 @@ async def create_pagination(
     model: type[T],
     schema: type[K],
     params: PaginationRequest,
-) -> PaginationResponse[T]:
+) -> PaginationResponse[K]:
     skip = params.size * (params.page - 1)
-    field_desc_or_asc = getattr(model, params.field)
+    order_by_field = getattr(model, params.field)
     if params.sort == SortType.DESC:
-        field_desc_or_asc = field_desc_or_asc.desc()
+        order_by_field = order_by_field.desc()
 
-    statement = select(model).offset(skip).limit(params.size).order_by(field_desc_or_asc)
+    statement = select(model).offset(skip).limit(params.size).order_by(order_by_field)
     results = await session.exec(statement)
     total = await session.scalar(select(func.count(model.id)))
 
