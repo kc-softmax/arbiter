@@ -1,10 +1,7 @@
-from abc import ABC
-from pydantic import BaseModel
-from sqlmodel import SQLModel, select
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from server.auth.models import User, LoginType, ConsoleUser, Role
-from server.pagination import T, create_pagination, PaginationRequest, PaginationResponse
 
 
 class BaseService:
