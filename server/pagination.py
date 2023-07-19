@@ -1,14 +1,12 @@
-
-
 from enum import Enum
 from math import ceil
 from typing import Any, Generic, Optional, TypeVar
-
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, parse_obj_as
 from sqlalchemy.ext.asyncio.session import AsyncSession
 from sqlmodel import func, select
 
 T = TypeVar('T')
+K = TypeVar('K')
 
 
 class SortType(str, Enum):
@@ -24,7 +22,7 @@ class PaginationRequest(BaseModel):
     sort: SortType = Field(SortType.DESC)
 
 
-class PaginationResponse(BaseModel, Generic[T]):
+class PaginationResponse(BaseModel, Generic[K]):
     items: list[T]
     total: int
     page: int
@@ -34,7 +32,8 @@ class PaginationResponse(BaseModel, Generic[T]):
 
 async def create_pagination(
     session: AsyncSession,
-    model: type[Any],  # class type
+    model: type[T],
+    schema: type[K],
     params: PaginationRequest,
 ) -> PaginationResponse[T]:
     skip = params.size * (params.page - 1)
@@ -46,9 +45,10 @@ async def create_pagination(
     results = await session.exec(statement)
     total = await session.scalar(select(func.count(model.id)))
 
-    return PaginationResponse[T](
+    return PaginationResponse[schema](
         total=total,
-        items=results.all(),
+        # model to schema
+        items=parse_obj_as(list[schema], results.all()),
         page=params.page,
         size=params.size,
         pages=ceil(total/params.size),
