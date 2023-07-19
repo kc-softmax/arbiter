@@ -17,10 +17,11 @@ class SortType(str, Enum):
 
 
 class PaginationRequest(BaseModel):
+    # 최대(le) 최소(ge) 설정
     page: int = Field(1, ge=1)
-    size: int = Field(10, ge=1)
+    size: int = Field(15, ge=1, le=100)
     field: str = Field('id')
-    sort: SortType = SortType.DESC
+    sort: SortType = Field(SortType.DESC)
 
 
 class PaginationResponse(BaseModel, Generic[T]):
@@ -33,25 +34,22 @@ class PaginationResponse(BaseModel, Generic[T]):
 
 async def create_pagination(
     session: AsyncSession,
-    # hint?
-    model: Any,
+    model: type[Any],  # class type
     params: PaginationRequest,
 ) -> PaginationResponse[T]:
-    skip = params.size * (params.page - 1) if params.page is not None and params.size is not None else None
-    sort_direction = getattr(model, params.field).desc() if params.sort == 'desc' else getattr(model, params.field)
-    statement = select(model).offset(skip).limit(params.size).order_by(sort_direction)
-    results = await session.exec(statement)
-    items = results.all()
+    skip = params.size * (params.page - 1)
+    field_desc_or_asc = getattr(model, params.field)
+    if params.sort == SortType.DESC:
+        field_desc_or_asc = field_desc_or_asc.desc()
 
+    statement = select(model).offset(skip).limit(params.size).order_by(field_desc_or_asc)
+    results = await session.exec(statement)
     total = await session.scalar(select(func.count(model.id)))
 
-    size = params.size if params.size is not None else total
-    page = params.page if params.page is not None else 1
-    pages = ceil(total / params.size) if total is not None else None
     return PaginationResponse[T](
         total=total,
-        items=items,
-        page=page,
-        size=size,
-        pages=pages,
+        items=results.all(),
+        page=params.page,
+        size=params.size,
+        pages=ceil(total/params.size),
     )
