@@ -115,11 +115,11 @@ class UserService(BaseService):
 
 class ConsoleUserService(BaseService):
     async def register_console_user(
-            self,
-            email: str,
-            password: str,
-            role: Role,
-            user_name: str = ''
+        self,
+        email: str,
+        password: str,
+        role: Role,
+        user_name: str = ''
     ) -> ConsoleUser:
         console_user = ConsoleUser(
             email=email,
@@ -175,6 +175,7 @@ class ConsoleUserService(BaseService):
         console_user = results.first()
         return console_user
 
+    # TODO: 삭제
     async def delete_console_user(self, console_user_id: int) -> bool:
         is_success = False
         statement = select(ConsoleUser).where(ConsoleUser.id == console_user_id)
@@ -188,3 +189,17 @@ class ConsoleUserService(BaseService):
         except Exception as e:
             print(e)
         return is_success
+
+    async def delete_console_users(self, ids: list[int]) -> bool:
+        try:
+            for id in ids:
+                statement = select(ConsoleUser).where(ConsoleUser.id == id)
+                result = await self.session.exec(statement)
+                console_user = result.one()
+                await self.session.delete(console_user)
+        except Exception as e:
+            print(e)
+            await self.session.rollback()
+            return False
+        await self.session.commit()
+        return True
