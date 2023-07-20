@@ -9,12 +9,12 @@ from server.config import settings
 from server.database import get_async_session
 from server.exceptions import BadRequest
 from server.pagination import PaginationRequest, PaginationResponse, create_pagination
-from server.auth.models import User, LoginType
+from server.auth.models import ConsoleUser, User, LoginType
 from server.auth.schemas import CreateEmailUserRequest, UserSchema, TokenSchema, UpdateUserRequest, LoginGuestUserRequest
-from server.auth.service import UserService
+from server.auth.service import ConsoleUserService, UserService
 from server.auth.utils import create_token
 from server.auth.exceptions import UserAlready, InvalidCredentials, InvalidToken, NotFoundUser, AuthorizationFailed
-from server.auth.dependencies import get_user_service, allowed_only_for_gamer
+from server.auth.dependencies import get_console_user_service, get_user_service, allowed_only_for_gamer
 from server.auth.constants import ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_MINUTES
 
 
@@ -160,3 +160,38 @@ async def test_user_delete(user_service: UserService = Depends(get_user_service)
     # 삭제 대상이 없거나 에러가 있을 경우, rollback and False
     is_success = await user_service.delete_users([5, 6, 7])
     print(is_success)
+
+
+@router.patch('/test_console_user_update')
+async def test_console_user_update(
+    data: ConsoleUser,
+    console_user_service: ConsoleUserService = Depends(get_console_user_service)
+):
+    if is_last := await console_user_service.check_last_console_owner_for_update(data.id):
+        print('last owner')
+        return
+
+    user = await console_user_service.update_console_user(data.id, data)
+    print(user)
+    if user is None:
+        raise BadRequest
+
+
+@router.delete('/test_console_user_delete')
+async def test_console_user_delete(
+    ids: list[int] = [1, 2, 3, 4, 5],
+    console_user_service: ConsoleUserService = Depends(get_console_user_service)
+):
+    for _ in range(4):
+        await console_user_service.register_console_user(email=str(uuid.uuid4()), password=str(uuid.uuid4()), role='owner')
+
+    for _ in range(5):
+        await console_user_service.register_console_user(email=str(uuid.uuid4()), password=str(uuid.uuid4()), role='maintainer')
+
+    if is_last := await console_user_service.check_last_console_owner_for_delete(ids):
+        print('least one owner leave')
+        return
+
+    # 삭제 대상이 없거나 에러가 있을 경우, rollback and False
+    if is_success := await console_user_service.delete_console_users(ids):
+        print(is_success)
