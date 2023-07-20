@@ -19,12 +19,10 @@ class UserService(BaseService):
         user = User(device_id=device_id, login_type=LoginType.GUEST, display_name=display_name)
         self.session.add(user)
         await self.session.commit()
-        # table 값을 객체에 부여해준다.
         await self.session.refresh(user)
         return user
 
     async def login_by_device_id(self, device_id: str) -> User:
-        # first or None
         statement = select(User).where(User.device_id == device_id)
         results = await self.session.exec(statement)
         user = results.first()
@@ -39,26 +37,22 @@ class UserService(BaseService):
         user = User(email=email, password=password, login_type=LoginType.EMAIL, display_name=display_name)
         self.session.add(user)
         await self.session.commit()
-        # table 값을 객체에 부여해준다.
         await self.session.refresh(user)
         return user
 
     async def login_by_email(self, email: str, password: str) -> User | None:
-        # first or None
         statement = select(User).where(User.email == email).where(User.password == password)
         results = await self.session.exec(statement)
         user = results.first()
         return user
 
     async def check_user_by_email(self, email: str) -> User | None:
-        # first or None
         statement = select(User).where(User.email == email)
         results = await self.session.exec(statement)
         user = results.first()
         return user
 
     async def check_user_by_device_id(self, device_id: str) -> User | None:
-        # first or None
         statement = select(User).where(User.device_id == device_id)
         results = await self.session.exec(statement)
         user = results.first()
