@@ -5,11 +5,14 @@ from server.exceptions import BadRequest
 from server.utils import FastAPIWrapper
 from server.database import create_db_and_tables, async_engine
 from server.auth.router import router as auth_router, login
+from server.chat.router import router as chat_router
+
 
 app_wrapper = FastAPIWrapper()
 
 app = app_wrapper()
 app.include_router(auth_router)
+app.include_router(chat_router)
 
 # customize swagger schema
 # it should be done after all routers are included
