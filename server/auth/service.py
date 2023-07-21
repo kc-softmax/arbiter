@@ -29,10 +29,10 @@ class UserService(BaseService):
         return user
 
     async def register_user_by_email(
-            self,
-            email: str,
-            password: str,
-            display_name: str = ''
+        self,
+        email: str,
+        password: str,
+        display_name: str = ''
     ) -> User:
         user = User(email=email, password=password, login_type=LoginType.EMAIL, display_name=display_name)
         self.session.add(user)
