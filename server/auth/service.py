@@ -73,10 +73,10 @@ class UserService(BaseService):
             print(e)
         return is_success
 
-    async def delete_users(self, ids: list[int]):
+    async def delete_users(self, user_ids: list[int]):
         try:
-            for id in ids:
-                statement = select(User).where(User.id == id)
+            for user_id in user_ids:
+                statement = select(User).where(User.id == user_id)
                 result = await self.session.exec(statement)
                 user = result.one()
                 await self.session.delete(user)
@@ -184,9 +184,9 @@ class ConsoleUserService(BaseService):
             print(e)
         return is_success
 
-    async def delete_console_users(self, console_user_id_ids: list[int]) -> bool:
+    async def delete_console_users(self, console_user_ids: list[int]) -> bool:
         try:
-            for console_user_id in console_user_id_ids:
+            for console_user_id in console_user_ids:
                 statement = select(ConsoleUser).where(ConsoleUser.id == console_user_id)
                 result = await self.session.exec(statement)
                 console_user = result.one()
@@ -207,14 +207,14 @@ class ConsoleUserService(BaseService):
         return False
 
     # delete 용, 멀티 삭제 요청 시 적어도 한개는 남게
-    async def check_last_console_owner_for_delete(self, console_user_id_ids: list[int]) -> bool:
+    async def check_last_console_owner_for_delete(self, console_user_ids: list[int]) -> bool:
         console_user_count = await self.session.scalar(
             select(func.count(ConsoleUser.id))
             .where(ConsoleUser.role == Role.OWNER)
         )
         request_console_user_count = await self.session.scalar(
             select(func.count(ConsoleUser.id))
-            .where(ConsoleUser.id.in_(console_user_id_ids))
+            .where(ConsoleUser.id.in_(console_user_ids))
             .where(ConsoleUser.role == Role.OWNER)
         )
         # 1개 이하로 남으면 삭제 불가
