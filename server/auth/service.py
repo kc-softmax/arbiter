@@ -96,15 +96,15 @@ class UserService(BaseService):
         user_id: int,
         user: User
     ) -> User | None:
-        db_user = await self.session.get(User, user_id)
-        if db_user:
+        user = await self.session.get(User, user_id)
+        if user:
             user_data = user.dict(exclude_unset=True)
             for key, value in user_data.items():
-                setattr(db_user, key, value)
-            self.session.add(db_user)
+                setattr(user, key, value)
+            self.session.add(user)
             await self.session.commit()
-            await self.session.refresh(db_user)
-        return db_user
+            await self.session.refresh(user)
+        return user
 
 
 class ConsoleUserService(BaseService):
@@ -141,15 +141,15 @@ class ConsoleUserService(BaseService):
         console_user_id: int,
         console_user: ConsoleUser
     ) -> ConsoleUser:
-        db_console_user = await self.session.get(ConsoleUser, console_user_id)
-        if db_console_user:
+        console_user = await self.session.get(ConsoleUser, console_user_id)
+        if console_user:
             user_data = console_user.dict(exclude_unset=True)
             for key, value in user_data.items():
-                setattr(db_console_user, key, value)
-            self.session.add(db_console_user)
+                setattr(console_user, key, value)
+            self.session.add(console_user)
             await self.session.commit()
-            await self.session.refresh(db_console_user)
-        return db_console_user
+            await self.session.refresh(console_user)
+        return console_user
 
     async def get_console_user_all(self) -> list[ConsoleUser]:
         statement = select(ConsoleUser)
