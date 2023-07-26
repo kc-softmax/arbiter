@@ -14,6 +14,7 @@ class Room:
         self.clients: Dict[str, Dict[str, WebSocket]] = {}
         self.maximum_players: int = 4
         self.game_state: Dict[str, bool] = {}
+        self.history: list[dict[str | int, str]] = []
     
     def attach_adapter(self, room_id: str, adapter: Adapter) -> None:
         self.adapters[room_id] = adapter
@@ -46,4 +47,15 @@ class Room:
         for agent_id, client in self.clients[room_id].items():
             initialize_adapter[agent_id] = client.client_state == WebSocketState.DISCONNECTED
         if all(initialize_adapter.values()): self.detach_adapter(room_id)
+    
+    async def chat_history(self, room_id: str, user_id: str | int, message: str) -> None:
+        processing = self.adapters[room_id].execute(user_id, message)
+        self.history.append(
+            {
+                'sender': user_id,
+                'message': processing
+            }
+        )
+        for _, client in self.clients[room_id].items():
+            await client.send_text(processing)
         
