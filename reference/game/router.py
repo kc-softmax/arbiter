@@ -19,7 +19,7 @@ room = Room()
 async def server_event(websocket: WebSocket, room_id: str, user_name: str) -> None:
     # 처음 들어왔을 때에는 ACTIVE상태가 아니기 때문에 움직이지 않는다
     # 3초 후에 모두 다같이 시작한다.
-    snake: Snake = room.adapter[room_id].env.snakes[user_name]
+    snake: Snake = room.adapters[room_id].env.snakes[user_name]
     while True:
         await asyncio.sleep(0.1)
         if snake.state != GameState.ACTIVE and room.number_of_player[room_id] == room.maximum_players:
@@ -28,15 +28,15 @@ async def server_event(websocket: WebSocket, room_id: str, user_name: str) -> No
         else:
             # TODO: obs는 array로 되어있어서 client에 그대로 보낼지 생각해봐야겠다.
             try:
-                data = room.adapter[room_id].message.get_nowait()
+                data = room.adapters[room_id].message.get_nowait()
             except asyncio.QueueEmpty as err:
                 pass
             data = {
                 agent_id: snake.body
-                for agent_id, snake in room.adapter[room_id].env.snakes.items() if snake.is_alive
+                for agent_id, snake in room.adapters[room_id].env.snakes.items() if snake.is_alive
             }
             data['event'] = 'play'
-            data['items'] = room.adapter[room_id].env.game_items.items
+            data['items'] = room.adapters[room_id].env.game_items.items
             await websocket.send_json(data)
 
 
@@ -54,7 +54,7 @@ async def client_event(websocket: WebSocket, room_id: str, user_name: str) -> No
             if data.get('action') and room.game_state[room_id]:
                 client_id: int | str = data['name']
                 action: int = data['action']
-                room.adapter[room_id].add_client_action(client_id, action)
+                room.adapters[room_id].add_user_message(client_id, action)
         except Exception:
             print('client left the room')
             break
@@ -66,7 +66,7 @@ async def game_engine(websocket: WebSocket, room_id: str):
     user_name = names.get_first_name()
     
     # check available room and create room if not exist
-    if room.adapter.get(room_id) and not room.game_state[room_id]:
+    if room.adapters.get(room_id) and not room.game_state[room_id]:
         room.join_room(room_id, user_name, websocket)
     else:
         snake_env = SnakeEnv()

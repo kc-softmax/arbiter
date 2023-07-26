@@ -7,10 +7,10 @@ from contextlib import asynccontextmanager
 
 
 class Adapter:
-    def add_client_action(self):
+    def add_user_message(self) -> None:
         raise NotImplementedError()
     
-    def run(self):
+    def execute(self) -> None | Dict[str | int, Any]:
         raise NotImplementedError()
 
 
@@ -20,11 +20,11 @@ class GymAdapter(Adapter):
         self.message: asyncio.Queue = asyncio.Queue()
         self.actions: deque = deque()
     
-    def add_client_action(self, agent_id: int | str, action: int) -> None:
+    def add_user_message(self, agent_id: int | str, action: int) -> None:
         # action은 미리 env에서 정의한 gym.spaces.Discrete의 범위내 값이다.
         self.actions.append((agent_id, action))
     
-    async def run(self) -> None:
+    async def execute(self) -> None:
         waiting_time: float = 0.1
         loop_per_sec: float = 0.1
         terminateds: bool = False
@@ -54,44 +54,22 @@ class GymAdapter(Adapter):
 
 
 class ChatAdapter(Adapter):
-    """ChatAdapter for multiplay chatting
-    
     """
-    def __init__(self, model: gym.Env) -> None:
-        self.env: gym.Env = model
+        ChatAdapter for multiplay chatting
+    """
+    def __init__(self, model: str) -> None:
+        # 처음에는 단순하게 비속어가 담긴 문장
+        self.model: list = model
         self.client_message: deque = deque()
         self.broadcast_message: asyncio.Queue = asyncio.Queue()
     
-    def add_client_action(self, agent_id: int | str, message: str) -> None:
-        self.client_message.append((agent_id, message))
+    def add_user_message(self) -> None:
+        pass
     
-    async def run(self) -> None:
-        waiting_time: float = 0.1
-        loop_per_sec: float = 0.1
-        terminateds: bool = False
-        # 모든 유저가 나갔을 때 terminateds True가 되어 종료된다.
-        while not terminateds:
-            # 약 1초에 10번 처리한다.
-            await asyncio.sleep(waiting_time)
-            turn_start_time: float = timeit.default_timer()
-            actions: Dict[str | int, int] = {
-                agent_id: action
-                for agent_id, action in self.client_message
-            }
-            obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
-            if type(terminateds) == dict:
-                terminateds = all(terminateds.values())
-            await self.broadcast_message.put(obs)
-            elapsed_time = timeit.default_timer() - turn_start_time            
-            waiting_time = loop_per_sec - elapsed_time 
-            waiting_time = 0 if waiting_time < 0 else waiting_time
-            # 이전에 남은 action이 영향을 주면 안되기 때문에 clear한다.
-            self.client_message.clear()
-        print('finished')
-    
-    @asynccontextmanager
-    async def get(self) -> dict[str | int, str]:
-        try:
-            yield await self.broadcast_message.get()
-        finally:
-            pass
+    def execute(self, user_id: int | str, message: str) -> None:
+        filtered_message = '비속어' if message in self.model else message
+        user_message: dict[str | int, str] = {
+            'user_id': user_id,
+            'message': filtered_message
+        }
+        return user_message
