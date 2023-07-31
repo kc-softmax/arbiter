@@ -66,7 +66,7 @@ class ChatAdapter(Adapter):
     def add_user_message(self) -> None:
         pass
     
-    def execute(self, user_id: int | str, message: str) -> None:
+    def execute(self, user_id: int | str, message: str) -> dict[str, int | str]:
         filtered_message = '비속어' if message in self.model else message
         user_message: dict[str | int, str] = {
             'user_id': user_id,
