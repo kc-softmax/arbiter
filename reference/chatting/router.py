@@ -5,13 +5,13 @@ from starlette.websockets import WebSocketDisconnect
 import asyncio
 
 from server.adapter import ChatAdapter
-from reference.service import Room
+from reference.service import Room, RoomManager
 from reference.chatting.chatting_env import ChattingEnv
 from reference.chatting.chat_user import ChatUser
 
 
 router = APIRouter(prefix="/ws/chat")
-room = Room()
+room_manager = RoomManager()
 
 
 @router.post("/register")
@@ -24,26 +24,27 @@ async def register_user(user: Request, response: Response):
 async def chat_engine(websocket: WebSocket, room_id: str):
     await websocket.accept()
     init: dict(str | int, str) = await websocket.receive_json()
-    sender: str = init['sender']
-    chat_user: ChatUser = ChatUser(sender)
+    user_id: str = init['sender']
+    chat_user: ChatUser = ChatUser(user_id)
     
     # check available room and create room if not exist
-    if room.adapters.get(room_id) and not room.game_state[room_id]:
-        is_join = room.join_room(room_id, sender, chat_user, websocket)
+    available_room = room_manager.find_available_room()
+    if available_room:
+        is_join = available_room.join_room(room_id, user_id, chat_user, websocket)
         if not is_join:
             await websocket.close()
             return
     else:
         chat_env = ChattingEnv([chat_user])
         adapter = ChatAdapter(chat_env)
-        room.attach_adapter(room_id, adapter)
-        room.join_room(room_id, sender, chat_user, websocket)
+        available_room = room_manager.create_room(room_id, adapter)
+        available_room.join_room(room_id, user_id, chat_user, websocket)
     
     try:
         while True:
             recv_message = await websocket.receive_text()
             # append recv_message to adapter
-            await room.chat_history(room_id, sender, recv_message)
+            await available_room.chat_history(room_id, user_id, recv_message)
     except WebSocketDisconnect as err:
         print(err)
-        room.leave_room(room_id)
+        available_room.leave_room(user_id)
