@@ -5,6 +5,7 @@ from server.exceptions import BadRequest
 from server.utils import FastAPIWrapper
 from server.database import create_db_and_tables
 from server.auth.router import router as auth_router, login
+from server.database import async_engine
 
 app_wrapper = FastAPIWrapper()
 
@@ -24,3 +25,9 @@ async def validation_exception_handler(request, exc):
 @app.on_event("startup")
 async def on_startup():
     await create_db_and_tables()
+
+
+# 가비지 pool 쌓이는 것을 방지
+@app.on_event("shutdown")
+async def on_shutdown():
+    await async_engine.dispose()
