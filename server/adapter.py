@@ -57,9 +57,9 @@ class ChatAdapter(Adapter):
     """
         ChatAdapter for multiplay chatting
     """
-    def __init__(self, model: str) -> None:
+    def __init__(self, model: any) -> None:
         # 처음에는 단순하게 비속어가 담긴 문장
-        self.model: list = model
+        self.model: any = model
         self.client_message: deque = deque()
         self.broadcast_message: asyncio.Queue = asyncio.Queue()
     
@@ -67,9 +67,12 @@ class ChatAdapter(Adapter):
         pass
     
     def execute(self, user_id: int | str, message: str) -> dict[str, int | str]:
-        filtered_message = '비속어' if message in self.model else message
+        is_bad_comments: bool = False
+        if '비속어' in message:
+            is_bad_comments = True
         user_message: dict[str | int, str] = {
             'user_id': user_id,
-            'message': filtered_message
+            'message': message,
+            'is_bad_comments': is_bad_comments
         }
         return user_message
