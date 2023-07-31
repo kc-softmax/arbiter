@@ -1,6 +1,5 @@
-from uuid import uuid4
 import pytest
-from sqlalchemy import insert, select
+from uuid import uuid4
 
 from server.auth.models import ConsoleUser, User, Role
 from server.auth.service import ConsoleUserService, UserService
