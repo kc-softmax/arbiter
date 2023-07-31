@@ -3,9 +3,8 @@ from fastapi.responses import JSONResponse
 
 from server.exceptions import BadRequest
 from server.utils import FastAPIWrapper
-from server.database import create_db_and_tables
+from server.database import create_db_and_tables, async_engine
 from server.auth.router import router as auth_router, login
-from server.database import async_engine
 
 app_wrapper = FastAPIWrapper()
 
