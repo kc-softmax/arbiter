@@ -126,7 +126,7 @@ class ConsoleUserService(BaseService):
         await self.session.refresh(console_user)
         return console_user
 
-    async def login_by_email(self, email: str, password: str) -> User | None:
+    async def login_by_email(self, email: str, password: str) -> ConsoleUser | None:
         statement = (
             select(ConsoleUser)
             .where(ConsoleUser.email == email)
