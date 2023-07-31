@@ -38,7 +38,6 @@ async def chat_engine(websocket: WebSocket, room_id: str):
         adapter = ChatAdapter(chat_env)
         room.attach_adapter(room_id, adapter)
         room.join_room(room_id, sender, chat_user, websocket)
-        # asyncio.create_task(room.adapters[room_id].run())
     
     try:
         while True:
@@ -46,6 +45,5 @@ async def chat_engine(websocket: WebSocket, room_id: str):
             # append recv_message to adapter
             await room.chat_history(room_id, sender, recv_message)
     except WebSocketDisconnect as err:
-        "클라이언트가 나갔다"
         print(err)
         room.leave_room(room_id)

@@ -1,6 +1,5 @@
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
-from fastapi.middleware.cors import CORSMiddleware
 from typing import Callable
 
 def exceptions_to_openapi_response(code: int, detail: str) -> dict:
@@ -19,13 +18,6 @@ class FastAPIWrapper:
     def __init__(self):
         self.app = FastAPI()
         self.app.openapi = self.create_custom_openapi
-        self.app.add_middleware(
-            CORSMiddleware,
-            allow_origins=["*"],
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
 
     def __call__(self):
         return self.app
