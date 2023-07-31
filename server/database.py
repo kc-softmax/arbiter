@@ -1,3 +1,4 @@
+import sys
 from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -10,6 +11,9 @@ from server.auth.models import ConsoleUser, Role
 # sqllite는 쓰레드 통신을 지원하지 않기 때문에, 아래와 같이 connect_args를 추가해줘야 한다.
 connect_args = {"check_same_thread": False}
 
+db_url = settings.RDB_CONNECTION_URL
+if "pytest" in sys.modules:
+    settings.TEST_RDB_CONNECTION_URL
 
 async_engine = create_async_engine(
     settings.RDB_CONNECTION_URL,  # "sqlite+aiosqlite:///arbiter_test.db"
