@@ -13,10 +13,10 @@ connect_args = {"check_same_thread": False}
 
 db_url = settings.RDB_CONNECTION_URL
 if "pytest" in sys.modules:
-    settings.TEST_RDB_CONNECTION_URL
+    db_url = settings.TEST_RDB_CONNECTION_URL
 
 async_engine = create_async_engine(
-    settings.RDB_CONNECTION_URL,  # "sqlite+aiosqlite:///arbiter_test.db"
+    db_url,
     echo=True,
     future=True,
     connect_args=connect_args
