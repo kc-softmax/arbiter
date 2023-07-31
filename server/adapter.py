@@ -67,9 +67,12 @@ class ChatAdapter(Adapter):
         pass
     
     def execute(self, user_id: int | str, message: str) -> dict[str, int | str]:
+        # 처음에는 단순하게 '비속어'라는 단어의 유무에 따라 유저의 메시지를 분류한다.
         is_bad_comments: bool = False
         if '비속어' in message:
             is_bad_comments = True
+        
+        # return되는 값은 변경될 수 있습니다.
         user_message: dict[str | int, str] = {
             'user_id': user_id,
             'message': message,
