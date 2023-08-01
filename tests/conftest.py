@@ -31,6 +31,5 @@ async def async_session() -> AsyncSession:
 
     async with async_engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.drop_all)
-        pass
 
     await async_engine.dispose()
