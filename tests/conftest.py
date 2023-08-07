@@ -17,7 +17,7 @@ def event_loop() -> Generator:
     loop.close()
 
 
-# 멱등성을 위해, 각 테스트마다 clena-up을 위해 가장 쉬운 방법으로 create & drop으로 처리
+# 각 테스트마다 clena-up 및 멱등성 확보를 위해, 가장 쉬운 방법인 create & drop으로 처리
 @pytest_asyncio.fixture(scope="function")
 async def async_session() -> AsyncSession:
     test_session = sessionmaker(
