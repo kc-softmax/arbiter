@@ -17,8 +17,8 @@ def event_loop() -> Generator:
     loop.close()
 
 
-# 테스트 class마다 session을 생성하고, 테스트가 끝나면 session을 종료한다.
-@pytest_asyncio.fixture(scope="class")
+# 멱등성을 위해, 각 테스트마다 clena-up을 위해 가장 쉬운 방법으로 create & drop으로 처리
+@pytest_asyncio.fixture(scope="function")
 async def async_session() -> AsyncSession:
     test_session = sessionmaker(
         async_engine, class_=AsyncSession, expire_on_commit=False
