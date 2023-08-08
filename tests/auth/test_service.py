@@ -1,8 +1,6 @@
-import random
 import pytest
-from uuid import uuid4
-
 import pytest_asyncio
+from uuid import uuid4
 
 from server.auth.models import ConsoleUser, User, Role
 from server.auth.service import ConsoleUserService, UserService
@@ -31,9 +29,9 @@ class TestUserService:
     @pytest.mark.asyncio
     async def test_register_user_by_device_id(self, test_service: UserService):
         # 먼저 register 테스트 진행
-        expected = User(device_id='test_device_id')
-        register_data = await test_service.register_user_by_device_id(expected.device_id)
-        assert register_data.device_id == expected.device_id
+        expected_device_id = 'test_device_id'
+        register_data = await test_service.register_user_by_device_id(expected_device_id)
+        assert expected_device_id == register_data.device_id
 
     @pytest.mark.asyncio
     async def test_login_by_device_id(self, test_service: UserService, case_register_by_device_id: User):
@@ -43,7 +41,6 @@ class TestUserService:
     @pytest.mark.asyncio
     async def test_register_user_by_email(self, test_service: UserService):
         expected = User(email='test_email', password='test_password')
-
         register_data = await test_service.register_user_by_email(
             email=expected.email,
             password=expected.password
@@ -52,21 +49,24 @@ class TestUserService:
 
     @pytest.mark.asyncio
     async def test_login_by_email(self, test_service: UserService, case_register_by_email: User):
+        expected_email = case_register_by_email.email
         login_data = await test_service.login_by_email(
             case_register_by_email.email,
             case_register_by_email.password
         )
-        assert login_data.email == case_register_by_email.email
+        assert expected_email == login_data.email
 
     @pytest.mark.asyncio
     async def test_check_user_by_email(self, test_service: UserService, case_register_by_email: User):
+        expected_email = case_register_by_email.email
         get_data = await test_service.check_user_by_email(case_register_by_email.email)
-        assert get_data.email == case_register_by_email.email
+        assert expected_email == get_data.email
 
     @pytest.mark.asyncio
     async def test_check_user_by_device_id(self, test_service: UserService, case_register_by_device_id: User):
+        expected_device_id = case_register_by_device_id.device_id
         get_data = await test_service.check_user_by_device_id(case_register_by_device_id.device_id)
-        assert get_data.device_id == case_register_by_device_id.device_id
+        assert expected_device_id == get_data.device_id
 
     @pytest.mark.asyncio
     async def test_user_update(self, test_service: UserService, case_register_by_email: User):
@@ -75,17 +75,15 @@ class TestUserService:
             'access_token': 'test_access_token',
             'refresh_token': 'test_refresh_token'
         }
-
-        dict_case_register_by_email = case_register_by_email.dict()
+        expected = case_register_by_email.dict()
         for key, value in update_data.items():
-            dict_case_register_by_email[key] = value
+            expected[key] = value
 
         updated_user = await test_service.update_user(
             case_register_by_email.id,
             User(**update_data)
         )
-
-        assert dict_case_register_by_email == updated_user.dict()
+        assert expected == updated_user.dict()
 
     @pytest.mark.asyncio
     async def test_delete_users(self, test_service: UserService):
@@ -96,10 +94,10 @@ class TestUserService:
         fail_user_ids = pass_user_ids + [1000]
 
         is_delete_success = await test_service.delete_users(fail_user_ids)
-        assert is_delete_success == False
+        assert False == is_delete_success
 
         is_delete_success = await test_service.delete_users(pass_user_ids)
-        assert is_delete_success == True
+        assert True == is_delete_success
 
 
 class TestConsoleUserService:
@@ -116,21 +114,21 @@ class TestConsoleUserService:
     @pytest.mark.asyncio
     async def test_register_console_user(self, test_service: ConsoleUserService):
         expected = ConsoleUser(email='test_email', password='test_password', role=Role.OWNER)
-
         get_data = await test_service.register_console_user(
             email=expected.email,
             password=expected.password,
             role=expected.role
         )
-        assert get_data.email == expected.email
+        assert expected.email == get_data.email
 
     @pytest.mark.asyncio
     async def test_login_by_email(self, test_service: ConsoleUserService, case_register_by_email: ConsoleUser):
+        expected_email = case_register_by_email.email
         get_data = await test_service.login_by_email(
             case_register_by_email.email,
             case_register_by_email.password
         )
-        assert get_data.email == case_register_by_email.email
+        assert expected_email == get_data.email
 
     @pytest.mark.asyncio
     async def test_get_console_user_by_id(self, test_service: ConsoleUserService, case_register_by_email: ConsoleUser):
@@ -145,17 +143,15 @@ class TestConsoleUserService:
             'user_name': 'test_user_name',
             'role': Role.MAINTAINER
         }
-
-        dict_case_register_by_email = case_register_by_email.dict()
+        expected = case_register_by_email.dict()
         for key, value in update_data.items():
-            dict_case_register_by_email[key] = value
+            expected[key] = value
 
         updated_console_user = await test_service.update_console_user(
             case_register_by_email.id,
             ConsoleUser(**update_data)
         )
-
-        assert dict_case_register_by_email == updated_console_user.dict()
+        assert expected == updated_console_user.dict()
 
     @pytest.mark.asyncio
     async def test_delete_console_users(self, test_service: ConsoleUserService):
@@ -171,10 +167,10 @@ class TestConsoleUserService:
         fail_user_ids = pass_user_ids + [1000]
 
         is_delete_success = await test_service.delete_console_users(fail_user_ids)
-        assert is_delete_success == False
+        assert False == is_delete_success
 
         is_delete_success = await test_service.delete_console_users(pass_user_ids)
-        assert is_delete_success == True
+        assert True == is_delete_success
 
     @pytest.mark.asyncio
     async def test_check_last_console_owner_for_update(
@@ -187,7 +183,7 @@ class TestConsoleUserService:
             case_register_by_email.password
         )
         is_last = await test_service.check_last_console_owner_for_update(base_data.id)
-        assert is_last == True
+        assert True == is_last
 
     @pytest.mark.asyncio
     async def test_check_last_console_owner_for_delete(self, test_service: ConsoleUserService):
@@ -208,7 +204,7 @@ class TestConsoleUserService:
         fail_user_ids = pass_user_ids + [first_console_user.id]
 
         is_last = await test_service.check_last_console_owner_for_delete(pass_user_ids)
-        assert is_last == False
+        assert False == is_last
 
         is_last = await test_service.check_last_console_owner_for_delete(fail_user_ids)
-        assert is_last == True
+        assert True == is_last
