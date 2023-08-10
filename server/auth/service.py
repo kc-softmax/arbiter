@@ -2,6 +2,106 @@ from sqlmodel import func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from server.auth.models import User, LoginType, ConsoleUser, Role
+from database import DatabaseManager
+
+
+db_manager = DatabaseManager[User]()
+
+
+async def register_user_by_device_id(
+    session: AsyncSession,
+    device_id: str,
+    display_name: str = ''
+) -> User:
+    return await db_manager.create(
+        session=session,
+        obj=User(
+            device_id=device_id,
+            display_name=display_name
+        )
+    )
+
+
+async def login_by_device_id(session: AsyncSession, device_id: str) -> User:
+    return await db_manager.get_one(
+        session=session,
+        obj_clauses=User(
+            device_id=device_id
+        )
+    )
+
+
+async def register_user_by_email(
+    self,
+    session: AsyncSession,
+    email: str,
+    password: str,
+    display_name: str = ''
+) -> User:
+    return await db_manager.create(
+        session=session,
+        obj=User(
+            email=email,
+            password=password,
+            display_name=display_name
+        )
+    )
+
+
+async def login_by_email(
+    session: AsyncSession,
+    email: str, password: str
+) -> User | None:
+    return await db_manager.get_one(
+        session=session,
+        obj_clauses=User(
+            email == email,
+            password == password
+        )
+    )
+
+
+async def check_user_by_email(self, session: AsyncSession, email: str) -> User | None:
+    return await db_manager.get_one(
+        session=session,
+        obj_clauses=User(
+            email=email
+        )
+    )
+
+
+# login_by_device_id 동일
+async def check_user_by_device_id(session: AsyncSession, device_id: str) -> User | None:
+    return await db_manager.get_one(
+        session=session,
+        obj_clauses=User(
+            device_id=device_id
+        )
+    )
+
+
+# router에서 존재 여부 예외처리
+async def update_user(
+    self,
+    session: AsyncSession,
+    user_in: User,
+    user: User
+) -> User | None:
+    return await db_manager.update(
+        session=session,
+        obj_in=user_in,
+        obj=user
+    )
+
+
+# router에서 존재 여부 예외처리
+async def delete_user(session: AsyncSession, user: User) -> bool:
+    return await db_manager.delete_one(session=session, obj=user)
+
+
+# 어떻게 받을까?
+async def delete_users(self, users: list[User]):
+    return await db_manager.delete_all(users)
 
 
 class BaseService:
