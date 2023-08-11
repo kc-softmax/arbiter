@@ -88,7 +88,7 @@ async def get_console_user_by_id(
     )
 
 
-async def delete_console_user(session: AsyncSession, console_user_id: int) -> bool:
+async def delete_console_user(session: AsyncSession, console_user_id: int) -> bool | None:
     console_user = await db_manager.get_one(
         session=session,
         obj_clauses=ConsoleUser(
