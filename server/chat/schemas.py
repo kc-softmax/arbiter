@@ -4,11 +4,6 @@ from pydantic.generics import GenericModel
 from typing import Generic, TypeVar
 
 
-class AuthorizationFailedClose():
-    CODE = 3000
-    REASON = "invalid token"
-
-
 class ChatEvent(StrEnum):
     ROOM_JOIN = "room_join"
     USER_JOIN = "user_join"

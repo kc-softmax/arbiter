@@ -1,7 +1,7 @@
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from collections import defaultdict
+from collections import defaultdict, deque
 
 from server.adapter import ChatAdapter
 from server.chat.schemas import ClientChatMessage, ChatData
@@ -27,8 +27,8 @@ class ChatRoom:
     def __init__(self, room_id: str, adapter: ChatAdapter) -> None:
         self.room_id = room_id
         self.adapter = adapter
-        self.message_history: list[ChatData] = []
-        self.current_users: list[str] = []
+        self.message_history: deque[ChatData] = []
+        self.current_users: deque[str] = []
         self.chat_room_data: ChatRoomData = ChatRoomData(
             created_at=round(datetime.now().timestamp() * 1000))
 
@@ -90,12 +90,12 @@ class ChatRoom:
         self.chat_room_data.finished_at = round(datetime.now().timestamp() * 1000)
 
     def save_chat_room(self):
-        user_scores = self.caculate_user_score()
+        user_scores = self.calculate_user_score()
         print('데이터', self.chat_room_data)
         print('점수', user_scores)
 
     # 유저별 점수 계산하기
-    def caculate_user_score(self) -> dict:
+    def calculate_user_score(self) -> dict:
         user_scores = {}
         for user_id, summary in self.chat_room_data.user_message_summary.items():
             user_scores[user_id] = summary.total_count - summary.bad_comments_count

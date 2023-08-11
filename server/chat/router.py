@@ -5,9 +5,12 @@ from fastapi.templating import Jinja2Templates
 from server.auth.exceptions import InvalidToken
 from server.chat.connection import ConnectionManager
 from server.chat.room import ChatRoomManager
-from server.chat.schemas import (AuthorizationFailedClose, ChatSocketRoomJoinMessage, RoomJoinData,
-                                 ChatSocketUserJoinMessage, UserJoinData, ChatSocketChatMessage,
-                                 ChatSocketUserLeaveMessage, UserLeaveData, ClientChatMessage)
+from server.chat.exceptions import AuthorizationFailedClose
+from server.chat.schemas import (
+    ChatSocketRoomJoinMessage, RoomJoinData,
+    ChatSocketUserJoinMessage, UserJoinData, ChatSocketChatMessage,
+    ChatSocketUserLeaveMessage, UserLeaveData, ClientChatMessage
+)
 
 router = APIRouter(prefix="/chat")
 

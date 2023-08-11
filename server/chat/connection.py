@@ -3,6 +3,7 @@ from collections import defaultdict
 from pydantic import BaseModel
 
 from server.auth.utils import verify_token
+from server.chat.schemas import ChatSocketBaseMessage
 
 
 class ConnectionManager:
@@ -20,10 +21,10 @@ class ConnectionManager:
     def disconnect(self, room_id: str, websocket: WebSocket):
         self.active_connections[room_id].remove(websocket)
 
-    async def send_personal_message(self, websocket: WebSocket, message: BaseModel):
+    async def send_personal_message(self, websocket: WebSocket, message: ChatSocketBaseMessage):
         await websocket.send_json(message.dict())
 
-    async def send_room_broadcast(self, room_id, message: BaseModel):
+    async def send_room_broadcast(self, room_id: str, message: ChatSocketBaseMessage):
         connections = self.active_connections[room_id]
         for connection in connections:
             await connection.send_json(message.dict())
