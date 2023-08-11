@@ -103,7 +103,6 @@ class DatabaseManager(Generic[T]):
         return await self.create(session, obj)
 
     # delete 정리 필요
-    # get_one 호출 후 사용
     async def delete_one(self, session: AsyncSession, obj: T) -> bool:
         try:
             await session.delete(obj)
@@ -112,7 +111,6 @@ class DatabaseManager(Generic[T]):
             return False
         return True
 
-    # get_all 호출 후 사용
     async def delete_all(self, session: AsyncSession, obj_ids: list[T]) -> bool:
         try:
             for obj_id in obj_ids:
