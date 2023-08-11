@@ -19,7 +19,7 @@ if "pytest" in sys.modules:
 
 async_engine = create_async_engine(
     db_url,
-    echo=True,
+    echo=False,
     future=True,
     connect_args=connect_args
 )
@@ -71,13 +71,12 @@ async def set_default_console_user():
             await session.commit()
 
 # 우선 database에 class에 정의
-
 T = TypeVar("T", bound=SQLModel)
 
 
 class DatabaseManager(Generic[T]):
-    def __init__(self):
-        self.model = T
+    def __init__(self, model: Type[T]):
+        self.model = model
 
     async def create(self, session: AsyncSession, obj: T) -> T:
         session.add(obj)
@@ -94,33 +93,32 @@ class DatabaseManager(Generic[T]):
     async def get_all(self, session: AsyncSession, obj_clauses: T) -> list[T]:
         where_clauses = self._build_where_clauses(obj_clauses)
         state = select(self.model).where(and_(*where_clauses))
-        result = await self.session.exec(state)
-        return result.first()
+        result = await session.exec(state)
+        return result.all()
 
     async def update(self, session: AsyncSession, obj_in: T, obj: T) -> T:
         update_data = obj_in.dict(exclude_unset=True)
-        for field in obj_in:
-            if field in update_data:
-                setattr(obj, field, update_data[field])
-        return await self.create(obj)
+        for field in update_data:
+            setattr(obj, field, update_data[field])
+        return await self.create(session, obj)
 
     # delete 정리 필요
     # get_one 호출 후 사용
     async def delete_one(self, session: AsyncSession, obj: T) -> bool:
         try:
-            session.delete(obj)
-            session.commit()
+            await session.delete(obj)
+            await session.commit()
         except Exception as e:
             return False
         return True
 
     # get_all 호출 후 사용
-    async def delete_all(self, session: AsyncSession, objs: list[T]) -> bool:
+    async def delete_all(self, session: AsyncSession, obj_ids: list[T]) -> bool:
         try:
-            for objs.id in objs:
-                db_obj = await session.get(objs.id)
+            for obj_id in obj_ids:
+                db_obj = await session.get(self.model, obj_id)
                 if not db_obj:
-                    raise Exception(f"User id {objs.id} is not found")
+                    raise Exception(f"User id {obj_id} is not found")
                 await session.delete(db_obj)
         except Exception as e:
             print(e)
