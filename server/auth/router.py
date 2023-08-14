@@ -8,14 +8,17 @@ from enum import StrEnum
 from server.database import get_async_session
 from server.exceptions import BadRequest
 from server.pagination import PaginationRequest, PaginationResponse, create_pagination
-from server.auth.models import ConsoleUser, User
+from server.auth.models import ConsoleRole, ConsoleUser, User
 from server.auth.service import ConsoleUserService, UserService
-from server.auth.utils import create_token, verify_token as verify_token_util, get_password_hash, verify_password, list_string_to_list
-from server.auth.dependencies import get_console_user_service, get_user_service, get_current_user, get_current_console_user, allowed_only_for_owner
+from server.auth.utils import (create_token, verify_token as verify_token_util,
+                               get_password_hash, verify_password, list_string_to_list)
+from server.auth.dependencies import (get_console_user_service, get_user_service,
+                                      get_current_user, get_current_console_user,
+                                      allowed_only_for_owner)
 from server.auth.exceptions import (AtLeastOneOwner, UserAlready,
                                     InvalidCredentials, InvalidToken,
                                     NotFoundUser, NotFoundUserForDelete,
-                                    NotFoundUserForUpdate)
+                                    NotFoundUserForUpdate, NotAllowedUpdateRoleMaintainer)
 from server.auth.schemas import (ConsoleUserCreate, ConsoleUserGet,
                                  ConsoleUserUpdate, GamerUserCreateByEmail,
                                  GamerUserLoginByGuest, GamerUserSchema,
@@ -80,9 +83,9 @@ async def refresh_token(data: TokenRefreshRequest,
         refresh_token=create_token(user.id, True)
     )
     if data.is_console:
-        await console_user_service.update_console_user(user.id, ConsoleUser(**new_token.dict()))
+        await console_user_service.update_console_user(user.id, ConsoleUser(**new_token.dict(exclude_unset=True)))
     else:
-        await user_service.update_user(user.id, User(**new_token.dict()))
+        await user_service.update_user(user.id, User(**new_token.dict(exclude_unset=True)))
     return new_token
 
 
@@ -116,7 +119,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), user_service: 
     )
 
     # 로그인 시, 갱신한 토큰을 DB에 저장
-    await user_service.update_user(user.id, User(**token.dict()))
+    await user_service.update_user(user.id, User(**token.dict(exclude_unset=True)))
     return token
 
 
@@ -144,7 +147,7 @@ async def login_guest(data: GamerUserLoginByGuest, user_service: UserService = D
         access_token=create_token(user.id),
         refresh_token=create_token(user.id, True)
     )
-    await user_service.update_user(user.id, User(**token.dict()))
+    await user_service.update_user(user.id, User(**token.dict(exclude_unset=True)))
     return token
 
 
@@ -171,7 +174,7 @@ async def leave(user: User = Depends(get_current_user), user_service: UserServic
               response_model=GamerUserSchema)
 # 게이머 본인 정보 수정
 async def update_user_info(data: GamerUserUpdate, user: User = Depends(get_current_user), user_service: UserService = Depends(get_user_service)):
-    user = await user_service.update_user(user.id, User(**data.dict()))
+    user = await user_service.update_user(user.id, User(**data.dict(exclude_unset=True)))
     if user is None:
         raise NotFoundUser
     return user
@@ -212,7 +215,7 @@ async def login_console(form_data: OAuth2PasswordRequestForm = Depends(), consol
         refresh_token=create_token(console_user.id, True)
     )
     # 로그인 시, 갱신한 토큰을 DB에 저장
-    await console_user_service.update_console_user(console_user.id, ConsoleUser(**token.dict()))
+    await console_user_service.update_console_user(console_user.id, ConsoleUser(**token.dict(exclude_unset=True)))
     return token
 
 
@@ -222,6 +225,17 @@ async def login_console(form_data: OAuth2PasswordRequestForm = Depends(), consol
 async def get_me(console_user: ConsoleUser = Depends(get_current_console_user)):
     if console_user is None:
         raise NotFoundUser
+    return console_user
+
+
+@router.patch('/console/me',
+              tags=[AuthRouterTag.CONSOLE],
+              response_model=ConsoleUserSchema)
+async def update_me(data: ConsoleUserUpdate, console_user: ConsoleUser = Depends(get_current_console_user)):
+    if console_user is None:
+        raise NotFoundUser
+    if console_user.role == ConsoleRole.MAINTAINER and data.role == ConsoleRole.OWNER:
+        raise NotAllowedUpdateRoleMaintainer
     return console_user
 
 
@@ -259,6 +273,7 @@ async def get_console_user(data: ConsoleUserGet, console_user_service: ConsoleUs
               response_model=ConsoleUserSchema,
               dependencies=[Depends(allowed_only_for_owner)])
 # 메인테이너 수정(권한: 오너)
+# TODO 업데이트 되는 시간은 자동으로 갱신되어야 한다.
 async def update_console_user(data: ConsoleUserUpdate, console_user_service: ConsoleUserService = Depends(get_console_user_service)):
     if await console_user_service.check_last_console_owner_for_update(data.id):
         raise AtLeastOneOwner

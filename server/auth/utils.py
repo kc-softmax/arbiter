@@ -22,8 +22,7 @@ def verify_password(plain_password, hashed_password):
 
 def create_token(subject: str, is_refresh_token: bool = False):
     key = settings.JWT_REFRESH_SECRET_KEY if is_refresh_token else settings.JWT_ACCESS_SECRET_KEY
-    expire_delta = timedelta(minutes=REFRESH_TOKEN_EXPIRE_MINUTES) if is_refresh_token else timedelta(
-        minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire_delta = timedelta(minutes=REFRESH_TOKEN_EXPIRE_MINUTES if is_refresh_token else ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode = {"exp": datetime.utcnow() + expire_delta, "sub": str(subject)}
     encoded_jwt = jwt.encode(to_encode,
                              key,

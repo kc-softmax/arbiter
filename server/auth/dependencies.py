@@ -18,7 +18,6 @@ def get_user_service(
 def get_console_user_service(
     session: AsyncSession = Depends(get_async_session)
 ) -> ConsoleUserService:
-    # TODO generic으로 합치기
     return ConsoleUserService(session=session)
 
 

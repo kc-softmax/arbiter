@@ -1,6 +1,6 @@
 from enum import Enum
 from math import ceil
-from typing import Generic, Optional, TypeVar
+from typing import Generic, TypeVar
 from pydantic import BaseModel, Field, parse_obj_as
 from sqlalchemy.ext.asyncio.session import AsyncSession
 from sqlmodel import func, select
@@ -21,7 +21,7 @@ class PaginationRequest(BaseModel):
     page: int = Field(1, ge=1)
     size: int = Field(15, ge=1, le=100)
     field: str = Field('id')
-    sort: Optional[SortType] = Field(SortType.DESC)
+    sort: SortType = Field(SortType.DESC)
 
 
 class PaginationResponse(BaseModel, Generic[K]):

@@ -36,3 +36,7 @@ class UserAlready(BadRequest):
 
 class AtLeastOneOwner(BadRequest):
     DETAIL = ErrorCode.PROTECT_OWNER
+
+
+class NotAllowedUpdateRoleMaintainer(BadRequest):
+    DETAIL = ErrorCode.NOT_ALLOWED_UPDATE_ROLE_MAINTAINER

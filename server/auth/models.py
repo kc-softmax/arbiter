@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 from enum import StrEnum
 from sqlmodel import Column, Field, SQLModel, String
 
@@ -19,7 +18,7 @@ class LoginType(StrEnum):
 
 
 class PKModel(SQLModel):
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
 
 
 class TimestampModel(SQLModel):
@@ -27,36 +26,31 @@ class TimestampModel(SQLModel):
         default_factory=datetime.utcnow,
         nullable=False
     )
-
     updated_at: datetime = Field(
         default_factory=datetime.utcnow,
         nullable=False
     )
-
-    deprecated_at: Optional[datetime] = Field(
+    deprecated_at: datetime | None = Field(
         nullable=True
     )
 
 
-class CommonModel(SQLModel):
+class CommonUserBase(SQLModel):
+    email: str | None = Field(sa_column=Column(String(128), unique=True))
+    password: str | None = Field(sa_column=Column(String(128)))
+    user_name: str | None = Field(sa_column=Column(String(128)))
+    access_token: str | None = Field(sa_column=Column(String(128)))
+    refresh_token: str | None = Field(sa_column=Column(String(128)))
     deprecated: bool = False
 
 
-class CommonUserBase(SQLModel):
-    email: Optional[str] = Field(sa_column=Column(String(128), unique=True))
-    password: Optional[str] = Field(sa_column=Column(String(128)))
-    user_name: Optional[str] = Field(sa_column=Column(String(128)))
-    access_token: Optional[str] = Field(sa_column=Column(String(128)))
-    refresh_token: Optional[str] = Field(sa_column=Column(String(128)))
+class UserBase(CommonUserBase, TimestampModel):
+    device_id: str | None = Field(sa_column=Column(String(128), unique=True))
+    login_type: LoginType = LoginType.GUEST
 
 
-class UserBase(CommonUserBase, TimestampModel, CommonModel):
-    device_id: Optional[str] = Field(sa_column=Column(String(128), unique=True))
-    login_type: Optional[LoginType] = LoginType.GUEST
-
-
-class ConsoleUserBase(CommonUserBase, TimestampModel, CommonModel):
-    role: Optional[ConsoleRole] = ConsoleRole.MAINTAINER
+class ConsoleUserBase(CommonUserBase, TimestampModel):
+    role: ConsoleRole = ConsoleRole.MAINTAINER
 
 
 class User(PKModel, UserBase, table=True):
