@@ -11,6 +11,7 @@ class ErrorCode(StrEnum):
     USER_NOT_FOUND_FOR_UPDATE = "There is no user you want to update"
     USER_NOT_FOUND_FOR_DELETE = "There are no users you want to delete"
     PROTECT_OWNER = "At least one OWNER permission must be maintained."
+    NOT_ALLOWED_UPDATE_ROLE_MAINTAINER = "Maintainer can't update role"
 
 
 class TOKEN_GENERATE_ALGORITHM(StrEnum):

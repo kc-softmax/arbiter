@@ -1,22 +1,31 @@
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from server.exceptions import BadRequest
-from server.utils import FastAPIWrapper
 from server.database import create_db_and_tables, async_engine
-from server.auth.router import router as auth_router, login
+from server.logging import log_middleware
+from server.auth.router import router as auth_router
 from server.chat.router import router as chat_router
 
 
-app_wrapper = FastAPIWrapper()
-
-app = app_wrapper()
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "*",
+        "http://localhost",
+        "http://localhost:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+app.add_middleware(BaseHTTPMiddleware, dispatch=log_middleware)
 app.include_router(auth_router)
 app.include_router(chat_router)
-
-# customize swagger schema
-# it should be done after all routers are included
-app_wrapper.update_openapi_schema_name(login, "LoginRequest")
 
 
 @app.exception_handler(RequestValidationError)
