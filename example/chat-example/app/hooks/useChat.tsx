@@ -12,6 +12,7 @@ export const useChat = (username: string, token: string) => {
   const [roomId, setRoomId] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [users, setUsers] = useState([username]);
+  const [eventMessage, setEventMessage] = useState<ChatSocketMessageBase>();
 
   const chatPanelRef = useRef<HTMLDivElement>(null);
 
@@ -40,7 +41,8 @@ export const useChat = (username: string, token: string) => {
     ws.onmessage = (event) => {
       console.log("event :>> ", event);
 
-      const { action, data }: ChatSocketMessageBase = JSON.parse(event.data);
+      const chatSoketMessage: ChatSocketMessageBase = JSON.parse(event.data);
+      const { action, data } = chatSoketMessage;
 
       if (action === ChatActions.ROOM_JOIN) {
         const { room_id, messages, users } = data;
@@ -61,6 +63,8 @@ export const useChat = (username: string, token: string) => {
       if (action === ChatActions.MESSAGE || action === ChatActions.CONTROL) {
         setMessages((prev) => [...prev, data]);
       }
+
+      setEventMessage(chatSoketMessage);
 
       chatPanelRef.current?.scrollTo({
         top: chatPanelRef.current.scrollHeight,
@@ -92,5 +96,6 @@ export const useChat = (username: string, token: string) => {
     users,
     chatPanelRef,
     sendMessage,
+    eventMessage,
   };
 };

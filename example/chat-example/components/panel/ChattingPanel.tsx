@@ -12,10 +12,8 @@ interface ChattingPanelProps {
 
 const ChattingPanel = ({ chatInfo }: ChattingPanelProps) => {
   const { name } = chatInfo;
-  const { roomId, messages, users, sendMessage, chatPanelRef } = useChat(
-    name,
-    tempToken
-  );
+  const { roomId, messages, users, sendMessage, chatPanelRef, eventMessage } =
+    useChat(name, tempToken);
 
   const sendChat = (message: string) => {
     console.log(name, message);
@@ -35,6 +33,7 @@ const ChattingPanel = ({ chatInfo }: ChattingPanelProps) => {
               }}
               chatData={messages}
               chatListRef={chatPanelRef}
+              eventMessage={eventMessage}
             />
           </div>
           <div className="w-full">
