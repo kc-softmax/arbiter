@@ -1,11 +1,7 @@
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from server.auth.models import User
-from server.database import DatabaseManager
-
-
-# db 접근은 DatabaseManager로 한다.
-db_manager = DatabaseManager[User](User)
+from server.database import db_manager
 
 
 async def register_user_by_device_id(
@@ -22,12 +18,11 @@ async def register_user_by_device_id(
     )
 
 
-async def login_by_device_id(session: AsyncSession, device_id: str) -> User:
+async def login_by_device_id(session: AsyncSession, device_id: str) -> User | None:
     return await db_manager.get_one(
         session=session,
-        obj_clauses=User(
-            device_id=device_id
-        )
+        model=User,
+        device_id=device_id
     )
 
 
@@ -54,10 +49,9 @@ async def login_by_email(
 ) -> User | None:
     return await db_manager.get_one(
         session=session,
-        obj_clauses=User(
-            email=email,
-            password=password
-        )
+        model=User,
+        email=email,
+        password=password
     )
 
 
@@ -67,9 +61,8 @@ async def check_user_by_email(
 ) -> User | None:
     return await db_manager.get_one(
         session=session,
-        obj_clauses=User(
-            email=email
-        )
+        model=User,
+        email=email
     )
 
 
@@ -77,22 +70,20 @@ async def check_user_by_email(
 async def check_user_by_device_id(session: AsyncSession, device_id: str) -> User | None:
     return await db_manager.get_one(
         session=session,
-        obj_clauses=User(
-            device_id=device_id
-        )
+        model=User,
+        device_id=device_id
     )
 
 
 async def update_user(
     session: AsyncSession,
-    user_id: User,
+    user_id: int,
     user_in: User
 ) -> User | None:
     user = await db_manager.get_one(
         session=session,
-        obj_clauses=User(
-            id=user_id
-        )
+        model=User,
+        id=user_id
     )
     if not user:
         return None
@@ -107,9 +98,8 @@ async def update_user(
 async def delete_user(session: AsyncSession, user_id: int) -> bool | None:
     user = await db_manager.get_one(
         session=session,
-        obj_clauses=User(
-            id=user_id
-        )
+        model=User,
+        id=user_id
     )
     if not user:
         return None
@@ -122,5 +112,6 @@ async def delete_user(session: AsyncSession, user_id: int) -> bool | None:
 async def delete_users(session: AsyncSession, user_ids: list[int]) -> bool:
     return await db_manager.delete_all(
         session=session,
+        model=User,
         obj_ids=user_ids
     )

@@ -74,25 +74,26 @@ async def set_default_console_user():
 T = TypeVar("T", bound=SQLModel)
 
 
-class DatabaseManager(Generic[T]):
-    def __init__(self, model: Type[T]):
-        self.model = model
-
+class DatabaseManager:
     async def create(self, session: AsyncSession, obj: T) -> T:
         session.add(obj)
         await session.commit()
         await session.refresh(obj)
         return obj
 
-    async def get_one(self, session: AsyncSession, obj_clauses: T) -> T:
-        where_clauses = self._build_where_clauses(obj_clauses)
-        state = select(self.model).where(and_(*where_clauses))
+    async def get_one(self, session: AsyncSession, model: Type[T], **clauses) -> T | None:
+        where_clauses = [
+            column(key) == value for key, value in clauses.items()
+        ]
+        state = select(model).where(and_(*where_clauses))
         result = await session.exec(state)
         return result.first()
 
-    async def get_all(self, session: AsyncSession, obj_clauses: T) -> list[T]:
-        where_clauses = self._build_where_clauses(obj_clauses)
-        state = select(self.model).where(and_(*where_clauses))
+    async def get_all(self, session: AsyncSession, model: Type[T], **clauses) -> list[T] | None:
+        where_clauses = [
+            column(key) == value for key, value in clauses.items()
+        ]
+        state = select(model).where(and_(*where_clauses))
         result = await session.exec(state)
         return result.all()
 
@@ -111,10 +112,10 @@ class DatabaseManager(Generic[T]):
             return False
         return True
 
-    async def delete_all(self, session: AsyncSession, obj_ids: list[T]) -> bool:
+    async def delete_all(self, session: AsyncSession, model: Type[T], obj_ids: list[int]) -> bool:
         try:
             for obj_id in obj_ids:
-                db_obj = await session.get(self.model, obj_id)
+                db_obj = await session.get(model, obj_id)
                 if not db_obj:
                     raise Exception(f"User id {obj_id} is not found")
                 await session.delete(db_obj)
@@ -125,7 +126,5 @@ class DatabaseManager(Generic[T]):
         await session.commit()
         return True
 
-    # where 절 생성하는 함수
-    def _build_where_clauses(self, obj_clauses: Type[T]):
-        where_clauses = obj_clauses.dict(exclude_unset=True)
-        return [column(key) == value for key, value in where_clauses.items()]
+
+db_manager = DatabaseManager()

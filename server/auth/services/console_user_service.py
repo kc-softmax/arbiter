@@ -3,11 +3,7 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from server.auth.models import ConsoleUser, Role
-from server.database import DatabaseManager
-
-
-# db 접근은 DatabaseManager로 한다.
-db_manager = DatabaseManager[ConsoleUser](ConsoleUser)
+from server.database import db_manager
 
 
 async def register_console_user(
@@ -35,10 +31,9 @@ async def login_by_email(
 ) -> ConsoleUser | None:
     return await db_manager.get_one(
         session=session,
-        obj_clauses=ConsoleUser(
-            email=email,
-            password=password
-        )
+        model=ConsoleUser,
+        email=email,
+        password=password
     )
 
 
@@ -49,9 +44,8 @@ async def update_console_user(
 ) -> ConsoleUser | None:
     console_user = await db_manager.get_one(
         session=session,
-        obj_clauses=ConsoleUser(
-            id=console_user_id
-        )
+        model=ConsoleUser,
+        id=console_user_id
     )
     if not console_user:
         return None
@@ -69,9 +63,8 @@ async def get_console_by_role(
 ) -> list[ConsoleUser]:
     return await db_manager.get_all(
         session=session,
-        obj_clauses=ConsoleUser(
-            role=role
-        )
+        model=ConsoleUser,
+        role=role
     )
 
 
@@ -82,18 +75,16 @@ async def get_console_user_by_id(
 ) -> ConsoleUser | None:
     return await db_manager.get_one(
         session=session,
-        obj_clauses=ConsoleUser(
-            id=console_user_id
-        )
+        model=ConsoleUser,
+        id=console_user_id
     )
 
 
 async def delete_console_user(session: AsyncSession, console_user_id: int) -> bool | None:
     console_user = await db_manager.get_one(
         session=session,
-        obj_clauses=ConsoleUser(
-            id=console_user_id
-        )
+        model=ConsoleUser,
+        id=console_user_id
     )
     if not console_user:
         return None
@@ -106,6 +97,7 @@ async def delete_console_user(session: AsyncSession, console_user_id: int) -> bo
 async def delete_console_users(session: AsyncSession, console_user_ids: list[int]) -> bool:
     return await db_manager.delete_all(
         session=session,
+        model=ConsoleUser,
         obj_ids=console_user_ids
     )
 
