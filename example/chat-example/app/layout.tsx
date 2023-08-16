@@ -13,8 +13,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="ko">
-      <body className={`${pretendardFont.variable}`}>{children}</body>
+    <html lang="ko" className={`${pretendardFont.variable}`}>
+      <body>{children}</body>
     </html>
   );
 }
