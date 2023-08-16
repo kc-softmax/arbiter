@@ -1,6 +1,6 @@
 import React from "react";
 
-interface ChatBannerProps {
+export interface ChatBannerProps {
   roomId: string;
   users: string[];
 }
