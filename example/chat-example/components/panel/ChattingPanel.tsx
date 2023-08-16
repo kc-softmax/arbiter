@@ -1,7 +1,14 @@
+import { ChatInfo } from "@/@types/Chat";
 import React from "react";
 
-const ChattingPanel = () => {
-  return <div>ChattingPanel</div>;
+interface ChattingPanelProps {
+  chatInfo: ChatInfo;
+}
+
+const ChattingPanel = ({ chatInfo }: ChattingPanelProps) => {
+  const { name } = chatInfo;
+
+  return <div>ChattingPanel: {name}</div>;
 };
 
 export default ChattingPanel;
