@@ -1,7 +1,11 @@
-import React from "react";
+import PanelController from "@/components/panel/PanelController";
 
 const HomePage = () => {
-  return <div>HomePage!</div>;
+  return (
+    <main>
+      <PanelController />
+    </main>
+  );
 };
 
 export default HomePage;
