@@ -4,7 +4,7 @@ import { usePanel } from "@/app/hooks/usePanel";
 import StartChatPanel from "./StartChatPanel";
 import ChattingPanel from "./ChattingPanel";
 import { useState } from "react";
-import { ChatInfo } from "@/@types/Chat";
+import { ChatInfo } from "@/@types/chat";
 
 const PanelController = () => {
   const { PanelStep, setActiveStep } = usePanel([
