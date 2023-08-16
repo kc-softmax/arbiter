@@ -7,8 +7,8 @@ export interface ChatBannerProps {
 
 const ChatBanner = ({ roomId, users }: ChatBannerProps) => {
   return (
-    <div className="text-center">
-      <p className="font-semibold">{roomId}</p>
+    <div className="text-center sticky top-0">
+      <p className="font-semibold">RoomID: {roomId}</p>
       <p>
         {users.map((user) => (
           <span key={user} className="badge">
