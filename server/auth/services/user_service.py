@@ -1,7 +1,7 @@
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from server.auth.models import User
-from database import DatabaseManager
+from server.database import DatabaseManager
 
 
 # db 접근은 DatabaseManager로 한다.
