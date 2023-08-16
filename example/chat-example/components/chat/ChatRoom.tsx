@@ -23,16 +23,14 @@ const ChatRoom = ({
   const { roomId, users } = bannerInfo;
 
   return (
-    <div>
-      <div className="flex flex-col gap-4">
-        <ChatBanner roomId={roomId} users={users} />
-        <ChatList
-          ref={chatListRef}
-          chatInfo={chatInfo}
-          messages={chatData}
-          eventMessage={eventMessage}
-        />
-      </div>
+    <div className="flex flex-col gap-4">
+      <ChatBanner roomId={roomId} users={users} />
+      <ChatList
+        ref={chatListRef}
+        chatInfo={chatInfo}
+        messages={chatData}
+        eventMessage={eventMessage}
+      />
     </div>
   );
 };

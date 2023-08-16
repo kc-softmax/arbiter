@@ -2,7 +2,7 @@ import { ChatInfo, ChatMessage, ChatSocketMessageBase } from "@/@types/chat";
 import { ChatActions } from "@/const/actions";
 import { forwardRef } from "react";
 import ChatNotification from "./ChatNotification";
-import { MyChatBubble, OtherChatBubble } from "./chat-bubbles";
+import ChatBubble from "./ChatBubble";
 
 interface ChatListProps {
   chatInfo: ChatInfo;
@@ -20,39 +20,34 @@ const ChatList = forwardRef<HTMLDivElement, ChatListProps>(
       <div ref={ref}>
         <ul className="flex flex-col gap-2">
           <li>
-            <OtherChatBubble username="username" message="hello" time="now" />
+            <ChatBubble username="username" message="hello" time="now" />
           </li>
           <li>
-            <MyChatBubble username="me" message="world" time="now" />
+            <ChatBubble username="me" message="world" time="now" isMe />
           </li>
 
           {messages.map(({ message, time, user }, index) => (
             <li key={`${user}-${index}`}>
-              {user === name ? (
-                <MyChatBubble username={user} message={message} time={time} />
-              ) : (
-                <OtherChatBubble
-                  username={user}
-                  message={message}
-                  time={time}
-                />
-              )}
+              <ChatBubble
+                username={user}
+                message={message}
+                time={time}
+                isMe={user === name}
+              />
             </li>
           ))}
 
-          {eventMessage?.action === ChatActions.USER_JOIN ? (
-            <li>
+          <li className="sticky bottom-0">
+            {eventMessage?.action === ChatActions.USER_JOIN ? (
               <ChatNotification username={eventMessage.data.user} enter />
-            </li>
-          ) : null}
-          {eventMessage?.action === ChatActions.USER_LEAVE ? (
-            <li>
+            ) : null}
+            {eventMessage?.action === ChatActions.USER_LEAVE ? (
               <ChatNotification
                 username={eventMessage.data.user}
                 enter={!(eventMessage.action === "user_leave")}
               />
-            </li>
-          ) : null}
+            ) : null}
+          </li>
         </ul>
       </div>
     );
