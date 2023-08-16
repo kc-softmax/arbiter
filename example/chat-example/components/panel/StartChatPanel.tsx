@@ -21,17 +21,17 @@ const StartChatPanel = ({ next }: StartChatPanelProps) => {
     <section>
       <div>
         <form
-          className="h-screen flex flex-col gap-4 justify-center items-center"
+          className="flex h-screen justify-center items-center join"
           onSubmit={onSubmit}
         >
           <input
             type="text"
-            className="input input-bordered input-lg"
+            className="input input-bordered input-lg join-item"
             placeholder="Type Your Name"
             onChange={(e) => setName(e.target.value)}
             value={name}
           />
-          <button type="submit" className="btn btn-primary btn-lg">
+          <button type="submit" className="btn btn-primary btn-lg join-item">
             Start Chat
           </button>
         </form>

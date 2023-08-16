@@ -19,13 +19,11 @@ const ChatInputForm = ({ sendChat }: ChatInputFormProps) => {
 
     sendChat(message);
     setMessage("");
-    textRef.current?.focus();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      textRef.current?.blur();
       onSubmit();
     }
   };
@@ -34,7 +32,7 @@ const ChatInputForm = ({ sendChat }: ChatInputFormProps) => {
     if (textRef) {
       textRef.current?.focus();
     }
-  }, [textRef]);
+  }, []);
 
   return (
     <form className="form-control w-full" onSubmit={onSubmit}>
@@ -42,6 +40,7 @@ const ChatInputForm = ({ sendChat }: ChatInputFormProps) => {
         <textarea
           className="textarea textarea-bordered join-item basis-4/5"
           placeholder="Type a message"
+          rows={1}
           ref={textRef}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
