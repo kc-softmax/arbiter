@@ -54,7 +54,6 @@ async def test_register_user_by_email(async_session: AsyncSession):
 
 @pytest.mark.asyncio
 async def test_login_by_email(async_session: AsyncSession, case_register_by_email: User):
-    print(case_register_by_email)
     expected_email = case_register_by_email.email
     login_data = await user_service.login_by_email(
         session=async_session,
