@@ -88,6 +88,11 @@ export const useChat = (username: string, token: string) => {
 
   useEffect(() => {
     join();
+
+    chatPanelRef.current?.scrollTo({
+      top: chatPanelRef.current.scrollHeight,
+      behavior: "smooth",
+    });
   }, []);
 
   return {

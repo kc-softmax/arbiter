@@ -17,7 +17,6 @@ const ChatRoom = ({
   chatInfo,
   bannerInfo,
   chatData,
-  chatListRef,
   eventMessage,
 }: ChatRoomProps) => {
   const { roomId, users } = bannerInfo;
@@ -26,7 +25,6 @@ const ChatRoom = ({
     <div className="flex flex-col gap-4">
       <ChatBanner roomId={roomId} users={users} />
       <ChatList
-        ref={chatListRef}
         chatInfo={chatInfo}
         messages={chatData}
         eventMessage={eventMessage}
