@@ -18,7 +18,7 @@ const ChattingPanel = ({ chatInfo }: ChattingPanelProps) => {
     <section>
       <div className="p-4 h-screen">
         <div className="flex flex-col gap-4 justify-center items-center h-full rounded-lg border-2 max-w-4xl mx-auto p-4">
-          <div className="flex-1">
+          <div className="flex-1 w-full">
             <ChatRoom chatInfo={chatInfo} />
           </div>
           <div className="w-full">
