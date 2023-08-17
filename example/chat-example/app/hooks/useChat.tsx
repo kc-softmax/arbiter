@@ -47,8 +47,8 @@ export const useChat = (token: string) => {
     };
 
     ws.onmessage = (event) => {
-      const chatSoketMessage: ChatSocketMessageBase = JSON.parse(event.data);
-      const { action, data } = chatSoketMessage;
+      const chatSocketMessage: ChatSocketMessageBase = JSON.parse(event.data);
+      const { action, data } = chatSocketMessage;
 
       if (action === ChatActions.ROOM_JOIN) {
         const { room_id, messages, users } = data;
@@ -59,7 +59,9 @@ export const useChat = (token: string) => {
       }
 
       if (action === ChatActions.USER_JOIN) {
-        setUsers((prev) => [...prev, data.user]);
+        setUsers((prev) =>
+          prev.includes(data.user) ? prev : [...prev, data.user]
+        );
       }
 
       if (action === ChatActions.USER_LEAVE) {
@@ -70,7 +72,7 @@ export const useChat = (token: string) => {
         setMessages((prev) => [...prev, data]);
       }
 
-      setEventMessage(chatSoketMessage);
+      setEventMessage(chatSocketMessage);
     };
   };
 
