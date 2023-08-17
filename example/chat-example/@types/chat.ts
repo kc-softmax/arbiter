@@ -1,7 +1,8 @@
 import { ChatActions } from "@/const/actions";
 
 export interface ChatInfo {
-  name: string;
+  id: string;
+  token: string;
 }
 
 export interface ChatMessage {

@@ -10,7 +10,7 @@ interface ChatListProps {
 }
 
 const ChatList = ({ messages, eventMessage, chatInfo }: ChatListProps) => {
-  const { name } = chatInfo;
+  const { id } = chatInfo;
 
   return (
     <ul className="flex flex-col gap-2 flex-1">
@@ -20,7 +20,8 @@ const ChatList = ({ messages, eventMessage, chatInfo }: ChatListProps) => {
             username={user}
             message={message}
             time={time}
-            isMe={user === name}
+            // TODO: user.id와 비교 예정
+            isMe={user === id}
           />
         </li>
       ))}

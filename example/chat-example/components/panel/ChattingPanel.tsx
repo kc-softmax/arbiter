@@ -3,20 +3,17 @@ import { useChat } from "@/app/hooks/useChat";
 import ChatInputForm from "../chat/ChatInputForm";
 import ChatRoom from "../chat/ChatRoom";
 
-const tempToken =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2OTIyNTgwMjAsInN1YiI6IjEifQ.xwZwdlaGTxriSfOoYkjRejb_q8cPJ2LcNelPimf063Y";
-
 interface ChattingPanelProps {
   chatInfo: ChatInfo;
 }
 
 const ChattingPanel = ({ chatInfo }: ChattingPanelProps) => {
-  const { name } = chatInfo;
+  const { id, token } = chatInfo;
   const { roomId, messages, users, sendMessage, chatPanelRef, eventMessage } =
-    useChat(tempToken);
+    useChat(token);
 
   const sendChat = (message: string) => {
-    console.log(name, message);
+    console.log(id, message);
     sendMessage(message);
   };
 
