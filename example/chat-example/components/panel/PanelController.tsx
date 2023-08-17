@@ -12,11 +12,12 @@ const PanelController = () => {
     "chatting",
   ] as const);
   const [chatInfo, setChatInfo] = useState<ChatInfo>({
-    name: "",
+    id: "",
+    token: "",
   });
 
-  const startChat = (name: string) => {
-    setChatInfo({ name });
+  const startChat = (chatInfo: ChatInfo) => {
+    setChatInfo(chatInfo);
     setActiveStep("chatting");
   };
 
