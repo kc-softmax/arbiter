@@ -1,3 +1,5 @@
+"use client";
+
 import {
   ChatMessage,
   ChatSendMessage,
@@ -8,10 +10,10 @@ import { useEffect, useRef, useState } from "react";
 
 const wsHost = process.env.NEXT_PUBLIC_CHAT_WEBSOCKET_URL;
 
-export const useChat = (username: string, token: string) => {
+export const useChat = (token: string) => {
   const [roomId, setRoomId] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [users, setUsers] = useState([username]);
+  const [users, setUsers] = useState<string[]>([]);
   const [eventMessage, setEventMessage] = useState<ChatSocketMessageBase>();
 
   const chatPanelRef = useRef<HTMLDivElement>(null);
@@ -21,7 +23,6 @@ export const useChat = (username: string, token: string) => {
   }
 
   const wsRef = useRef<WebSocket>(new WebSocket(`${wsHost}?token=${token}`));
-  console.log("wsRef.current :>> ", wsRef.current);
 
   const join = () => {
     const ws = wsRef.current;
@@ -31,7 +32,7 @@ export const useChat = (username: string, token: string) => {
     };
 
     ws.onclose = (event) => {
-      console.log("Chat disconnected");
+      console.log("Chat disconnected", event);
       if (event.code === 3000) {
         alert("Invalid Token");
         location.reload();
@@ -39,8 +40,6 @@ export const useChat = (username: string, token: string) => {
     };
 
     ws.onmessage = (event) => {
-      console.log("event :>> ", event);
-
       const chatSoketMessage: ChatSocketMessageBase = JSON.parse(event.data);
       const { action, data } = chatSoketMessage;
 
@@ -87,12 +86,18 @@ export const useChat = (username: string, token: string) => {
   };
 
   useEffect(() => {
+    const ws = wsRef.current;
+
     join();
 
     chatPanelRef.current?.scrollTo({
       top: chatPanelRef.current.scrollHeight,
       behavior: "smooth",
     });
+
+    return () => {
+      ws.close();
+    };
   }, []);
 
   return {

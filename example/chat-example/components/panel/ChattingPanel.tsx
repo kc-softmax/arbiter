@@ -4,7 +4,7 @@ import ChatInputForm from "../chat/ChatInputForm";
 import ChatRoom from "../chat/ChatRoom";
 
 const tempToken =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2OTE0NzQxMDksInN1YiI6ImhvbmdAa2MuY29tIiwibG9naW5fdHlwZSI6ImVtYWlsIn0.tjOMAnNUG_oKf9JP4q93wI7mmOkHMF-Dn8KQtZM0mQo";
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2OTIyNTYwMzQsInN1YiI6IjEifQ.OQ7ojTi3I_qF7tT9ZKM5SxzEO_nQPBJ6UplTHuhympI";
 
 interface ChattingPanelProps {
   chatInfo: ChatInfo;
@@ -13,7 +13,7 @@ interface ChattingPanelProps {
 const ChattingPanel = ({ chatInfo }: ChattingPanelProps) => {
   const { name } = chatInfo;
   const { roomId, messages, users, sendMessage, chatPanelRef, eventMessage } =
-    useChat(name, tempToken);
+    useChat(tempToken);
 
   const sendChat = (message: string) => {
     console.log(name, message);

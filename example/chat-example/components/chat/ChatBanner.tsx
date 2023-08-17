@@ -10,8 +10,8 @@ const ChatBanner = ({ roomId, users }: ChatBannerProps) => {
     <div className="text-center sticky top-0">
       <p className="font-semibold">RoomID: {roomId}</p>
       <p>
-        {users.map((user) => (
-          <span key={user} className="badge">
+        {users.map((user, index) => (
+          <span key={user + index} className="badge">
             {user}
           </span>
         ))}
