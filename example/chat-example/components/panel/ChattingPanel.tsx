@@ -4,7 +4,7 @@ import ChatInputForm from "../chat/ChatInputForm";
 import ChatRoom from "../chat/ChatRoom";
 
 const tempToken =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2OTIyNTYwMzQsInN1YiI6IjEifQ.OQ7ojTi3I_qF7tT9ZKM5SxzEO_nQPBJ6UplTHuhympI";
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2OTIyNTgwMjAsInN1YiI6IjEifQ.xwZwdlaGTxriSfOoYkjRejb_q8cPJ2LcNelPimf063Y";
 
 interface ChattingPanelProps {
   chatInfo: ChatInfo;
