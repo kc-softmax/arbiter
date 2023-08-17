@@ -24,6 +24,13 @@ export const useChat = (token: string) => {
 
   const wsRef = useRef<WebSocket>(new WebSocket(`${wsHost}?token=${token}`));
 
+  const scrollToBottom = () => {
+    chatPanelRef.current?.scrollTo({
+      top: chatPanelRef.current.scrollHeight,
+      behavior: "smooth",
+    });
+  };
+
   const join = () => {
     const ws = wsRef.current;
 
@@ -64,11 +71,6 @@ export const useChat = (token: string) => {
       }
 
       setEventMessage(chatSoketMessage);
-
-      chatPanelRef.current?.scrollTo({
-        top: chatPanelRef.current.scrollHeight,
-        behavior: "smooth",
-      });
     };
   };
 
@@ -90,15 +92,14 @@ export const useChat = (token: string) => {
 
     join();
 
-    chatPanelRef.current?.scrollTo({
-      top: chatPanelRef.current.scrollHeight,
-      behavior: "smooth",
-    });
-
     return () => {
       ws.close();
     };
   }, []);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   return {
     roomId,
