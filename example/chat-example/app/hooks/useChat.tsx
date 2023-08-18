@@ -14,25 +14,17 @@ export const useChat = (token: string) => {
   const [roomId, setRoomId] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [users, setUsers] = useState<string[]>([]);
+  // 가장 최근의 이벤트 메시지
   const [eventMessage, setEventMessage] = useState<ChatSocketMessageBase>();
 
-  const chatPanelRef = useRef<HTMLDivElement>(null);
-
-  if (!wsHost) {
-    throw new Error("NEXT_PUBLIC_CHAT_WEBSOCKET_URL is not defined");
-  }
-
-  const wsRef = useRef<WebSocket>(new WebSocket(`${wsHost}?token=${token}`));
-
-  const scrollToBottom = () => {
-    chatPanelRef.current?.scrollTo({
-      top: chatPanelRef.current.scrollHeight,
-      behavior: "smooth",
-    });
-  };
+  const wsRef = useRef<WebSocket>();
 
   const join = () => {
     const ws = wsRef.current;
+
+    if (!ws) {
+      return alert("WebSocket is not connected");
+    }
 
     ws.onopen = () => {
       console.log("Chat connected");
@@ -86,28 +78,27 @@ export const useChat = (token: string) => {
       },
     };
 
-    ws.send(JSON.stringify(chatData));
+    ws?.send(JSON.stringify(chatData));
   };
 
   useEffect(() => {
-    const ws = wsRef.current;
+    if (!wsHost) {
+      throw new Error("NEXT_PUBLIC_CHAT_WEBSOCKET_URL is not defined");
+    }
+
+    wsRef.current = new WebSocket(`${wsHost}?token=${token}`);
 
     join();
 
     return () => {
-      ws.close();
+      wsRef.current?.close();
     };
-  }, []);
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+  }, [token]);
 
   return {
     roomId,
     messages,
     users,
-    chatPanelRef,
     sendMessage,
     eventMessage,
   };

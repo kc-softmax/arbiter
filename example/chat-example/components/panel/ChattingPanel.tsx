@@ -1,5 +1,7 @@
 import { ChatInfo } from "@/@types/chat";
 import { useChat } from "@/app/hooks/useChat";
+import { scrollToBottom } from "@/lib/dom-utils";
+import { useEffect, useRef } from "react";
 import ChatInputForm from "../chat/ChatInputForm";
 import ChatRoom from "../chat/ChatRoom";
 
@@ -9,13 +11,17 @@ interface ChattingPanelProps {
 
 const ChattingPanel = ({ chatInfo }: ChattingPanelProps) => {
   const { id, token } = chatInfo;
-  const { roomId, messages, users, sendMessage, chatPanelRef, eventMessage } =
-    useChat(token);
+  const { roomId, messages, users, sendMessage, eventMessage } = useChat(token);
+  const chatPanelRef = useRef<HTMLDivElement>(null);
 
   const sendChat = (message: string) => {
     console.log(id, message);
     sendMessage(message);
   };
+
+  useEffect(() => {
+    scrollToBottom(chatPanelRef);
+  }, [messages]);
 
   return (
     <section>
