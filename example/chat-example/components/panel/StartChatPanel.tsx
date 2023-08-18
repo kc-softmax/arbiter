@@ -23,6 +23,8 @@ const StartChatPanel = ({ next }: StartChatPanelProps) => {
       }
     );
 
+    if (!response.ok) return alert("Login Failed");
+
     const data: { access_token: string; refresh_token: string } =
       await response.json();
 
@@ -34,7 +36,11 @@ const StartChatPanel = ({ next }: StartChatPanelProps) => {
 
     if (!id || !password) return alert("Please enter your name");
 
-    const { access_token } = await requestLogin();
+    const tokens = await requestLogin();
+
+    if (!tokens) return;
+
+    const { access_token } = tokens;
 
     // TODO: 진짜 id로 바꿀 예정
     next({ token: access_token, id: id.split("@")[0] });
