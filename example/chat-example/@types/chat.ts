@@ -55,3 +55,10 @@ export interface ChatSendMessage {
   action: typeof ChatActions.MESSAGE;
   data: Pick<ChatMessage, "message">;
 }
+
+export interface ChatSendChangeRoom {
+  action: typeof ChatActions.ROOM_CHANGE;
+  data: {
+    room_id: string;
+  };
+}

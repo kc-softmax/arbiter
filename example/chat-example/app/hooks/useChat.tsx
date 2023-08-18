@@ -2,6 +2,7 @@
 
 import {
   ChatMessage,
+  ChatSendChangeRoom,
   ChatSendMessage,
   ChatSocketMessageBase,
 } from "@/@types/chat";
@@ -81,12 +82,27 @@ export const useChat = (token: string) => {
     ws?.send(JSON.stringify(chatData));
   };
 
+  const changeRoom = (roomId: string) => {
+    const ws = wsRef.current;
+
+    const chatData: ChatSendChangeRoom = {
+      action: ChatActions.ROOM_CHANGE,
+      data: {
+        room_id: roomId,
+      },
+    };
+
+    ws?.send(JSON.stringify(chatData));
+  };
+
   useEffect(() => {
     if (!wsHost) {
       throw new Error("NEXT_PUBLIC_CHAT_WEBSOCKET_URL is not defined");
     }
 
-    wsRef.current = new WebSocket(`${wsHost}?token=${token}`);
+    if (!wsRef.current) {
+      wsRef.current = new WebSocket(`${wsHost}?token=${token}`);
+    }
 
     join();
 
@@ -100,6 +116,7 @@ export const useChat = (token: string) => {
     messages,
     users,
     sendMessage,
+    changeRoom,
     eventMessage,
   };
 };
