@@ -21,7 +21,15 @@ const ChatInputForm = ({ sendChat }: ChatInputFormProps) => {
     setMessage("");
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Enter 키를 눌렀을 때 줄바꿈이 되는 것을 방지하기 위해 먼저 개행 이벤트를 막는다.
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+    }
+  };
+
+  const onKeyUp = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Enter 키를 떼었을 때 메시지를 전송한다.
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       onSubmit();
@@ -44,7 +52,8 @@ const ChatInputForm = ({ sendChat }: ChatInputFormProps) => {
           ref={textRef}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          onKeyDown={handleKeyDown}
+          onKeyUp={onKeyUp}
+          onKeyDown={onKeyDown}
         ></textarea>
         <button
           type="submit"
