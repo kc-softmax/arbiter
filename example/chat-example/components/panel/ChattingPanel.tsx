@@ -1,6 +1,6 @@
 "use client";
 
-import { useChat } from "@/app/hooks/useChat";
+import { useChat } from "@/hooks/useChat";
 import { ChatTabList, ChatTabType } from "@/const/actions";
 import { scrollToBottom } from "@/lib/dom-utils";
 import { authAtom } from "@/store/authAtom";

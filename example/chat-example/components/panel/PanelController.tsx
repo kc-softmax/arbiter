@@ -1,6 +1,6 @@
 "use client";
 
-import { usePanel } from "@/app/hooks/usePanel";
+import { usePanel } from "@/hooks/usePanel";
 import ChattingPanel from "./ChattingPanel";
 import StartChatPanel from "./StartChatPanel";
 
