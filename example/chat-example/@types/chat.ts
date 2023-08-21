@@ -1,6 +1,6 @@
 import { ChatActions } from "@/const/actions";
 
-export interface ChatInfo {
+export interface AuthInfo {
   id: string;
   token: string;
 }

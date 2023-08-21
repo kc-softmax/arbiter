@@ -1,20 +1,17 @@
 "use client";
 
-import { ChatInfo } from "@/@types/chat";
 import { useChat } from "@/app/hooks/useChat";
 import { ChatTabList, ChatTabType } from "@/const/actions";
 import { scrollToBottom } from "@/lib/dom-utils";
+import { authAtom } from "@/store/authAtom";
+import { useAtomValue } from "jotai";
 import { useEffect, useRef } from "react";
 import ChatInputForm from "../chat/ChatInputForm";
 import ChatRoom from "../chat/ChatRoom";
 import ChatTabs from "../chat/ChatTabs";
 
-interface ChattingPanelProps {
-  chatInfo: ChatInfo;
-}
-
-const ChattingPanel = ({ chatInfo }: ChattingPanelProps) => {
-  const { id, token } = chatInfo;
+const ChattingPanel = () => {
+  const { id, token } = useAtomValue(authAtom);
   const { data, sendMessage, eventMessage, changeRoom } = useChat(token);
   const { roomId, messages, users } = data;
 
@@ -64,7 +61,6 @@ const ChattingPanel = ({ chatInfo }: ChattingPanelProps) => {
           <ChatTabs onChange={onChangeTabs} />
           <div ref={chatPanelRef} className="flex-1 w-full overflow-scroll">
             <ChatRoom
-              chatInfo={chatInfo}
               bannerInfo={{
                 roomId,
                 users,

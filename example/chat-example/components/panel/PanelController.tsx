@@ -1,23 +1,16 @@
 "use client";
 
 import { usePanel } from "@/app/hooks/usePanel";
-import StartChatPanel from "./StartChatPanel";
 import ChattingPanel from "./ChattingPanel";
-import { useState } from "react";
-import { ChatInfo } from "@/@types/chat";
+import StartChatPanel from "./StartChatPanel";
 
 const PanelController = () => {
   const { PanelStep, setActiveStep } = usePanel([
     "startChat",
     "chatting",
   ] as const);
-  const [chatInfo, setChatInfo] = useState<ChatInfo>({
-    id: "",
-    token: "",
-  });
 
-  const startChat = (chatInfo: ChatInfo) => {
-    setChatInfo(chatInfo);
+  const startChat = () => {
     setActiveStep("chatting");
   };
 
@@ -27,7 +20,7 @@ const PanelController = () => {
         <StartChatPanel next={startChat} />
       </PanelStep>
       <PanelStep name="chatting">
-        <ChattingPanel chatInfo={chatInfo} />
+        <ChattingPanel />
       </PanelStep>
     </div>
   );
