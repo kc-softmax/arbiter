@@ -1,6 +1,8 @@
+"use client";
+
 import { ChatInfo } from "@/@types/chat";
 import { useChat } from "@/app/hooks/useChat";
-import { ChatTabType } from "@/const/actions";
+import { ChatTabList, ChatTabType } from "@/const/actions";
 import { scrollToBottom } from "@/lib/dom-utils";
 import { useEffect, useRef } from "react";
 import ChatInputForm from "../chat/ChatInputForm";
@@ -13,13 +15,37 @@ interface ChattingPanelProps {
 
 const ChattingPanel = ({ chatInfo }: ChattingPanelProps) => {
   const { id, token } = chatInfo;
-  const { roomId, messages, users, sendMessage, eventMessage, changeRoom } =
-    useChat(token);
+  const { data, sendMessage, eventMessage, changeRoom } = useChat(token);
+  const { roomId, messages, users } = data;
+
   const chatPanelRef = useRef<HTMLDivElement>(null);
 
   const onChangeTabs = (tab: ChatTabType) => {
-    console.log("tab :>> ", tab);
-    changeRoom(tab);
+    let nextRoomId = "";
+
+    switch (tab) {
+      case ChatTabList.CUSTOM:
+        const answer = prompt("Type Room ID");
+
+        if (!answer) {
+          return;
+        }
+
+        nextRoomId = answer;
+        break;
+      case ChatTabList.PARTY:
+        nextRoomId = "party";
+        break;
+      case ChatTabList.ALL:
+        nextRoomId = crypto.randomUUID();
+        break;
+      default:
+        break;
+    }
+
+    if (nextRoomId === roomId) return;
+
+    changeRoom(nextRoomId);
   };
 
   const sendChat = (message: string) => {

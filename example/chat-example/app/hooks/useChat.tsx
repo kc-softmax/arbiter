@@ -92,7 +92,11 @@ export const useChat = (token: string) => {
       },
     };
 
-    ws?.send(JSON.stringify(chatData));
+    // TODO: 룸 입장시 바뀌게 해두었으므로 이 부분은 나중에 제거할 임시 코드
+    setRoomId(roomId);
+
+    console.log("🚀 changeRoom ~ chatData:", chatData);
+    // ws?.send(JSON.stringify(chatData));
   };
 
   useEffect(() => {
@@ -112,9 +116,11 @@ export const useChat = (token: string) => {
   }, [token]);
 
   return {
-    roomId,
-    messages,
-    users,
+    data: {
+      roomId,
+      messages,
+      users,
+    },
     sendMessage,
     changeRoom,
     eventMessage,

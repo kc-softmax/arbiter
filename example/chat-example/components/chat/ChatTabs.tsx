@@ -9,8 +9,8 @@ const ChatTabs = ({ onChange }: ChatTabsProps) => {
   const [activeTab, setActiveTab] = useState<ChatTabType>("all");
 
   const onClickTab = (tab: ChatTabType) => {
-    setActiveTab(tab);
     onChange(tab);
+    setActiveTab(tab);
   };
 
   return (
