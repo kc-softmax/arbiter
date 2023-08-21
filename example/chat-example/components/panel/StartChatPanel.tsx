@@ -1,19 +1,21 @@
 "use client";
 
-import { ChatInfo } from "@/@types/chat";
+import { authAtom } from "@/store/authAtom";
+import { useSetAtom } from "jotai";
 import React, { useState } from "react";
 
 interface StartChatPanelProps {
-  next: (chatInfo: ChatInfo) => void;
+  next: () => void;
 }
 
 const StartChatPanel = ({ next }: StartChatPanelProps) => {
   const [id, setID] = useState("");
   const [password, setPassword] = useState("");
+  const setAuthInfo = useSetAtom(authAtom);
 
   const requestLogin = async () => {
     const response = await fetch(
-      "http://192.168.0.48:8880/auth/console/login",
+      `${process.env.NEXT_PUBLIC_HOST}/auth/console/login`,
       {
         method: "POST",
         headers: {
