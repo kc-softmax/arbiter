@@ -18,7 +18,7 @@ const ChatBanner = ({ roomId, users }: ChatBannerProps) => {
 
     // TODO: 유저 정보 요청으로 바꿀 예정
     const response = await fetch(
-      "http://192.168.0.48:8880/auth/console/console-user",
+      `${process.env.NEXT_PUBLIC_HOST}/auth/console/console-user`,
       {
         method: "POST",
         headers: {

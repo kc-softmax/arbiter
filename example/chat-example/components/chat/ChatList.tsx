@@ -1,7 +1,5 @@
 import { ChatMessage, ChatSocketMessageBase } from "@/@types/chat";
 import { ChatActions } from "@/const/actions";
-import { authAtom } from "@/store/authAtom";
-import { useAtomValue } from "jotai";
 import ChatBubble from "./ChatBubble";
 import ChatNotification from "./ChatNotification";
 
@@ -11,19 +9,11 @@ interface ChatListProps {
 }
 
 const ChatList = ({ messages, eventMessage }: ChatListProps) => {
-  const { id } = useAtomValue(authAtom);
-
   return (
     <ul className="flex flex-col gap-2 flex-1">
       {messages.map(({ message, time, user }, index) => (
         <li key={`${user}-${index}`}>
-          <ChatBubble
-            username={user}
-            message={message}
-            time={time}
-            // TODO: user.id와 비교 예정
-            isMe={user === id}
-          />
+          <ChatBubble username={user} message={message} time={time} />
         </li>
       ))}
 
