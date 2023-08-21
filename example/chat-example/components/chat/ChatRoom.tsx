@@ -1,34 +1,27 @@
 "use client";
 
-import { ChatInfo, ChatMessage, ChatSocketMessageBase } from "@/@types/chat";
+import { ChatMessage, ChatSocketMessageBase } from "@/@types/chat";
 import React from "react";
-import ChatBanner, { ChatBannerProps } from "./ChatBanner";
+import ChatBanner from "./ChatBanner";
 import ChatList from "./ChatList";
 
 interface ChatRoomProps {
-  chatInfo: ChatInfo;
-  bannerInfo: ChatBannerProps;
+  bannerInfo: {
+    roomId: string;
+    users: string[];
+  };
   chatData: ChatMessage[];
   chatListRef?: React.RefObject<HTMLDivElement>;
   eventMessage?: ChatSocketMessageBase;
 }
 
-const ChatRoom = ({
-  chatInfo,
-  bannerInfo,
-  chatData,
-  eventMessage,
-}: ChatRoomProps) => {
+const ChatRoom = ({ bannerInfo, chatData, eventMessage }: ChatRoomProps) => {
   const { roomId, users } = bannerInfo;
 
   return (
     <div className="flex flex-col gap-4">
       <ChatBanner roomId={roomId} users={users} />
-      <ChatList
-        chatInfo={chatInfo}
-        messages={chatData}
-        eventMessage={eventMessage}
-      />
+      <ChatList messages={chatData} eventMessage={eventMessage} />
     </div>
   );
 };

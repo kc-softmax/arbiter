@@ -1,16 +1,17 @@
-import { ChatInfo, ChatMessage, ChatSocketMessageBase } from "@/@types/chat";
+import { ChatMessage, ChatSocketMessageBase } from "@/@types/chat";
 import { ChatActions } from "@/const/actions";
+import { authAtom } from "@/store/authAtom";
+import { useAtomValue } from "jotai";
 import ChatBubble from "./ChatBubble";
 import ChatNotification from "./ChatNotification";
 
 interface ChatListProps {
-  chatInfo: ChatInfo;
   messages: ChatMessage[];
   eventMessage?: ChatSocketMessageBase;
 }
 
-const ChatList = ({ messages, eventMessage, chatInfo }: ChatListProps) => {
-  const { id } = chatInfo;
+const ChatList = ({ messages, eventMessage }: ChatListProps) => {
+  const { id } = useAtomValue(authAtom);
 
   return (
     <ul className="flex flex-col gap-2 flex-1">
