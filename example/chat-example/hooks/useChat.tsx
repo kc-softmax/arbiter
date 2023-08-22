@@ -7,7 +7,7 @@ import {
   ChatSocketMessageBase,
   UserInfo,
 } from "@/@types/chat";
-import { ChatActions } from "@/const/actions";
+import { ChatActionType, ChatActions } from "@/const/actions";
 import { useEffect, useRef, useState } from "react";
 
 const wsHost = process.env.NEXT_PUBLIC_CHAT_WEBSOCKET_URL;
@@ -43,6 +43,10 @@ export const useChat = (token: string) => {
     ws.onmessage = (event) => {
       const chatSocketMessage: ChatSocketMessageBase = JSON.parse(event.data);
       const { action, data } = chatSocketMessage;
+      console.log(
+        "🚀 ~ file: useChat.tsx:46 ~ join ~ chatSocketMessage:",
+        chatSocketMessage
+      );
 
       if (action === ChatActions.ROOM_JOIN) {
         const { room_id, messages, users } = data;
@@ -70,35 +74,31 @@ export const useChat = (token: string) => {
     };
   };
 
-  const sendMessage = ({ message, user_id }: ChatSendMessage["data"]) => {
+  const sendSocketBase = <T,>(action: ChatActionType, data: T) => {
     const ws = wsRef.current;
 
-    const chatData: ChatSendMessage = {
-      action: ChatActions.MESSAGE,
-      data: {
-        message,
-        user_id,
-      },
+    const chatData: {
+      action: ChatActionType;
+      data: T;
+    } = {
+      action,
+      data,
     };
 
     ws?.send(JSON.stringify(chatData));
   };
 
+  const sendMessage = ({ message, user_id }: ChatSendMessage["data"]) => {
+    sendSocketBase(ChatActions.MESSAGE, {
+      message,
+      user_id,
+    });
+  };
+
   const changeRoom = (roomId: string) => {
-    const ws = wsRef.current;
-
-    const chatData: ChatSendChangeRoom = {
-      action: ChatActions.ROOM_CHANGE,
-      data: {
-        room_id: roomId,
-      },
-    };
-
-    // TODO: 룸 입장시 바뀌게 해두었으므로 이 부분은 나중에 제거할 임시 코드
-    setRoomId(roomId);
-
-    console.log("🚀 changeRoom ~ chatData:", chatData);
-    // ws?.send(JSON.stringify(chatData));
+    sendSocketBase(ChatActions.ROOM_CHANGE, {
+      room_id: roomId,
+    });
   };
 
   useEffect(() => {

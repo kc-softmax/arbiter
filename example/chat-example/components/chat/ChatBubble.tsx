@@ -1,16 +1,10 @@
-import { MessageInfo, UserInfo } from "@/@types/chat";
+import { ChatMessage, MessageInfo, UserInfo } from "@/@types/chat";
 import { authAtom } from "@/store/authAtom";
 import { useAtomValue } from "jotai";
 
-interface ChatBubbleProps {
-  userInfo: UserInfo;
-  message: MessageInfo;
-  time: string;
-}
-
-const ChatBubble = ({ userInfo, message, time }: ChatBubbleProps) => {
+const ChatBubble = ({ user, message, time }: ChatMessage) => {
   const { id } = useAtomValue(authAtom);
-  const { id: userId, name: username } = userInfo;
+  const { id: userId, name: username } = user;
   const { id: messageId, message: messageText } = message;
 
   const onClickReport = () => {
