@@ -5,24 +5,34 @@ export interface AuthInfo {
   token: string;
 }
 
-export interface ChatMessage {
-  user: string;
+export interface UserInfo {
+  id: string;
+  name: string;
+}
+
+export interface MessageInfo {
+  id: string;
   message: string;
+}
+
+export interface ChatMessage {
+  user: UserInfo;
+  message: MessageInfo;
   time: string;
 }
 
 export interface RoomJoinData {
   room_id: string;
   messages: ChatMessage[];
-  users: string[];
+  users: UserInfo[];
 }
 
 export interface UserJoinData {
-  user: string;
+  user: UserInfo;
 }
 
 export interface UserLeaveData {
-  user: string;
+  user: UserInfo;
 }
 
 export interface ChatSocketMessageRoomJoin {
@@ -53,7 +63,10 @@ export type ChatSocketMessageBase =
 
 export interface ChatSendMessage {
   action: typeof ChatActions.MESSAGE;
-  data: Pick<ChatMessage, "message">;
+  data: {
+    message: string;
+    user_id: string;
+  };
 }
 
 export interface ChatSendChangeRoom {

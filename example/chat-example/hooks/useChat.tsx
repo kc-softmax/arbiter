@@ -5,6 +5,7 @@ import {
   ChatSendChangeRoom,
   ChatSendMessage,
   ChatSocketMessageBase,
+  UserInfo,
 } from "@/@types/chat";
 import { ChatActions } from "@/const/actions";
 import { useEffect, useRef, useState } from "react";
@@ -14,7 +15,7 @@ const wsHost = process.env.NEXT_PUBLIC_CHAT_WEBSOCKET_URL;
 export const useChat = (token: string) => {
   const [roomId, setRoomId] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [users, setUsers] = useState<string[]>([]);
+  const [users, setUsers] = useState<UserInfo[]>([]);
   // 가장 최근의 이벤트 메시지
   const [eventMessage, setEventMessage] = useState<ChatSocketMessageBase>();
 
@@ -69,13 +70,14 @@ export const useChat = (token: string) => {
     };
   };
 
-  const sendMessage = (message: string) => {
+  const sendMessage = ({ message, user_id }: ChatSendMessage["data"]) => {
     const ws = wsRef.current;
 
     const chatData: ChatSendMessage = {
       action: ChatActions.MESSAGE,
       data: {
         message,
+        user_id,
       },
     };
 

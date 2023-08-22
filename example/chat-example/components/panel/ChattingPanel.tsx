@@ -47,7 +47,10 @@ const ChattingPanel = () => {
 
   const sendChat = (message: string) => {
     console.log(id, message);
-    sendMessage(message);
+    sendMessage({
+      user_id: id,
+      message,
+    });
   };
 
   useEffect(() => {
