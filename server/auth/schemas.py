@@ -11,6 +11,7 @@ class TokenSchema(BaseModel):
 class TokenDataSchema(BaseModel):
     sub: str
     exp: int
+    user_name: str
 
 
 class ConsoleRequest(BaseModel):

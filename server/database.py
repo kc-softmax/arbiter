@@ -26,7 +26,7 @@ async_engine = create_async_engine(
 # TODO: 마이그레이션 로직 추가되면 제거
 async def create_db_and_tables():
     async with async_engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.drop_all)
+        # await conn.run_sync(SQLModel.metadata.drop_all)
         await conn.run_sync(SQLModel.metadata.create_all)
     await set_default_console_user()
 
