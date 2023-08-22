@@ -15,8 +15,8 @@ class BaseService:
 
 
 class UserService(BaseService):
-    async def register_user_by_device_id(self, device_id: str, display_name: str = '') -> User:
-        user = User(device_id=device_id, login_type=LoginType.GUEST, display_name=display_name)
+    async def register_user_by_device_id(self, device_id: str, user_name: str = '') -> User:
+        user = User(device_id=device_id, login_type=LoginType.GUEST, user_name=user_name)
         self.session.add(user)
         await self.session.commit()
         await self.session.refresh(user)
@@ -32,9 +32,9 @@ class UserService(BaseService):
         self,
         email: str,
         password: str,
-        display_name: str = ''
+        user_name: str = ''
     ) -> User:
-        user = User(email=email, password=password, login_type=LoginType.EMAIL, display_name=display_name)
+        user = User(email=email, password=password, login_type=LoginType.EMAIL, user_name=user_name)
         self.session.add(user)
         await self.session.commit()
         await self.session.refresh(user)
