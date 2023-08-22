@@ -11,9 +11,9 @@ interface ChatListProps {
 const ChatList = ({ messages, eventMessage }: ChatListProps) => {
   return (
     <ul className="flex flex-col gap-2 flex-1">
-      {messages.map(({ message, time, user }, index) => (
-        <li key={`${user}-${index}`}>
-          <ChatBubble user={user} message={message} time={time} />
+      {messages.map((message) => (
+        <li key={message.message_id}>
+          <ChatBubble message={message} />
         </li>
       ))}
 
@@ -21,7 +21,7 @@ const ChatList = ({ messages, eventMessage }: ChatListProps) => {
         {eventMessage?.action === ChatActions.USER_JOIN ||
         eventMessage?.action === ChatActions.USER_LEAVE ? (
           <ChatNotification
-            username={eventMessage.data.user.name}
+            username={eventMessage.data.user.user_name}
             enter={eventMessage.action === ChatActions.USER_JOIN}
           />
         ) : null}
