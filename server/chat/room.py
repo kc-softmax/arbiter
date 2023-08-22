@@ -110,10 +110,18 @@ class ChatRoomManager:
         available_rooms = [room for room in self.rooms if room.is_available()]
         return available_rooms[0] if available_rooms else None
 
-    def create_room(self) -> ChatRoom:
-        new_room = ChatRoom(str(uuid.uuid4()), ChatAdapter({}))
+    # room_id 받아서 처리할 수 있도록 추가
+    def create_room(self, receive_room_id: str = '') -> ChatRoom:
+        room_id = receive_room_id if receive_room_id else str(uuid.uuid4())
+        new_room = ChatRoom(room_id, ChatAdapter({}))
         self.rooms.append(new_room)
         return new_room
 
     def remove_room(self, room: ChatRoom):
         self.rooms.remove(room)
+
+    def get_by_room_id(self, room_id: str):
+        for room in self.rooms:
+            if room.room_id == room_id:
+                return room
+        return None

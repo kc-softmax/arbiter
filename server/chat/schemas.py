@@ -10,6 +10,7 @@ class ChatEvent(StrEnum):
     USER_LEAVE = "user_leave"
     ERROR = "error"
     MESSAGE = "message"
+    ROOM_CHANGE = "room_change"
 
 
 class ClientChatData(BaseModel):
@@ -34,6 +35,10 @@ class UserJoinData(BaseModel):
 
 class UserLeaveData(BaseModel):
     user: str
+
+
+class RoomChangeData(BaseModel):
+    room_id: str
 
 
 DT = TypeVar('DT')
