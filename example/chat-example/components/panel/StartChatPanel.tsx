@@ -45,10 +45,13 @@ const StartChatPanel = ({ next }: StartChatPanelProps) => {
     const { access_token } = tokens;
 
     const payload = access_token.split(".")[1];
-    const sub = JSON.parse(atob(payload)).sub as string;
+    const { sub, username } = JSON.parse(atob(payload)) as {
+      sub: string;
+      username: string;
+    };
 
     // TODO: 진짜 id로 바꿀 예정
-    setAuthInfo({ id: sub, token: access_token });
+    setAuthInfo({ id: sub, username, token: access_token });
 
     next();
   };

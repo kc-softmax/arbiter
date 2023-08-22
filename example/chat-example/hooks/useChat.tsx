@@ -2,7 +2,6 @@
 
 import {
   ChatMessage,
-  ChatSendChangeRoom,
   ChatSendMessage,
   ChatSocketMessageBase,
   UserInfo,

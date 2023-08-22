@@ -44,14 +44,17 @@ const ChatBanner = ({ roomId, users }: ChatBannerProps) => {
     <div className="text-center sticky top-0 z-10">
       <p className="font-semibold">RoomID: {roomId}</p>
       <div>
-        {users.map(({ id, name }) => (
+        {users.map(({ user_id, user_name }, index) => (
           <p
-            key={id}
+            key={`${user_id}-${user_name}(${index})`}
             className="tooltip tooltip-bottom"
-            data-tip={tooltip[name]}
+            data-tip={tooltip[user_id]}
           >
-            <span className="badge" onMouseOver={() => requestUserInfo(id)}>
-              {name}
+            <span
+              className="badge"
+              onMouseOver={() => requestUserInfo(user_id.toString())}
+            >
+              {user_name || "Unknown"}
             </span>
           </p>
         ))}

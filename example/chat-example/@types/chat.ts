@@ -2,22 +2,19 @@ import { ChatActions } from "@/const/actions";
 
 export interface AuthInfo {
   id: string;
+  username: string;
   token: string;
 }
 
 export interface UserInfo {
-  id: string;
-  name: string;
-}
-
-export interface MessageInfo {
-  id: string;
-  message: string;
+  user_id: number;
+  user_name: string;
 }
 
 export interface ChatMessage {
   user: UserInfo;
-  message: MessageInfo;
+  message_id: number;
+  message: string;
   time: string;
 }
 
