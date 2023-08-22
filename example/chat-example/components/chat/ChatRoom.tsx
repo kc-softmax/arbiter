@@ -1,6 +1,6 @@
 "use client";
 
-import { ChatMessage, ChatSocketMessageBase } from "@/@types/chat";
+import { ChatMessage, ChatSocketMessageBase, UserInfo } from "@/@types/chat";
 import React from "react";
 import ChatBanner from "./ChatBanner";
 import ChatList from "./ChatList";
@@ -8,7 +8,7 @@ import ChatList from "./ChatList";
 interface ChatRoomProps {
   bannerInfo: {
     roomId: string;
-    users: string[];
+    users: UserInfo[];
   };
   chatData: ChatMessage[];
   chatListRef?: React.RefObject<HTMLDivElement>;

@@ -1,20 +1,23 @@
+import { MessageInfo, UserInfo } from "@/@types/chat";
 import { authAtom } from "@/store/authAtom";
 import { useAtomValue } from "jotai";
 
 interface ChatBubbleProps {
-  username: string;
-  message: string;
+  userInfo: UserInfo;
+  message: MessageInfo;
   time: string;
 }
 
-const ChatBubble = ({ username, message, time }: ChatBubbleProps) => {
+const ChatBubble = ({ userInfo, message, time }: ChatBubbleProps) => {
   const { id } = useAtomValue(authAtom);
+  const { id: userId, name: username } = userInfo;
+  const { id: messageId, message: messageText } = message;
 
   const onClickReport = () => {
-    alert(`Report ${username} at ${time}`);
+    alert(`Report ${username}'s ${messageId} at ${time}`);
   };
 
-  const isMe = id === username;
+  const isMe = id === userId;
 
   return (
     <div className={`chat ${isMe ? "chat-end" : "chat-start"}`}>
@@ -25,7 +28,7 @@ const ChatBubble = ({ username, message, time }: ChatBubbleProps) => {
           isMe ? "chat-bubble-primary" : "chat-bubble-secondary"
         }`}
       >
-        <p className="hover:brightness-90 transition-all">{message}</p>
+        <p className="hover:brightness-90 transition-all">{messageText}</p>
         <div
           tabIndex={0}
           className="dropdown-content z-20 p-2 shadow bg-base-100 rounded-box"
