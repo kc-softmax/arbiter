@@ -2,7 +2,7 @@ import pytest
 import pytest_asyncio
 from uuid import uuid4
 
-from server.auth.models import ConsoleUser, User, Role
+from server.auth.models import ConsoleUser, User, ConsoleRole
 from server.auth.service import ConsoleUserService, UserService
 
 
@@ -71,7 +71,7 @@ class TestUserService:
     @pytest.mark.asyncio
     async def test_user_update(self, test_service: UserService, case_register_by_email: User):
         update_data = {
-            'display_name': 'test_display_name',
+            'user_name': 'test_user_name',
             'access_token': 'test_access_token',
             'refresh_token': 'test_refresh_token'
         }
@@ -108,12 +108,12 @@ class TestConsoleUserService:
     @pytest_asyncio.fixture(scope='function')
     async def case_register_by_email(self, test_service: ConsoleUserService) -> ConsoleUser:
         return await test_service.register_console_user(
-            email='test_email@email.com', password='test_password', role=Role.OWNER
+            email='test_email@email.com', password='test_password', role=ConsoleRole.OWNER
         )
 
     @pytest.mark.asyncio
     async def test_register_console_user(self, test_service: ConsoleUserService):
-        expected = ConsoleUser(email='test_email', password='test_password', role=Role.OWNER)
+        expected = ConsoleUser(email='test_email', password='test_password', role=ConsoleRole.OWNER)
         get_data = await test_service.register_console_user(
             email=expected.email,
             password=expected.password,
@@ -141,7 +141,7 @@ class TestConsoleUserService:
     ):
         update_data = {
             'user_name': 'test_user_name',
-            'role': Role.MAINTAINER
+            'role': ConsoleRole.MAINTAINER
         }
         expected = case_register_by_email.dict()
         for key, value in update_data.items():
@@ -158,7 +158,7 @@ class TestConsoleUserService:
         # 테스트용 유저 생성
         owner_users = [
             await test_service.register_console_user(
-                email=uuid4(), password=uuid4(), role=Role.MAINTAINER
+                email=uuid4(), password=uuid4(), role=ConsoleRole.MAINTAINER
             ) for _ in range(10)
         ]
         # 성공 테스트를 위해 owner 유저 추가
@@ -189,13 +189,13 @@ class TestConsoleUserService:
     async def test_check_last_console_owner_for_delete(self, test_service: ConsoleUserService):
         # 테스트용 owner 유저 생성
         first_console_user = await test_service.register_console_user(
-            email=uuid4(), password=uuid4(), role=Role.OWNER
+            email=uuid4(), password=uuid4(), role=ConsoleRole.OWNER
         )
 
         # 테스트용 유저 생성
         owner_users = [
             await test_service.register_console_user(
-                email=uuid4(), password=uuid4(), role=Role.OWNER
+                email=uuid4(), password=uuid4(), role=ConsoleRole.OWNER
             ) for _ in range(10)
         ]
         # 성공 테스트를 위해 생성한 유저 id 추가
