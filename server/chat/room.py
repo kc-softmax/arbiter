@@ -4,7 +4,7 @@ from datetime import datetime
 from collections import defaultdict, deque
 
 from server.adapter import ChatAdapter
-from server.chat.schemas import ClientChatMessage, ChatData
+from server.chat.schemas import ClientChatMessage, ChatData, UserData
 
 
 @dataclass
@@ -28,7 +28,7 @@ class ChatRoom:
         self.room_id = room_id
         self.adapter = adapter
         self.message_history: deque[ChatData] = []
-        self.current_users: deque[str] = []
+        self.current_users: deque[UserData] = []
         self.chat_room_data: ChatRoomData = ChatRoomData(
             created_at=round(datetime.now().timestamp() * 1000))
 
@@ -38,13 +38,13 @@ class ChatRoom:
     def is_empty(self) -> bool:
         return len(self.current_users) == 0
 
-    def join(self, user_id: str):
-        self.current_users.append(user_id)
+    def join(self, user_data: UserData):
+        self.current_users.append(user_data)
         # 채팅방에 접속한 최대 인원 수
         self.set_max_users()
 
-    def leave(self, user_id):
-        self.current_users.remove(user_id)
+    def leave(self, user_data: UserData):
+        self.current_users.remove(user_data)
         if self.is_empty():
             # 채팅방 종료된 시간
             self.set_finished_time()
@@ -52,23 +52,25 @@ class ChatRoom:
             self.save_chat_room()
 
     # 소켓 메시지 처리에 대한 비즈니스 로직 부분
-    async def handle_chat_message(self, user_id, client_message: ClientChatMessage) -> ChatData:
+    async def handle_chat_message(self, user_data: UserData, client_message: ClientChatMessage) -> ChatData:
         # 채팅 메시지가 없으면 오류
         chat_data = client_message.data
         if (chat_data is None):
             return
         # 각 클라이언트에게 보내줄 메시지 오브젝트를 구성(어댑터 프로세스 적용)
-        chat_message_excuted_by_adapter = self.adapter.execute(user_id, chat_data.message)
+        chat_message_excuted_by_adapter = self.adapter.execute(user_data.user_id, chat_data.message)
         chat_socket_message = ChatData(
             message=chat_message_excuted_by_adapter["message"],
-            user=user_id,
+            user=user_data,
             time=datetime.now().isoformat()
         )
         # 히스토리에 저장
         self.message_history.append(chat_socket_message)
+        # index를 message_id로 사용
+        chat_socket_message.message_id = len(self.message_history) - 1
         # Chat room에서 각 유저별 채팅 횟수와 비속어 횟수
         # 지금은 메시지를 받을 때마다 매번 기록하지만, 방이 없어질 때 message_history를 순회하면서 한번에 기록도 가능하다.
-        self.set_user_message_summary(user_id, chat_message_excuted_by_adapter["is_bad_comments"])
+        self.set_user_message_summary(user_data.user_id, chat_message_excuted_by_adapter["is_bad_comments"])
         return chat_socket_message
 
     # Chat Room 기준의 데이터 로직
@@ -123,5 +125,6 @@ class ChatRoomManager:
     def get_by_room_id(self, room_id: str):
         for room in self.rooms:
             if room.room_id == room_id:
-                return room
+                if room.is_available():
+                    return room
         return None

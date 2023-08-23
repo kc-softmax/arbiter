@@ -17,24 +17,31 @@ class ClientChatData(BaseModel):
     message: str = ""
 
 
+class UserData(BaseModel):
+    user_id: int
+    user_name: str
+
+
 class ChatData(BaseModel):
     message: str
-    user: str
+    message_id: int = 0
+    user: UserData
     time: str
 
 
 class RoomJoinData(BaseModel):
     room_id: str
     messages: list[ChatData] = []
-    users: list[str] = []
+    number_of_users: int = 0
+    users: list[UserData] = []
 
 
 class UserJoinData(BaseModel):
-    user: str
+    user: UserData
 
 
 class UserLeaveData(BaseModel):
-    user: str
+    user: UserData
 
 
 class RoomChangeData(BaseModel):
