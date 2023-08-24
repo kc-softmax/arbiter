@@ -3,6 +3,5 @@ import { atom } from "jotai";
 
 export const authAtom = atom<AuthInfo>({
   id: "",
-  username: "",
   token: "",
 });

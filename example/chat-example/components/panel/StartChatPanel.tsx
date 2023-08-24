@@ -9,13 +9,62 @@ interface StartChatPanelProps {
 }
 
 const StartChatPanel = ({ next }: StartChatPanelProps) => {
-  const [id, setID] = useState("");
-  const [password, setPassword] = useState("");
+  const [id, setID] = useState(
+    process.env.NODE_ENV === "development" ? "@admin.com" : ""
+  );
+  const [password, setPassword] = useState(
+    process.env.NODE_ENV === "development" ? "password" : ""
+  );
+  const [isSignUp, setIsSignUp] = useState(false);
   const setAuthInfo = useSetAtom(authAtom);
+
+  const requestSignUp = async () => {
+    const body = {
+      email: id,
+      password,
+    };
+
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_HOST}/auth/game/signup/email`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      }
+    );
+
+    if (!response.ok) return alert("Sign In Failed");
+
+    const data = await response.json();
+
+    console.log("signUp :>> ", data);
+  };
+
+  const updateUserInfo = async (token: string) => {
+    const body = {
+      user_name: id.split("@")[0],
+    };
+
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_HOST}/auth/game/me`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(body),
+      }
+    );
+
+    if (!response.ok) return alert("Update User Info Failed");
+  };
 
   const requestLogin = async () => {
     const response = await fetch(
-      `${process.env.NEXT_PUBLIC_HOST}/auth/console/login`,
+      `${process.env.NEXT_PUBLIC_HOST}/auth/game/login/email`,
       {
         method: "POST",
         headers: {
@@ -38,6 +87,10 @@ const StartChatPanel = ({ next }: StartChatPanelProps) => {
 
     if (!id || !password) return alert("Please enter your name");
 
+    if (isSignUp) {
+      await requestSignUp();
+    }
+
     const tokens = await requestLogin();
 
     if (!tokens) return;
@@ -45,13 +98,13 @@ const StartChatPanel = ({ next }: StartChatPanelProps) => {
     const { access_token } = tokens;
 
     const payload = access_token.split(".")[1];
-    const { sub, username } = JSON.parse(atob(payload)) as {
+    const { sub } = JSON.parse(atob(payload)) as {
       sub: string;
-      username: string;
     };
 
-    // TODO: 진짜 id로 바꿀 예정
-    setAuthInfo({ id: sub, username, token: access_token });
+    setAuthInfo({ id: sub, token: access_token });
+
+    await updateUserInfo(access_token);
 
     next();
   };
@@ -64,6 +117,20 @@ const StartChatPanel = ({ next }: StartChatPanelProps) => {
           onSubmit={onSubmit}
         >
           <div className="border p-4 flex flex-col gap-4 rounded-md">
+            <div className="tabs tabs-boxed">
+              <a
+                className={`tab basis-1/2 ${isSignUp ? "" : "tab-active"}`}
+                onClick={() => setIsSignUp(false)}
+              >
+                Login
+              </a>
+              <a
+                className={`tab basis-1/2 ${isSignUp ? "tab-active" : ""}`}
+                onClick={() => setIsSignUp(true)}
+              >
+                Sign In
+              </a>
+            </div>
             <div className="join join-vertical">
               <input
                 type="text"
