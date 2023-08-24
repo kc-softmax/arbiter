@@ -8,15 +8,10 @@ interface ChatNotificationProps {
 const ChatNotification = ({ enter, username }: ChatNotificationProps) => {
   return (
     <div className="text-center">
-      {enter ? (
-        <p>
-          <span className="font-bold">{username}</span>님이 입장하였습니다.
-        </p>
-      ) : (
-        <p>
-          <span className="font-bold">{username}</span>님이 퇴장하였습니다.
-        </p>
-      )}
+      <p>
+        <span className="font-bold">{username}</span>님이 {enter ? "입" : "퇴"}
+        장하였습니다.
+      </p>
     </div>
   );
 };
