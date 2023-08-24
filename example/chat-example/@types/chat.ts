@@ -22,6 +22,7 @@ export interface RoomJoinData {
   room_id: string;
   messages: ChatMessage[];
   users: UserInfo[];
+  number_of_users: number;
 }
 
 export interface UserJoinData {
