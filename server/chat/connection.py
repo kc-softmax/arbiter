@@ -16,7 +16,7 @@ class ConnectionManager:
         await websocket.accept()
         token_data = verify_token(token)
         self.active_connections[room_id].append(websocket)
-        return token_data.sub, token_data.user_name
+        return token_data.sub
 
     def disconnect(self, room_id: str, websocket: WebSocket):
         self.active_connections[room_id].remove(websocket)

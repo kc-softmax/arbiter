@@ -20,7 +20,7 @@ def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
 
 
-def create_token(subject: str, user_name: str = '', is_refresh_token: bool = False):
+def create_token(subject: str, is_refresh_token: bool = False):
     key = settings.JWT_REFRESH_SECRET_KEY if is_refresh_token else settings.JWT_ACCESS_SECRET_KEY
 <<<<<<< HEAD
     expire_delta = timedelta(minutes=REFRESH_TOKEN_EXPIRE_MINUTES if is_refresh_token else ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -28,8 +28,12 @@ def create_token(subject: str, user_name: str = '', is_refresh_token: bool = Fal
 =======
     expire_delta = timedelta(minutes=REFRESH_TOKEN_EXPIRE_MINUTES) if is_refresh_token else timedelta(
         minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+<<<<<<< HEAD
     to_encode = {"exp": datetime.utcnow() + expire_delta, "sub": str(subject), "username": user_name}
 >>>>>>> d1f399b ([update] user_name)
+=======
+    to_encode = {"exp": datetime.utcnow() + expire_delta, "sub": str(subject)}
+>>>>>>> 1577629 ([UPDATE] remove payload user_name)
     encoded_jwt = jwt.encode(to_encode,
                              key,
                              algorithm=TOKEN_GENERATE_ALGORITHM.HS256)
@@ -52,8 +56,7 @@ def decode_token(token: str, is_refresh_token: bool = False):
         )
         token_data = TokenDataSchema(
             sub=payload.get("sub"),
-            exp=payload.get("exp"),
-            user_name=payload.get("username")
+            exp=payload.get("exp")
         )
     except (JWTError, ValidationError):
         raise InvalidToken

@@ -4,6 +4,7 @@ from fastapi.templating import Jinja2Templates
 
 from server.auth.exceptions import InvalidToken
 from server.auth.utils import verify_token
+from server.auth.models import User
 from server.chat.connection import ConnectionManager
 from server.chat.room import ChatRoomManager
 from server.chat.exceptions import AuthorizationFailedClose
@@ -13,6 +14,8 @@ from server.chat.schemas import (
     ChatSocketUserLeaveMessage, UserLeaveData, ClientChatMessage,
     UserData
 )
+from server.database import make_async_session
+
 
 router = APIRouter(prefix="/chat")
 
@@ -37,10 +40,14 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
 
     # 소켓 연결 및 토큰을 검증하여 user_id를 얻는다.
     try:
-        user_id, user_name = await connection_manager.connect(websocket, room.room_id, token)
+        user_id = await connection_manager.connect(websocket, room.room_id, token)
+
+        async with make_async_session() as session:
+            user = await session.get(User, user_id)
+
         user_data = UserData(
-            user_id=user_id,
-            user_name=user_name
+            user_id=user.id,
+            user_name=user.user_name
         )
 
     except InvalidToken:

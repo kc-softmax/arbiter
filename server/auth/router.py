@@ -77,8 +77,8 @@ async def refresh_token(data: TokenRefreshRequest,
 
     # 새로운 토큰 발급
     new_token = TokenSchema(
-        access_token=create_token(user.id, user.user_name),
-        refresh_token=create_token(user.id, user.user_name, True)
+        access_token=create_token(user.id),
+        refresh_token=create_token(user.id, True)
     )
     if data.is_console:
         await console_user_service.update_console_user(user.id, ConsoleUser(**new_token.dict(exclude_unset=True)))
@@ -112,8 +112,8 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), user_service: 
         raise InvalidCredentials
 
     token = TokenSchema(
-        access_token=create_token(user.id, user.user_name),
-        refresh_token=create_token(user.id, user.user_name, True)
+        access_token=create_token(user.id),
+        refresh_token=create_token(user.id, True)
     )
 
     # 로그인 시, 갱신한 토큰을 DB에 저장
@@ -142,8 +142,8 @@ async def login_guest(data: GamerUserLoginByGuest, user_service: UserService = D
     if user is None:
         raise BadRequest
     token = TokenSchema(
-        access_token=create_token(user.id, user.user_name),
-        refresh_token=create_token(user.id, user.user_name, True)
+        access_token=create_token(user.id),
+        refresh_token=create_token(user.id, True)
     )
     await user_service.update_user(user.id, User(**token.dict(exclude_unset=True)))
     return token
@@ -209,8 +209,8 @@ async def login_console(form_data: OAuth2PasswordRequestForm = Depends(), consol
         raise BadRequest
 
     token = TokenSchema(
-        access_token=create_token(console_user.id, console_user.user_name),
-        refresh_token=create_token(console_user.id, console_user.user_name, True)
+        access_token=create_token(console_user.id),
+        refresh_token=create_token(console_user.id, True)
     )
     # 로그인 시, 갱신한 토큰을 DB에 저장
     await console_user_service.update_console_user(console_user.id, ConsoleUser(**token.dict(exclude_unset=True)))
