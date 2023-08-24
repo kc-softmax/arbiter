@@ -2,7 +2,7 @@
 
 import { ChatTabList, ChatTabType } from "@/const/actions";
 import { useChat } from "@/hooks/useChat";
-import { scrollToBottom } from "@/lib/dom-utils";
+import { scrollToBottom } from "@/utils/dom-utils";
 import { authAtom } from "@/store/authAtom";
 import { useAtomValue } from "jotai";
 import { useEffect, useRef } from "react";
