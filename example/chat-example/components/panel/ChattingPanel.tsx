@@ -1,13 +1,14 @@
 "use client";
 
-import { useChat } from "@/hooks/useChat";
 import { ChatTabList, ChatTabType } from "@/const/actions";
+import { useChat } from "@/hooks/useChat";
 import { scrollToBottom } from "@/lib/dom-utils";
 import { authAtom } from "@/store/authAtom";
 import { useAtomValue } from "jotai";
 import { useEffect, useRef } from "react";
+import ChatBanner from "../chat/ChatBanner";
 import ChatInputForm from "../chat/ChatInputForm";
-import ChatRoom from "../chat/ChatRoom";
+import ChatList from "../chat/ChatList";
 import ChatTabs from "../chat/ChatTabs";
 
 const ChattingPanel = () => {
@@ -62,15 +63,12 @@ const ChattingPanel = () => {
       <div className="p-4 h-screen">
         <div className="flex flex-col gap-4 justify-center items-center h-full rounded-lg border-2 max-w-4xl mx-auto p-4">
           <ChatTabs onChange={onChangeTabs} />
-          <div ref={chatPanelRef} className="flex-1 w-full overflow-scroll">
-            <ChatRoom
-              bannerInfo={{
-                roomId,
-                users,
-              }}
-              chatData={messages}
-              eventMessage={eventMessage}
-            />
+          <div
+            ref={chatPanelRef}
+            className="flex-1 w-full overflow-scroll flex flex-col gap-4 px-4"
+          >
+            <ChatBanner roomId={roomId} users={users} />
+            <ChatList messages={messages} eventMessage={eventMessage} />
           </div>
           <div className="w-full">
             <ChatInputForm sendChat={sendChat} />
