@@ -57,12 +57,16 @@ export const useChat = (token: string) => {
 
       if (action === ChatActions.USER_JOIN) {
         setUsers((prev) =>
-          prev.includes(data.user) ? prev : [...prev, data.user]
+          prev.some((prevUser) => prevUser.user_id === data.user.user_id)
+            ? prev
+            : [...prev, data.user]
         );
       }
 
       if (action === ChatActions.USER_LEAVE) {
-        setUsers((prev) => prev.filter((user) => user !== data.user));
+        setUsers((prev) =>
+          prev.filter((prevUser) => prevUser.user_id !== data.user.user_id)
+        );
       }
 
       if (action === ChatActions.MESSAGE || action === ChatActions.CONTROL) {
@@ -73,7 +77,10 @@ export const useChat = (token: string) => {
     };
   };
 
-  const sendSocketBase = <T,>(action: ChatActionType, data: T) => {
+  const sendSocketBase = <T extends object>(
+    action: ChatActionType,
+    data: T
+  ) => {
     const ws = wsRef.current;
 
     const chatData: {
