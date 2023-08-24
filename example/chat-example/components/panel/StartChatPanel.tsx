@@ -1,5 +1,6 @@
 "use client";
 
+import { requestLogin, requestSignUp, updateUserInfo } from "@/api/auth";
 import { authAtom } from "@/store/authAtom";
 import { useSetAtom } from "jotai";
 import React, { useState } from "react";
@@ -16,82 +17,21 @@ const StartChatPanel = ({ next }: StartChatPanelProps) => {
     process.env.NODE_ENV === "development" ? "password" : ""
   );
   const [isSignUp, setIsSignUp] = useState(false);
+  const [statusMessage, setStatusMessage] = useState("");
   const setAuthInfo = useSetAtom(authAtom);
-
-  const requestSignUp = async () => {
-    const body = {
-      email: id,
-      password,
-    };
-
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_HOST}/auth/game/signup/email`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-      }
-    );
-
-    if (!response.ok) return alert("Sign In Failed");
-
-    const data = await response.json();
-
-    console.log("signUp :>> ", data);
-  };
-
-  const updateUserInfo = async (token: string) => {
-    const body = {
-      user_name: id.split("@")[0],
-    };
-
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_HOST}/auth/game/me`,
-      {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(body),
-      }
-    );
-
-    if (!response.ok) return alert("Update User Info Failed");
-  };
-
-  const requestLogin = async () => {
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_HOST}/auth/game/login/email`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: `username=${id}&password=${password}`,
-      }
-    );
-
-    if (!response.ok) return alert("Login Failed");
-
-    const data: { access_token: string; refresh_token: string } =
-      await response.json();
-
-    return data;
-  };
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    if (!id || !password) return alert("Please enter your name");
+    if (!id || !password) return alert("Please enter your ID and password");
 
     if (isSignUp) {
-      await requestSignUp();
+      setStatusMessage("Signing Up...");
+      await requestSignUp({ id, password });
     }
 
-    const tokens = await requestLogin();
+    setStatusMessage("Logging In...");
+    const tokens = await requestLogin({ id, password });
 
     if (!tokens) return;
 
@@ -104,8 +44,13 @@ const StartChatPanel = ({ next }: StartChatPanelProps) => {
 
     setAuthInfo({ id: sub, token: access_token });
 
-    await updateUserInfo(access_token);
+    setStatusMessage("Updating User Info...");
+    await updateUserInfo({
+      id,
+      token: access_token,
+    });
 
+    setStatusMessage("Done!");
     next();
   };
 
@@ -148,7 +93,7 @@ const StartChatPanel = ({ next }: StartChatPanelProps) => {
               />
             </div>
             <button type="submit" className="btn btn-primary btn-lg w-auto">
-              Start Chat
+              {statusMessage || "Start Chat"}
             </button>
           </div>
         </form>
