@@ -1,6 +1,7 @@
 "use client";
 
 import { UserInfo } from "@/@types/chat";
+import { requestUserInfo } from "@/api/auth";
 import { useState } from "react";
 
 export interface ChatBannerProps {
@@ -11,26 +12,15 @@ export interface ChatBannerProps {
 const ChatBanner = ({ roomId, users }: ChatBannerProps) => {
   const [tooltip, setTooltip] = useState<Record<string, string>>({});
 
-  const requestUserInfo = async (id: string) => {
-    if (tooltip[id]) return;
+  const getUserInfo = async (userId: string) => {
+    if (tooltip[userId]) return;
 
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_HOST}/auth/game/user`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ id }),
-      }
-    );
-
-    const result = await response.json();
+    const data = await requestUserInfo(userId);
 
     setTooltip((prev) => ({
       ...prev,
-      [id]: `${result.email} /
-        Last Login: ${new Date(result.updated_at).toLocaleString()}`,
+      [userId]: `${data.email} /
+        Last Login: ${new Date(data.updated_at).toLocaleString()}`,
     }));
   };
 
@@ -46,7 +36,7 @@ const ChatBanner = ({ roomId, users }: ChatBannerProps) => {
           >
             <span
               className="badge"
-              onMouseOver={() => requestUserInfo(user_id.toString())}
+              onMouseOver={() => getUserInfo(user_id.toString())}
             >
               {user_name || "Unknown"}
             </span>

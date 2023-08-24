@@ -20,7 +20,7 @@ export const requestSignUp = async ({ id, password }: RequestSignUpParams) => {
     }
   );
 
-  if (!response.ok) return alert("Sign In Failed");
+  if (!response.ok) throw new Error("Sign Up Failed");
 
   const data = await response.json();
 
@@ -46,7 +46,7 @@ export const updateUserInfo = async ({ id, token }: UpdateUserInfoParams) => {
     body: JSON.stringify(body),
   });
 
-  if (!response.ok) return alert("Update User Info Failed");
+  if (!response.ok) throw new Error("Update User Info Failed");
 
   const data = await response.json();
 
@@ -70,10 +70,27 @@ export const requestLogin = async ({ id, password }: RequestLoginParams) => {
     }
   );
 
-  if (!response.ok) return alert("Login Failed");
+  if (!response.ok) throw new Error("Login Failed");
 
   const data: { access_token: string; refresh_token: string } =
     await response.json();
 
   return data;
+};
+
+export const requestUserInfo = async (id: string) => {
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_HOST}/auth/game/user`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ id }),
+    }
+  );
+
+  const result = await response.json();
+
+  return result;
 };
