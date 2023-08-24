@@ -22,9 +22,9 @@ from server.auth.exceptions import (AtLeastOneOwner, UserAlready,
 from server.auth.schemas import (ConsoleUserCreate, ConsoleUserGet,
                                  ConsoleUserUpdate, GamerUserCreateByEmail,
                                  GamerUserLoginByGuest, GamerUserSchema,
-                                 GamerUserUpdate, TokenRefreshRequest,
-                                 TokenSchema, ConsoleUserSchema,
-                                 ConsoleRequest)
+                                 GamerUserUpdate, GamerUserGet,
+                                 TokenRefreshRequest, TokenSchema,
+                                 ConsoleUserSchema, ConsoleRequest)
 
 router = APIRouter(prefix="/auth")
 
@@ -147,6 +147,16 @@ async def login_guest(data: GamerUserLoginByGuest, user_service: UserService = D
     )
     await user_service.update_user(user.id, User(**token.dict(exclude_unset=True)))
     return token
+
+
+@router.post("/game/user",
+             tags=[AuthRouterTag.GAMER],
+             response_model=GamerUserSchema)
+async def get_gamer_user(data: GamerUserGet, user_service: UserService = Depends(get_user_service)):
+    user = await user_service.get_user(data.id)
+    if user is None:
+        raise NotFoundUser
+    return user
 
 
 @router.post('/game/me',
