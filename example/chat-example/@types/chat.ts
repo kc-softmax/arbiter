@@ -69,6 +69,21 @@ export type ChatSocketMessageBase =
   | ChatSocketMessageError
   | ChatSocketMessage;
 
+export interface ChatMessageData {
+  type: "message";
+  data: ChatMessage;
+}
+
+export interface ChatNotificationData {
+  type: "notification";
+  data: {
+    enter: boolean;
+    user: UserInfo;
+  };
+}
+
+export type ChatMessageListData = ChatMessageData | ChatNotificationData;
+
 export interface ChatSendMessage {
   action: typeof ChatActions.MESSAGE;
   data: {
