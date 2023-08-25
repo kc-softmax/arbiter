@@ -1,4 +1,5 @@
 import json
+import asyncio
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect, Query
 from fastapi.templating import Jinja2Templates
 
@@ -11,6 +12,7 @@ from arbiter.api.chat.schemas import (
     ChatSocketUserJoinMessage, UserJoinData, ChatSocketChatMessage,
     ChatSocketUserLeaveMessage, UserLeaveData, ClientChatMessage
 )
+from server.match.match import MatchMaker, BaseMatchTicket
 
 router = APIRouter(prefix="/chat")
 
@@ -20,9 +22,102 @@ chat_room_manager = ChatRoomManager()
 connection_manager = ConnectionManager()
 
 
+async def loop_until_match(ticket: BaseMatchTicket):
+    while not ticket.room_id:
+        await asyncio.sleep(1)
+
+
 @router.get("/")
 async def chat_page(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
+
+
+@router.websocket("/ws/match")
+async def match_room(websocket: WebSocket):
+    await websocket.accept()
+
+    ticket = MatchMaker.create_solo_match_ticket()
+    MatchMaker.assign_ticket_to_pool(ticket)
+
+    # match_task처럼 오랜 시간이 걸리는 작업을 실행되면, 클라이언트에서 새로고침 등으로
+    # 소켓 연결을 끊어도 서버에서 커넥션이 유지된다.
+    # 그것을 방지하기 위한 connection_task를 추가
+    connection_task = asyncio.create_task(websocket.receive())
+    match_task = asyncio.create_task(loop_until_match(ticket))
+    await asyncio.wait(
+        fs=[connection_task, match_task],
+        timeout=60,  # 1분
+        return_when=asyncio.FIRST_COMPLETED
+    )
+
+    if ticket.room_id == None:
+        print("매칭 실패")
+        match_task.cancel()
+        MatchMaker.canceld_ticket(ticket)
+    else:
+        print("매칭 성공")
+        connection_task.cancel()
+        await asyncio.sleep(1)
+
+        room = chat_room_manager.get_room(ticket.room_id)
+        if room is None:
+            room = chat_room_manager.create_room(ticket.room_id)
+        user_id = await connection_manager.connect(websocket, room.room_id, "")
+        # 방 입장
+        room.join(user_id)
+
+        # 새로 입장한 유저에게 기존 채팅방 데이터를 보내준다.
+        await connection_manager.send_personal_message(
+            websocket,
+            ChatSocketRoomJoinMessage(
+                data=RoomJoinData(
+                    room_id=room.room_id,
+                    messages=room.message_history,
+                    users=room.current_users
+                )
+            )
+        )
+        # 기존에 있었던 유저들에게 새 유저 입장을 알려준다.
+        await connection_manager.send_room_broadcast(
+            room.room_id,
+            ChatSocketUserJoinMessage(
+                data=UserJoinData(
+                    user=user_id
+                )
+            )
+        )
+        # 소켓 메시지 처리
+        try:
+            while True:
+                # 채팅 클라이언트로부터 채팅 메시지를 받음
+                data = await websocket.receive_text()
+                # 받은 채팅 메시지를 코어 로직으로 돌림, 브로드캐스팅할 메시지 구조로 구성
+                chat_message = await room.handle_chat_message(
+                    user_id,
+                    ClientChatMessage.parse_obj(json.loads(data))
+                )
+                # 유저들에게 브로드캐스팅
+                await connection_manager.send_room_broadcast(
+                    room.room_id,
+                    ChatSocketChatMessage(
+                        data=chat_message
+                    )
+                )
+        # 연결이 끊김 -> 유저가 채팅을 나갔다.
+        except WebSocketDisconnect:
+            connection_manager.disconnect(room.room_id, websocket)
+            room.leave(user_id)
+            if room.is_empty():
+                chat_room_manager.remove_room(room)
+            else:
+                await connection_manager.send_room_broadcast(
+                    room.room_id,
+                    ChatSocketUserLeaveMessage(
+                        data=UserLeaveData(
+                            user=user_id
+                        )
+                    )
+                )
 
 
 @router.websocket("/ws")

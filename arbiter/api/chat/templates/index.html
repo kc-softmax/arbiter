@@ -27,16 +27,19 @@
         // join on click
         $("#ask a").click(function () {
           join($("#ask input").val());
-          $("#ask").hide();
-          $("#channel").show();
-          $("input#message").focus();
+          // $("#ask").hide();
+          // $("#channel").show();
+          // $("input#message").focus();
         });
 
         function join(name) {
           // var host = window.location.host.split(":")[0];
-          var ws = new WebSocket(
-            `ws://192.168.0.66:8000/chat/ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2OTE0NzQxMDksInN1YiI6ImhvbmdAa2MuY29tIiwibG9naW5fdHlwZSI6ImVtYWlsIn0.tjOMAnNUG_oKf9JP4q93wI7mmOkHMF-Dn8KQtZM0mQo`
-          );
+
+          let ws = new WebSocket(`ws://127.0.0.1:8000/chat/ws/match`);
+
+          // var ws = new WebSocket(
+          //   `ws://192.168.0.66:8000/chat/ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2OTI3NzM0MzMsInN1YiI6ImhvbmdAa2MuY29tIiwibG9naW5fdHlwZSI6ImVtYWlsIn0.9vTi9ZpcQiLRq-PWITqVmjVRd4aUI-WAavqvgNMDvE0`
+          // );
           var container = $("div#msgs");
           ws.onopen = function () {
             // ws.send(name);
@@ -57,6 +60,9 @@
 
             // custom
             if (action == ROOM_JOIN) {
+              $("#ask").hide();
+              $("#channel").show();
+              $("input#message").focus();
               $("#room_id").text(data["room_id"]);
 
               // 대화 불러오기
