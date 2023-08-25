@@ -17,6 +17,11 @@ class ClientChatData(BaseModel):
     message: str = ""
 
 
+class ErrorData(BaseModel):
+    code: int
+    reason: str
+
+
 class UserData(BaseModel):
     user_id: int
     user_name: str
@@ -70,6 +75,10 @@ class ChatSocketUserLeaveMessage(ChatSocketBaseMessage[UserLeaveData]):
 
 class ChatSocketChatMessage(ChatSocketBaseMessage[ChatData]):
     action = ChatEvent.MESSAGE
+
+
+class ChatSocketErrorMessage(ChatSocketBaseMessage[ErrorData]):
+    action = ChatEvent.ERROR
 
 
 class ClientChatMessage(ChatSocketBaseMessage[ClientChatData]):

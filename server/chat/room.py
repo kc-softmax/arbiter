@@ -38,6 +38,10 @@ class ChatRoom:
     def is_empty(self) -> bool:
         return len(self.current_users) == 0
 
+    def is_duplicate(self, user_id: str) -> bool:
+        # token schema sub, userdata user_id랑 자료형이 다름
+        return int(user_id) in [user.user_id for user in self.current_users]
+
     def join(self, user_data: UserData):
         self.current_users.append(user_data)
         # 채팅방에 접속한 최대 인원 수
@@ -122,7 +126,7 @@ class ChatRoomManager:
     def remove_room(self, room: ChatRoom):
         self.rooms.remove(room)
 
-    def get_by_room_id(self, room_id: str):
+    def get_by_room_id(self, room_id: str) -> ChatRoom | None:
         for room in self.rooms:
             if room.room_id == room_id:
                 if room.is_available():

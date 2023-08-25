@@ -12,7 +12,7 @@ from server.chat.schemas import (
     ChatEvent, ChatSocketBaseMessage, ChatSocketRoomJoinMessage, RoomJoinData,
     ChatSocketUserJoinMessage, UserJoinData, ChatSocketChatMessage,
     ChatSocketUserLeaveMessage, UserLeaveData, ClientChatMessage,
-    UserData
+    UserData, ChatSocketErrorMessage, ErrorData
 )
 from server.database import make_async_session
 
@@ -32,11 +32,13 @@ async def chat_page(request: Request):
 
 @router.websocket("/ws")
 async def chatroom_ws(websocket: WebSocket, token: str = Query()):
+    # 방 입장
     # TODO 매칭 메이킹이 만들어지면 room id는 query로 받도록 한다.
-    # 기존 로직은 default 개념
-    room = chat_room_manager.find_available_room()
+    # 로비 개념, 로비에서 중복입장은 우선 허용, 논의를 더 해보자
+    room = chat_room_manager.get_by_room_id('DEFAULT')
     if room is None:
-        room = chat_room_manager.create_room()
+        room = chat_room_manager.create_room('DEFAULT')
+        room.max_num = 100
 
     # 소켓 연결 및 토큰을 검증하여 user_id를 얻는다.
     try:
@@ -49,14 +51,13 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
             user_id=user.id,
             user_name=user.user_name
         )
-
     except InvalidToken:
         await websocket.close(
             AuthorizationFailedClose.CODE,
             AuthorizationFailedClose.REASON
         )
         return
-    # 방 입장
+
     room.join(user_data)
     # 새로 입장한 유저에게 기존 채팅방 데이터를 보내준다.
     # 중복 로직은 우선 두고, 나중에 리팩토링
@@ -71,6 +72,7 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
             )
         )
     )
+
     # 기존에 있었던 유저들에게 새 유저 입장을 알려준다.
     await connection_manager.send_room_broadcast(
         room.room_id,
@@ -87,6 +89,29 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
             json_data = ChatSocketBaseMessage.parse_obj(json.loads(data))
 
             if json_data.action == ChatEvent.ROOM_CHANGE:
+                receive_room_id = json_data.data['room_id']
+                try_room = chat_room_manager.get_by_room_id(receive_room_id)
+                # 없을 경우 중단, 알림용 메세지 스키마 필요
+
+                if try_room:
+                    # 이미 입장한 방이면 중단
+                    if try_room.is_duplicate(user_id):
+                        await connection_manager.send_personal_message(
+                            websocket,
+                            ChatSocketErrorMessage(
+                                data=ErrorData(
+                                    # 에러 코드는 다시 정의 필요
+                                    code=3500,
+                                    reason="Already joined room"
+                                )
+                            )
+                        )
+                        continue
+                elif not try_room:
+                    # raise Exception("존재하지 않는 방입니다.")
+                    # 우선 새로운 방으로 만들어서 들어가도록 한다.
+                    try_room = chat_room_manager.create_room(receive_room_id)
+
                 # 접속되어 있는 방 떠나기
                 # 중복 로직은 우선 두고, 나중에 리팩토링
                 connection_manager.disconnect(room.room_id, websocket)
@@ -102,17 +127,9 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
                             )
                         )
                     )
-                # 방으로 들어가기
-                receive_room_id = json_data.data['room_id']
-                room = chat_room_manager.get_by_room_id(receive_room_id)
 
-                # 없을 경우 중단, 알림용 메세지 스키마 필요
-                if room is None:
-                    # raise Exception("존재하지 않는 방입니다.")
-                    # 우선 새로운 방으로 만들어서 들어가도록 한다.
-                    # 생성한 방도 디폴트방 처럼 들어가져 구분 필요
-                    room = chat_room_manager.create_room(receive_room_id)
-
+                # 새로운 방 입장
+                room = try_room
                 # 이미 accept이 되서 connection_manager 만 연결
                 connection_manager.active_connections[receive_room_id].append(websocket)
                 room.join(user_data)
