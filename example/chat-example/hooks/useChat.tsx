@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ChatError,
   ChatMessage,
   ChatSendMessage,
   ChatSocketMessageBase,
@@ -15,6 +16,7 @@ export const useChat = (token: string) => {
   const [roomId, setRoomId] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [users, setUsers] = useState<UserInfo[]>([]);
+  const [error, setError] = useState<ChatError | null>(null);
   // 가장 최근의 이벤트 메시지
   const [eventMessage, setEventMessage] = useState<ChatSocketMessageBase>();
 
@@ -73,6 +75,10 @@ export const useChat = (token: string) => {
         setMessages((prev) => [...prev, data]);
       }
 
+      if (action === ChatActions.ERROR) {
+        setError(data);
+      }
+
       setEventMessage(chatSocketMessage);
     };
   };
@@ -129,6 +135,7 @@ export const useChat = (token: string) => {
       messages,
       users,
     },
+    error,
     sendMessage,
     changeRoom,
     eventMessage,
