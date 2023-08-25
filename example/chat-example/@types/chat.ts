@@ -22,6 +22,7 @@ export interface RoomJoinData {
   messages: ChatMessage[];
   users: UserInfo[];
   number_of_users: number;
+  notice: string;
 }
 
 export interface UserJoinData {
@@ -57,6 +58,13 @@ export interface ChatSocketMessage {
   data: ChatMessage;
 }
 
+export interface ChatSocketMessageNotice {
+  action: typeof ChatActions.NOTICE;
+  data: {
+    message: string;
+  };
+}
+
 export interface ChatSocketMessageError {
   action: typeof ChatActions.ERROR;
   data: ChatError;
@@ -67,7 +75,8 @@ export type ChatSocketMessageBase =
   | ChatSocketMessageUserJoin
   | ChatSocketMessageUserLeave
   | ChatSocketMessageError
-  | ChatSocketMessage;
+  | ChatSocketMessage
+  | ChatSocketMessageNotice;
 
 export interface ChatMessageData {
   type: "message";

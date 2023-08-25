@@ -6,6 +6,7 @@ export const ChatActions = {
   MESSAGE: "message",
   CONTROL: "control",
   ROOM_CHANGE: "room_change",
+  NOTICE: "notice",
 } as const;
 
 export type ChatActionType = (typeof ChatActions)[keyof typeof ChatActions];
