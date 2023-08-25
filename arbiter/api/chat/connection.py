@@ -1,3 +1,4 @@
+import uuid
 from fastapi import WebSocket
 from collections import defaultdict
 from pydantic import BaseModel
@@ -13,10 +14,12 @@ class ConnectionManager:
 
     async def connect(self, websocket: WebSocket, room_id: str, token: str) -> str:
         # 유효하지 않은 토큰일지라도 그 에러를 응답으로 보내주기 위해서는 먼저 accept을 해줘야한다.
-        await websocket.accept()
-        token_data = verify_token(token)
+        # await websocket.accept()
         self.active_connections[room_id].append(websocket)
-        return token_data.sub
+        return str(uuid.uuid4())
+        # token_data = verify_token(token)
+        # self.active_connections[room_id].append(websocket)
+        # return token_data.sub
 
     def disconnect(self, room_id: str, websocket: WebSocket):
         self.active_connections[room_id].remove(websocket)

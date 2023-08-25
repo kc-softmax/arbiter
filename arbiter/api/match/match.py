@@ -1,24 +1,28 @@
-from dataclasses import dataclass
-from fastapi import WebSocket
-from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from enum import IntEnum
+import asyncio
+import uuid
 
 
 # ticket
 # 매칭을 위한 정보가 있는 매칭 객체
 @dataclass
 class BaseMatchTicket:
+    ticket_id: str
+    room_id: str
     mmr: int
 
 
 @dataclass
 class SoloMatchTicket(BaseMatchTicket):
-    connection: WebSocket
+    pass
+    # connection: WebSocket
 
 
 @dataclass
 class GroupMatchTicket(BaseMatchTicket):
-    connections: list[WebSocket]
+    pass
+    # connections: list[WebSocket]
 
 
 # match pool
@@ -27,7 +31,7 @@ class GroupMatchTicket(BaseMatchTicket):
 class MatchPool():
     min_mmr: int
     max_mmr: int
-    ticket_pool: list[BaseMatchTicket] = []
+    ticket_pool: list[BaseMatchTicket] = field(default_factory=list)
 
     def is_included_mmr(self, mmr: int) -> bool:
         return self.min_mmr <= mmr <= self.max_mmr
@@ -69,10 +73,10 @@ class MatchMaker:
 
     # 티켓 생성
     @staticmethod
-    def create_solo_match_ticket(connection: WebSocket) -> SoloMatchTicket:
-        # mmr 계산
+    def create_solo_match_ticket() -> SoloMatchTicket:
+        # mmr 계산 또는 db에서 가져옴.
         # 지금은 임의의 값 넣어줌
-        return SoloMatchTicket(100, connection)
+        return SoloMatchTicket(ticket_id=str(uuid.uuid4()), mmr=100, room_id=None)
 
     # 티켓이 어떤 매칭풀에 해당하는지 검사
     # 지금은 그냥 mmr 범위 확인
@@ -102,7 +106,17 @@ class MatchMaker:
     # 각각 매칭풀을 병렬로 작업해야하나?
     # 서버가 꺼졌을 때 처리?
     @classmethod
-    def find_match(cls):
-        while True:
-            if len(cls.low_mmr_pool.ticket_pool) == 2:
-                pass
+    async def find_match(cls):
+        try:
+            while True:
+                print("matching..")
+                await asyncio.sleep(1)
+                if len(cls.low_mmr_pool.ticket_pool) >= 2:
+                    ticket_1 = cls.low_mmr_pool.ticket_pool.pop()
+                    ticket_2 = cls.low_mmr_pool.ticket_pool.pop()
+
+                    matched_room_id = str(uuid.uuid4())
+                    ticket_1.room_id = matched_room_id
+                    ticket_2.room_id = matched_room_id
+        except Exception as e:
+            print(e)
