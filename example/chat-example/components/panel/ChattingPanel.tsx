@@ -73,7 +73,7 @@ const ChattingPanel = () => {
             className="flex-1 w-full overflow-scroll flex flex-col gap-4 px-4"
           >
             <ChatBanner roomId={roomId} users={users} />
-            <ChatList messages={messages} eventMessage={eventMessage} />
+            <ChatList messages={messages} />
           </div>
           <div className="w-full">
             <ChatInputForm sendChat={sendChat} />

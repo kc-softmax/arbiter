@@ -2,7 +2,7 @@
 
 import {
   ChatError,
-  ChatMessage,
+  ChatMessageListData,
   ChatSendMessage,
   ChatSocketMessageBase,
   UserInfo,
@@ -14,7 +14,7 @@ const HostAddress = process.env.NEXT_PUBLIC_HOST;
 
 export const useChat = (token: string) => {
   const [roomId, setRoomId] = useState("");
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessageListData[]>([]);
   const [users, setUsers] = useState<UserInfo[]>([]);
   const [error, setError] = useState<ChatError | null>(null);
   // 가장 최근의 이벤트 메시지
@@ -49,37 +49,78 @@ export const useChat = (token: string) => {
         chatSocketMessage
       );
 
-      if (action === ChatActions.ROOM_JOIN) {
-        const { room_id, messages, users } = data;
-
-        setRoomId(room_id);
-        setMessages(messages);
-        setUsers(users);
-      }
-
-      if (action === ChatActions.USER_JOIN) {
-        setUsers((prev) =>
-          prev.some((prevUser) => prevUser.user_id === data.user.user_id)
-            ? prev
-            : [...prev, data.user]
-        );
-      }
-
-      if (action === ChatActions.USER_LEAVE) {
-        setUsers((prev) =>
-          prev.filter((prevUser) => prevUser.user_id !== data.user.user_id)
-        );
-      }
-
-      if (action === ChatActions.MESSAGE || action === ChatActions.CONTROL) {
-        setMessages((prev) => [...prev, data]);
-      }
-
-      if (action === ChatActions.ERROR) {
-        setError(data);
-      }
-
       setEventMessage(chatSocketMessage);
+
+      switch (action) {
+        case ChatActions.ROOM_JOIN: {
+          const { room_id, messages, users } = data;
+
+          setRoomId(room_id);
+          setUsers(users);
+          setMessages(
+            messages.map((message) => ({
+              type: "message",
+              data: message,
+            }))
+          );
+          break;
+        }
+        case ChatActions.USER_JOIN: {
+          setUsers((prev) =>
+            prev.some((prevUser) => prevUser.user_id === data.user.user_id)
+              ? prev
+              : [...prev, data.user]
+          );
+
+          setMessages((prev) => [
+            ...prev,
+            {
+              type: "notification",
+              data: {
+                enter: true,
+                user: data.user,
+              },
+            },
+          ]);
+          break;
+        }
+        case ChatActions.USER_LEAVE: {
+          setUsers((prev) =>
+            prev.filter((prevUser) => prevUser.user_id !== data.user.user_id)
+          );
+
+          setMessages((prev) => [
+            ...prev,
+            {
+              type: "notification",
+              data: {
+                enter: false,
+                user: data.user,
+              },
+            },
+          ]);
+          break;
+        }
+        case ChatActions.MESSAGE:
+        case ChatActions.CONTROL: {
+          setMessages((prev) => [
+            ...prev,
+            {
+              type: "message",
+              data,
+            },
+          ]);
+          break;
+        }
+        case ChatActions.ERROR: {
+          setError(data);
+          break;
+        }
+        default: {
+          console.log(`Unhandled action: ${action}`);
+          break;
+        }
+      }
     };
   };
 

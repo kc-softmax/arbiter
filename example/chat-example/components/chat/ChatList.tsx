@@ -1,31 +1,38 @@
-import { ChatMessage, ChatSocketMessageBase } from "@/@types/chat";
-import { ChatActions } from "@/const/actions";
+"use client";
+
+import { ChatMessageListData } from "@/@types/chat";
 import ChatBubble from "./ChatBubble";
 import ChatNotification from "./ChatNotification";
 
 interface ChatListProps {
-  messages: ChatMessage[];
-  eventMessage?: ChatSocketMessageBase;
+  messages: ChatMessageListData[];
 }
 
-const ChatList = ({ messages, eventMessage }: ChatListProps) => {
+const ChatList = ({ messages }: ChatListProps) => {
   return (
     <ul className="flex flex-col gap-2 flex-1">
-      {messages.map((message) => (
-        <li key={message.message_id}>
-          <ChatBubble message={message} />
-        </li>
-      ))}
+      {messages.map((message, index) => {
+        if (message.type === "message") {
+          return (
+            <li key={message.data.message_id}>
+              <ChatBubble message={message.data} />
+            </li>
+          );
+        }
 
-      <li className="sticky bottom-0">
-        {eventMessage?.action === ChatActions.USER_JOIN ||
-        eventMessage?.action === ChatActions.USER_LEAVE ? (
-          <ChatNotification
-            username={eventMessage.data.user.user_name}
-            enter={eventMessage.action === ChatActions.USER_JOIN}
-          />
-        ) : null}
-      </li>
+        if (message.type === "notification") {
+          return (
+            <li
+              key={`${message.data.user.user_name}-${message.data.enter}-${index}`}
+            >
+              <ChatNotification
+                username={message.data.user.user_name}
+                enter={message.data.enter}
+              />
+            </li>
+          );
+        }
+      })}
     </ul>
   );
 };
