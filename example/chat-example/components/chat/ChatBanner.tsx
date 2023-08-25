@@ -7,9 +7,10 @@ import { useState } from "react";
 export interface ChatBannerProps {
   roomId: string;
   users: UserInfo[];
+  notice: string | null;
 }
 
-const ChatBanner = ({ roomId, users }: ChatBannerProps) => {
+const ChatBanner = ({ roomId, users, notice }: ChatBannerProps) => {
   const [tooltip, setTooltip] = useState<Record<string, string>>({});
 
   const getUserInfo = async (userId: string) => {
@@ -25,11 +26,11 @@ const ChatBanner = ({ roomId, users }: ChatBannerProps) => {
   };
 
   return (
-    <div className="text-center sticky top-0 z-10">
+    <div className="text-center sticky top-0 z-10 space-y-2">
       <p className="font-semibold">RoomID: {roomId}</p>
-      <div>
+      <ul>
         {users.map(({ user_id, user_name }, index) => (
-          <p
+          <li
             key={`${user_id}-${user_name}(${index})`}
             className="tooltip tooltip-bottom"
             data-tip={tooltip[user_id]}
@@ -40,9 +41,10 @@ const ChatBanner = ({ roomId, users }: ChatBannerProps) => {
             >
               {user_name || "Unknown"}
             </span>
-          </p>
+          </li>
         ))}
-      </div>
+      </ul>
+      {notice ? <div className="alert">Notice: {notice}</div> : null}
     </div>
   );
 };

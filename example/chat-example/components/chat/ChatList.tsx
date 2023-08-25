@@ -6,16 +6,30 @@ import ChatNotification from "./ChatNotification";
 
 interface ChatListProps {
   messages: ChatMessageListData[];
+  actions?: {
+    onClickNotice?: ({
+      userId,
+      message,
+    }: {
+      userId: string;
+      message: string;
+    }) => void;
+  };
 }
 
-const ChatList = ({ messages }: ChatListProps) => {
+const ChatList = ({ messages, actions }: ChatListProps) => {
   return (
     <ul className="flex flex-col gap-2 flex-1">
       {messages.map((message, index) => {
         if (message.type === "message") {
           return (
             <li key={message.data.message_id}>
-              <ChatBubble message={message.data} />
+              <ChatBubble
+                message={message.data}
+                action={{
+                  onClickNotice: actions?.onClickNotice,
+                }}
+              />
             </li>
           );
         }

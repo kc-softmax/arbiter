@@ -13,8 +13,8 @@ import ChatTabs from "../chat/ChatTabs";
 
 const ChattingPanel = () => {
   const { id, token } = useAtomValue(authAtom);
-  const { data, error, sendMessage, eventMessage, changeRoom } = useChat(token);
-  const { roomId, messages, users } = data;
+  const { data, error, sendMessage, changeRoom, sendNotice } = useChat(token);
+  const { roomId, messages, users, notice } = data;
 
   const chatPanelRef = useRef<HTMLDivElement>(null);
 
@@ -55,6 +55,19 @@ const ChattingPanel = () => {
     });
   };
 
+  const onClickNotice = ({
+    userId,
+    message,
+  }: {
+    userId: string;
+    message: string;
+  }) => {
+    sendNotice({
+      user_id: userId,
+      message,
+    });
+  };
+
   useEffect(() => {
     scrollToBottom(chatPanelRef);
   }, [messages]);
@@ -72,8 +85,13 @@ const ChattingPanel = () => {
             ref={chatPanelRef}
             className="flex-1 w-full overflow-scroll flex flex-col gap-4 px-4"
           >
-            <ChatBanner roomId={roomId} users={users} />
-            <ChatList messages={messages} />
+            <ChatBanner roomId={roomId} users={users} notice={notice} />
+            <ChatList
+              messages={messages}
+              actions={{
+                onClickNotice,
+              }}
+            />
           </div>
           <div className="w-full">
             <ChatInputForm sendChat={sendChat} />

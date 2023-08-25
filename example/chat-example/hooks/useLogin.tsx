@@ -68,6 +68,7 @@ export const useLogin = ({
         token: access_token,
       });
     } catch (error) {
+      setStatusMessage("");
       if (error instanceof Error) {
         onError?.(error);
       }

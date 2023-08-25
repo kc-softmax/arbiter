@@ -14,6 +14,7 @@ const HostAddress = process.env.NEXT_PUBLIC_HOST;
 
 export const useChat = (token: string) => {
   const [roomId, setRoomId] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessageListData[]>([]);
   const [users, setUsers] = useState<UserInfo[]>([]);
   const [error, setError] = useState<ChatError | null>(null);
@@ -53,10 +54,11 @@ export const useChat = (token: string) => {
 
       switch (action) {
         case ChatActions.ROOM_JOIN: {
-          const { room_id, messages, users } = data;
+          const { room_id, messages, users, notice } = data;
 
           setRoomId(room_id);
           setUsers(users);
+          setNotice(notice);
           setMessages(
             messages.map((message) => ({
               type: "message",
@@ -112,12 +114,19 @@ export const useChat = (token: string) => {
           ]);
           break;
         }
+        case ChatActions.NOTICE: {
+          setNotice(data.message);
+          break;
+        }
         case ChatActions.ERROR: {
           setError(data);
           break;
         }
         default: {
-          console.log(`Unhandled action: ${action}`);
+          setError({
+            code: 0,
+            reason: `Unhandled action: ${action}`,
+          });
           break;
         }
       }
@@ -154,6 +163,15 @@ export const useChat = (token: string) => {
     });
   };
 
+  const sendNotice = ({ message, user_id }: ChatSendMessage["data"]) => {
+    // setNotice(message);
+    // TODO: Notice 보내기 기능 구현
+    sendSocketBase(ChatActions.NOTICE, {
+      message,
+      user_id,
+    });
+  };
+
   useEffect(() => {
     if (!HostAddress) {
       throw new Error("Host Address is not defined");
@@ -176,12 +194,14 @@ export const useChat = (token: string) => {
   return {
     data: {
       roomId,
+      notice,
       messages,
       users,
     },
     error,
+    eventMessage,
     sendMessage,
     changeRoom,
-    eventMessage,
+    sendNotice,
   };
 };
