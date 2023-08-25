@@ -10,7 +10,7 @@ import {
 import { ChatActionType, ChatActions } from "@/const/actions";
 import { useEffect, useRef, useState } from "react";
 
-const wsHost = process.env.NEXT_PUBLIC_CHAT_WEBSOCKET_URL;
+const HostAddress = process.env.NEXT_PUBLIC_HOST;
 
 export const useChat = (token: string) => {
   const [roomId, setRoomId] = useState("");
@@ -114,12 +114,15 @@ export const useChat = (token: string) => {
   };
 
   useEffect(() => {
-    if (!wsHost) {
-      throw new Error("NEXT_PUBLIC_CHAT_WEBSOCKET_URL is not defined");
+    if (!HostAddress) {
+      throw new Error("Host Address is not defined");
     }
 
     if (!wsRef.current) {
-      wsRef.current = new WebSocket(`${wsHost}?token=${token}`);
+      const websocketAddress = HostAddress.replace(/^https?/, "ws");
+      wsRef.current = new WebSocket(
+        `${websocketAddress}/chat/ws?token=${token}`
+      );
     }
 
     join();
