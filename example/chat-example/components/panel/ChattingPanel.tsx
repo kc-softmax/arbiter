@@ -13,7 +13,7 @@ import ChatTabs from "../chat/ChatTabs";
 
 const ChattingPanel = () => {
   const { id, token } = useAtomValue(authAtom);
-  const { data, sendMessage, eventMessage, changeRoom } = useChat(token);
+  const { data, error, sendMessage, eventMessage, changeRoom } = useChat(token);
   const { roomId, messages, users } = data;
 
   const chatPanelRef = useRef<HTMLDivElement>(null);
@@ -35,12 +35,13 @@ const ChattingPanel = () => {
         nextRoomId = "party";
         break;
       case ChatTabList.ALL:
-        nextRoomId = crypto.randomUUID();
+        nextRoomId = "DEFAULT";
         break;
       default:
         break;
     }
 
+    // 이전 방과 같은 방이면 무시
     if (nextRoomId === roomId) return;
 
     changeRoom(nextRoomId);
@@ -57,6 +58,10 @@ const ChattingPanel = () => {
   useEffect(() => {
     scrollToBottom(chatPanelRef);
   }, [messages]);
+
+  if (error) {
+    alert(`${error.code}: ${error.reason}`);
+  }
 
   return (
     <section>

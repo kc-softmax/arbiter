@@ -32,6 +32,11 @@ export interface UserLeaveData {
   user: UserInfo;
 }
 
+export interface ChatError {
+  code: number;
+  reason: string;
+}
+
 export interface ChatSocketMessageRoomJoin {
   action: typeof ChatActions.ROOM_JOIN;
   data: RoomJoinData;
@@ -52,10 +57,16 @@ export interface ChatSocketMessage {
   data: ChatMessage;
 }
 
+export interface ChatSocketMessageError {
+  action: typeof ChatActions.ERROR;
+  data: ChatError;
+}
+
 export type ChatSocketMessageBase =
   | ChatSocketMessageRoomJoin
   | ChatSocketMessageUserJoin
   | ChatSocketMessageUserLeave
+  | ChatSocketMessageError
   | ChatSocketMessage;
 
 export interface ChatSendMessage {
