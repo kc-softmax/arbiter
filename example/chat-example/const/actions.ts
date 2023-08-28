@@ -12,9 +12,8 @@ export const ChatActions = {
 export type ChatActionType = (typeof ChatActions)[keyof typeof ChatActions];
 
 export const ChatTabList = {
-  ALL: "all",
+  DEFAULT: "default",
   PARTY: "party",
-  CUSTOM: "custom",
 } as const;
 
 export type ChatTabType = (typeof ChatTabList)[keyof typeof ChatTabList];

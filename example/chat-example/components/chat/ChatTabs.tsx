@@ -6,7 +6,7 @@ interface ChatTabsProps {
 }
 
 const ChatTabs = ({ onChange }: ChatTabsProps) => {
-  const [activeTab, setActiveTab] = useState<ChatTabType>("all");
+  const [activeTab, setActiveTab] = useState<ChatTabType>("default");
 
   const onClickTab = (tab: ChatTabType) => {
     onChange(tab);

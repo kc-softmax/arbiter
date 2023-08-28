@@ -2,14 +2,15 @@
 
 import { ChatTabList, ChatTabType } from "@/const/actions";
 import { useChat } from "@/hooks/useChat";
-import { scrollToBottom } from "@/utils/dom-utils";
 import { authAtom } from "@/store/authAtom";
+import { scrollToBottom } from "@/utils/dom-utils";
 import { useAtomValue } from "jotai";
 import { useEffect, useRef } from "react";
 import ChatBanner from "../chat/ChatBanner";
 import ChatInputForm from "../chat/ChatInputForm";
 import ChatList from "../chat/ChatList";
 import ChatTabs from "../chat/ChatTabs";
+import ChatLobby from "../chat/ChatLobby";
 
 const ChattingPanel = () => {
   const { id, token } = useAtomValue(authAtom);
@@ -22,20 +23,11 @@ const ChattingPanel = () => {
     let nextRoomId = "";
 
     switch (tab) {
-      case ChatTabList.CUSTOM:
-        const answer = prompt("Type Room ID");
-
-        if (!answer) {
-          return;
-        }
-
-        nextRoomId = answer;
+      case ChatTabList.DEFAULT:
+        nextRoomId = "DEFAULT";
         break;
       case ChatTabList.PARTY:
-        nextRoomId = "party";
-        break;
-      case ChatTabList.ALL:
-        nextRoomId = "DEFAULT";
+        nextRoomId = "PARTY";
         break;
       default:
         break;
@@ -78,9 +70,11 @@ const ChattingPanel = () => {
 
   return (
     <section>
-      <div className="p-4 h-screen">
-        <div className="flex flex-col gap-4 justify-center items-center h-full rounded-lg border-2 max-w-4xl mx-auto p-4">
-          <ChatTabs onChange={onChangeTabs} />
+      <div className="p-4 h-screen flex flex-row justify-center">
+        <div className="flex flex-col gap-4 justify-center items-center h-full rounded-s-lg border-2 max-w-4xl p-4 w-1/3">
+          <div>
+            <ChatTabs onChange={onChangeTabs} />
+          </div>
           <div
             ref={chatPanelRef}
             className="flex-1 w-full overflow-scroll flex flex-col gap-4 px-4"
@@ -96,6 +90,9 @@ const ChattingPanel = () => {
           <div className="w-full">
             <ChatInputForm sendChat={sendChat} />
           </div>
+        </div>
+        <div className="flex flex-col gap-4 items-center h-full rounded-e-lg border-2 max-w-4xl border-l-0">
+          <ChatLobby changeRoom={changeRoom} />
         </div>
       </div>
     </section>
