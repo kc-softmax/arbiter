@@ -10,10 +10,3 @@ export const ChatActions = {
 } as const;
 
 export type ChatActionType = (typeof ChatActions)[keyof typeof ChatActions];
-
-export const ChatTabList = {
-  DEFAULT: "default",
-  PARTY: "party",
-} as const;
-
-export type ChatTabType = (typeof ChatTabList)[keyof typeof ChatTabList];

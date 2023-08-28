@@ -1,6 +1,5 @@
 "use client";
 
-import { ChatTabList, ChatTabType } from "@/const/actions";
 import { useChat } from "@/hooks/useChat";
 import { authAtom } from "@/store/authAtom";
 import { scrollToBottom } from "@/utils/dom-utils";
@@ -9,7 +8,6 @@ import { useEffect, useRef } from "react";
 import ChatBanner from "../chat/ChatBanner";
 import ChatInputForm from "../chat/ChatInputForm";
 import ChatList from "../chat/ChatList";
-import ChatTabs from "../chat/ChatTabs";
 import ChatLobby from "../chat/ChatLobby";
 
 const ChattingPanel = () => {
@@ -18,26 +16,6 @@ const ChattingPanel = () => {
   const { roomId, messages, users, notice } = data;
 
   const chatPanelRef = useRef<HTMLDivElement>(null);
-
-  const onChangeTabs = (tab: ChatTabType) => {
-    let nextRoomId = "";
-
-    switch (tab) {
-      case ChatTabList.DEFAULT:
-        nextRoomId = "DEFAULT";
-        break;
-      case ChatTabList.PARTY:
-        nextRoomId = "PARTY";
-        break;
-      default:
-        break;
-    }
-
-    // 이전 방과 같은 방이면 무시
-    if (nextRoomId === roomId) return;
-
-    changeRoom(nextRoomId);
-  };
 
   const sendChat = (message: string) => {
     console.log(id, message);
@@ -72,9 +50,6 @@ const ChattingPanel = () => {
     <section>
       <div className="p-4 h-screen flex flex-row justify-center">
         <div className="flex flex-col gap-4 justify-center items-center h-full rounded-s-lg border-2 max-w-4xl p-4 w-[1024px]">
-          <div>
-            <ChatTabs onChange={onChangeTabs} />
-          </div>
           <div
             ref={chatPanelRef}
             className="flex-1 w-full overflow-scroll flex flex-col gap-4 px-4"
