@@ -40,12 +40,15 @@ const ChatLobby = ({ changeRoom }: ChatLobbyProps) => {
   return (
     <section className="h-full">
       <div className="p-4 overflow-scroll h-full space-y-4">
-        <div>
+        <div className="space-y-2">
           <button
             className="btn btn-primary btn-lg btn-block"
             onClick={createRoom}
           >
             Create Room
+          </button>
+          <button className="btn btn-secondary btn-lg btn-block">
+            Match Start
           </button>
         </div>
         <div className="divider" />
