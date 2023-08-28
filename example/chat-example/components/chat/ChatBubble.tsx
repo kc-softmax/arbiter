@@ -1,6 +1,7 @@
 import { ChatMessage } from "@/@types/chat";
 import { authAtom } from "@/store/authAtom";
 import { useAtomValue } from "jotai";
+import ChatLinkPreview from "./ChatLinkPreview";
 
 interface ChatBubbleProps {
   message: ChatMessage;
@@ -68,6 +69,7 @@ const ChatBubble = ({ message, action }: ChatBubbleProps) => {
       <time className="chat-footer opacity-50">
         {new Date(time).toLocaleString()}
       </time>
+      <ChatLinkPreview messageText={messageText} />
     </div>
   );
 };
