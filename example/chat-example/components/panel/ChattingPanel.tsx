@@ -71,7 +71,7 @@ const ChattingPanel = () => {
   return (
     <section>
       <div className="p-4 h-screen flex flex-row justify-center">
-        <div className="flex flex-col gap-4 justify-center items-center h-full rounded-s-lg border-2 max-w-4xl p-4 w-1/3">
+        <div className="flex flex-col gap-4 justify-center items-center h-full rounded-s-lg border-2 max-w-4xl p-4 w-[1024px]">
           <div>
             <ChatTabs onChange={onChangeTabs} />
           </div>
