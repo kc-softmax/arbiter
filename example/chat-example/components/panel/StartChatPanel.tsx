@@ -6,7 +6,7 @@ import { useSetAtom } from "jotai";
 import { useState } from "react";
 
 interface StartChatPanelProps {
-  next: () => void;
+  next?: () => void;
 }
 
 const StartChatPanel = ({ next }: StartChatPanelProps) => {
@@ -20,7 +20,7 @@ const StartChatPanel = ({ next }: StartChatPanelProps) => {
     },
     onSuccess: ({ id, token }) => {
       setAuthInfo({ id, token });
-      next();
+      next?.();
     },
     onError: (error) => {
       alert(error.message);

@@ -1,9 +1,9 @@
 "use client";
 
+import LoadingIndicator from "@/app/loading";
 import { usePanel } from "@/hooks/usePanel";
 import ChattingPanel from "./ChattingPanel";
 import StartChatPanel from "./StartChatPanel";
-import LoadingIndicator from "@/app/loading";
 
 const PanelController = () => {
   const { PanelStep, setActiveStep } = usePanel([
@@ -22,8 +22,8 @@ const PanelController = () => {
 
   return (
     <div>
-      <PanelStep name="startChat">
-        <StartChatPanel next={startChat} />
+      <PanelStep name="startChat" next={startChat}>
+        <StartChatPanel />
       </PanelStep>
       <PanelStep name="loading">
         <LoadingIndicator />
