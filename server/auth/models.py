@@ -2,6 +2,8 @@ from datetime import datetime
 from enum import StrEnum
 from sqlmodel import Column, Field, SQLModel, String
 
+from server.utils import SchemaMeta
+
 
 class ConsoleRole(StrEnum):
     OWNER = "owner"
@@ -15,6 +17,11 @@ class LoginType(StrEnum):
     APPLE = "apple"
     STEAM = "steam"
     GOOGLE = "google"
+
+
+# TODO 가장 상위 공통 모델들로 빼기
+class BaseSQLModel(SQLModel, metaclass=SchemaMeta):
+    pass
 
 
 class PKModel(SQLModel):
@@ -35,7 +42,8 @@ class TimestampModel(SQLModel):
     )
 
 
-class CommonUserBase(SQLModel):
+# auth 도메인 모델들
+class CommonUserBase(BaseSQLModel):
     email: str | None = Field(sa_column=Column(String(128), unique=True))
     password: str | None = Field(sa_column=Column(String(128)))
     user_name: str | None = Field(sa_column=Column(String(128)))
