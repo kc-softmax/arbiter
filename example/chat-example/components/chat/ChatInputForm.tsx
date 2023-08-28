@@ -1,24 +1,28 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCommandInput } from "@/hooks/useCommandInput";
+import { useEffect, useRef } from "react";
 
 interface ChatInputFormProps {
   sendChat: (message: string) => void;
 }
 
 const ChatInputForm = ({ sendChat }: ChatInputFormProps) => {
-  const [message, setMessage] = useState("");
+  const { command, controls, reset, resetCommand } = useCommandInput({
+    "/c": () => console.log("change room"),
+  });
   const textRef = useRef<HTMLTextAreaElement>(null);
 
   const onSubmit = (e?: React.FormEvent<HTMLFormElement>) => {
     e?.preventDefault();
+    const message = controls.message.value;
 
     if (message.trim() === "") {
       return;
     }
 
     sendChat(message);
-    setMessage("");
+    reset();
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -34,26 +38,37 @@ const ChatInputForm = ({ sendChat }: ChatInputFormProps) => {
       e.preventDefault();
       onSubmit();
     }
+
+    if (e.key === "Backspace" && controls.message.value === "") {
+      resetCommand();
+    }
   };
 
   useEffect(() => {
     if (textRef) {
       textRef.current?.focus();
     }
-  }, []);
+  }, [command]);
 
   return (
     <form className="form-control w-full" onSubmit={onSubmit}>
       <div className="join w-full">
+        {command ? (
+          <button
+            className="btn btn-info join-item h-auto"
+            onClick={resetCommand}
+          >
+            {command}
+          </button>
+        ) : null}
         <textarea
-          className="textarea textarea-bordered join-item basis-4/5"
+          className="textarea textarea-bordered join-item basis-4/5 focus:outline-none"
           placeholder="Type a message"
           rows={1}
           ref={textRef}
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
           onKeyUp={onKeyUp}
           onKeyDown={onKeyDown}
+          {...controls.message}
         ></textarea>
         <button
           type="submit"

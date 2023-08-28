@@ -42,13 +42,13 @@ const ChatBubble = ({ message, action }: ChatBubbleProps) => {
       <p className="chat-header">{username}</p>
       <div
         tabIndex={0}
-        className={`dropdown dropdown-hover  chat-bubble flex justify-center items-end cursor-pointer max-w-[70%] ${
+        className={`dropdown dropdown-hover chat-bubble flex justify-center items-end cursor-pointer max-w-[70%] ${
           isMe
             ? "chat-bubble-primary dropdown-left"
             : "chat-bubble-secondary dropdown-right"
         }`}
       >
-        <p className="hover:brightness-90 transition-all">{messageText}</p>
+        <p>{messageText}</p>
 
         <div
           tabIndex={0}
