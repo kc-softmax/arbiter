@@ -10,6 +10,7 @@ class ChatEvent(StrEnum):
     USER_LEAVE = "user_leave"
     ERROR = "error"
     MESSAGE = "message"
+    NOTICE = "notice"
     ROOM_CHANGE = "room_change"
 
 
@@ -39,6 +40,7 @@ class RoomJoinData(BaseModel):
     messages: list[ChatData] = []
     number_of_users: int = 0
     users: list[UserData] = []
+    notice: str = ""
 
 
 class UserJoinData(BaseModel):
@@ -79,6 +81,10 @@ class ChatSocketChatMessage(ChatSocketBaseMessage[ChatData]):
 
 class ChatSocketErrorMessage(ChatSocketBaseMessage[ErrorData]):
     action = ChatEvent.ERROR
+
+
+class ChatSocketNoticeMessage(ChatSocketBaseMessage[ClientChatData]):
+    action = ChatEvent.NOTICE
 
 
 class ClientChatMessage(ChatSocketBaseMessage[ClientChatData]):

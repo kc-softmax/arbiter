@@ -31,6 +31,7 @@ class ChatRoom:
         self.current_users: deque[UserData] = []
         self.chat_room_data: ChatRoomData = ChatRoomData(
             created_at=round(datetime.now().timestamp() * 1000))
+        self.notice = ""
 
     def is_available(self) -> bool:
         return len(self.current_users) < self.max_num
@@ -76,6 +77,9 @@ class ChatRoom:
         # 지금은 메시지를 받을 때마다 매번 기록하지만, 방이 없어질 때 message_history를 순회하면서 한번에 기록도 가능하다.
         self.set_user_message_summary(user_data.user_id, chat_message_excuted_by_adapter["is_bad_comments"])
         return chat_socket_message
+
+    def register_notice(self, notice: str):
+        self.notice = notice
 
     # Chat Room 기준의 데이터 로직
     def set_max_users(self):
@@ -132,3 +136,9 @@ class ChatRoomManager:
                 if room.is_available():
                     return room
         return None
+
+    def get_or_create_room(self, room_id: str) -> ChatRoom:
+        room = self.get_by_room_id(room_id)
+        if room is None:
+            room = self.create_room(room_id)
+        return room

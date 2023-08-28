@@ -9,10 +9,10 @@ from server.chat.connection import ConnectionManager
 from server.chat.room import ChatRoomManager
 from server.chat.exceptions import AuthorizationFailedClose
 from server.chat.schemas import (
-    ChatEvent, ChatSocketBaseMessage, ChatSocketRoomJoinMessage, RoomJoinData,
+    ChatEvent, ChatSocketBaseMessage, ChatSocketRoomJoinMessage, ClientChatData, RoomJoinData,
     ChatSocketUserJoinMessage, UserJoinData, ChatSocketChatMessage,
     ChatSocketUserLeaveMessage, UserLeaveData, ClientChatMessage,
-    UserData, ChatSocketErrorMessage, ErrorData
+    UserData, ChatSocketErrorMessage, ErrorData, ChatSocketNoticeMessage
 )
 from server.database import make_async_session
 
@@ -68,7 +68,8 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
                 room_id=room.room_id,
                 messages=room.message_history,
                 users=room.current_users,
-                number_of_users=len(room.current_users)
+                number_of_users=len(room.current_users),
+                notice=room.notice
             )
         )
     )
@@ -142,7 +143,8 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
                             room_id=room.room_id,
                             messages=room.message_history,
                             users=room.current_users,
-                            number_of_users=len(room.current_users)
+                            number_of_users=len(room.current_users),
+                            notice=room.notice
                         )
                     )
                 )
@@ -168,6 +170,18 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
                     room.room_id,
                     ChatSocketChatMessage(
                         data=chat_message
+                    )
+                )
+
+            # client 받는 공지
+            if json_data.action == ChatEvent.NOTICE:
+                room.register_notice(json_data.data['message'])
+                await connection_manager.send_room_broadcast(
+                    room.room_id,
+                    ChatSocketNoticeMessage(
+                        data=ClientChatData(
+                            message=json_data.data['message']
+                        )
                     )
                 )
     # 연결이 끊김 -> 유저가 채팅을 나갔다.
