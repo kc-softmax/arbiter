@@ -41,8 +41,8 @@ class Room:
             self.clients[room_id] = {user_id: websocket}
         return True
     
-    def leave_room(self, user_id) -> None:
-        self.number_of_player -= 1
+    def leave_room(self, room_id: str, user_id: str) -> None:
+        self.number_of_player[room_id] -= 1
         self.clients.pop(user_id)
     
     async def chat_history(self, room_id: str, user_id: str | int, message: str) -> None:
