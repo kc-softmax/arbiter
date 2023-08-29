@@ -26,6 +26,10 @@ class GamerUserSchema(UserBase):
         omit_fields = {"password", "access_token", "refresh_token"}
 
 
+class GamerUserGet(PKModel):
+    pass
+
+
 class GamerUserCreateByEmail(UserBase):
     class Config:
         pick_fields = {"email", "password"}
