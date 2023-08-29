@@ -16,3 +16,8 @@ class RoomDoesNotExist:
 class RoomIsFull:
     CODE = 3700
     REASON = "room is full"
+
+
+class RoomIsExist:
+    CODE = 3800
+    REASON = "room is exist"

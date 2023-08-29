@@ -12,6 +12,7 @@ class ChatEvent(StrEnum):
     MESSAGE = "message"
     NOTICE = "notice"
     ROOM_CHANGE = "room_change"
+    ROOM_CREATE = "room_create"
 
 
 class ClientChatData(BaseModel):
@@ -55,6 +56,10 @@ class RoomChangeData(BaseModel):
     room_id: str
 
 
+class RoomCreateData(BaseModel):
+    room_id: str
+
+
 DT = TypeVar('DT')
 
 
@@ -85,6 +90,10 @@ class ChatSocketErrorMessage(ChatSocketBaseMessage[ErrorData]):
 
 class ChatSocketNoticeMessage(ChatSocketBaseMessage[ClientChatData]):
     action = ChatEvent.NOTICE
+
+
+class ChatSocketRoomCreateMessage(ChatSocketBaseMessage[ClientChatData]):
+    action = ChatEvent.ROOM_CREATE
 
 
 class ClientChatMessage(ChatSocketBaseMessage[ClientChatData]):

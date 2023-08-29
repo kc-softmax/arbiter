@@ -9,13 +9,13 @@ from server.chat.connection import connection_manager
 from server.chat.room import ChatRoomManager, ChatRoom
 from server.chat.exceptions import (
     AuthorizationFailedClose, RoomDoesNotExist, AlreadyJoinedRoom,
-    RoomIsFull
+    RoomIsFull, RoomIsExist
 )
 from server.chat.schemas import (
     ChatEvent, ChatSocketBaseMessage, ClientChatData,
-    ChatSocketChatMessage, ClientChatMessage,
+    ChatSocketChatMessage, ClientChatMessage, RoomChangeData,
     UserData, ChatSocketErrorMessage, ErrorData,
-    ChatSocketNoticeMessage
+    ChatSocketNoticeMessage, ChatSocketRoomCreateMessage
 )
 from server.database import make_async_session
 
@@ -130,6 +130,32 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
                     room.room_id,
                     ChatSocketChatMessage(
                         data=chat_message
+                    )
+                )
+
+            if json_data.action == ChatEvent.ROOM_CREATE:
+                room_id = json_data.data['room_id']
+                # 이미 있는 방인 경우
+                if room_id in chat_room_manager.rooms:
+                    await connection_manager.send_personal_message(
+                        websocket,
+                        ChatSocketErrorMessage(
+                            data=ErrorData(
+                                code=RoomIsExist.CODE,
+                                reason=RoomIsExist.REASON
+                            )
+                        )
+                    )
+                    continue
+
+                chat_room_manager.create_room(room_id)
+
+                await connection_manager.send_personal_message(
+                    websocket,
+                    ChatSocketRoomCreateMessage(
+                        data=ClientChatData(
+                            message=f'{room_id} 방이 생성되었습니다.'
+                        )
                     )
                 )
 
