@@ -31,7 +31,6 @@ async def chat_page(request: Request):
 
 @router.websocket("/ws")
 async def chatroom_ws(websocket: WebSocket, token: str = Query()):
-    # 방 입장
     # TODO 매칭 메이킹이 만들어지면 room id는 query로 받도록 한다.
     # 굳이 방이 없어도 된다.
     temp_room = chat_room_manager.get_by_room_id('DEFAULT')
@@ -108,7 +107,6 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
             if json_data.action == ChatEvent.MESSAGE:
                 chat_message = await room.handle_chat_message(
                     user_data,
-                    # 위에서 처리 하면 좋을 듯
                     ClientChatMessage.parse_obj(json_data)
                 )
                 # 유저들에게 브로드캐스팅
@@ -120,7 +118,6 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
                 )
 
             if json_data.action == ChatEvent.NOTICE:
-                # 정리 필요
                 room.register_notice(json_data.data['message'])
                 await connection_manager.send_room_broadcast(
                     room.room_id,
