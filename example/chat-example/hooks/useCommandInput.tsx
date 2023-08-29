@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 interface UseCommandInputParams {
-  [command: string]: () => void;
+  [command: string]: (data: string) => void;
 }
 
 export const useCommandInput = (commands: UseCommandInputParams) => {
@@ -24,7 +24,6 @@ export const useCommandInput = (commands: UseCommandInputParams) => {
       const commandMatch = e.target.value.match(commandRegex);
 
       if (commandMatch) {
-        commands[command]();
         setCommand(command);
         setMessageInput("");
 
@@ -33,12 +32,36 @@ export const useCommandInput = (commands: UseCommandInputParams) => {
     });
   };
 
+  const onSubmitWithCommand = (
+    e?: React.FormEvent<HTMLFormElement>,
+    callback?: () => void
+  ) => {
+    e?.preventDefault();
+
+    if (messageInput.trim() === "") {
+      return;
+    }
+
+    if (command) {
+      commands[command](messageInput);
+      resetCommand();
+      resetMessageInput();
+      return;
+    }
+
+    callback?.();
+    resetMessageInput();
+  };
+
   return {
     command,
     controls: {
       message: {
         value: messageInput,
         onChange: onChangeMessageText,
+      },
+      form: {
+        onSubmit: onSubmitWithCommand,
       },
     },
     reset: resetMessageInput,

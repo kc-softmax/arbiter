@@ -157,15 +157,15 @@ export const useChat = (token: string) => {
     });
   };
 
-  const changeRoom = (roomId: string) => {
+  const changeRoom = (nextRoomId: string) => {
+    if (roomId === nextRoomId) return;
+
     sendSocketBase(ChatActions.ROOM_CHANGE, {
-      room_id: roomId,
+      room_id: nextRoomId,
     });
   };
 
   const sendNotice = ({ message, user_id }: ChatSendMessage["data"]) => {
-    // setNotice(message);
-    // TODO: Notice 보내기 기능 구현
     sendSocketBase(ChatActions.NOTICE, {
       message,
       user_id,

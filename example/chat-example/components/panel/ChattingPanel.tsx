@@ -63,7 +63,13 @@ const ChattingPanel = () => {
             />
           </div>
           <div className="w-full">
-            <ChatInputForm sendChat={sendChat} />
+            <ChatInputForm
+              sendChat={sendChat}
+              commandActions={{
+                changeRoom,
+                sendNotice: (message) => sendNotice({ user_id: id, message }),
+              }}
+            />
           </div>
         </div>
         <div className="flex flex-col gap-4 items-center h-full rounded-e-lg border-2 max-w-4xl border-l-0">
