@@ -43,19 +43,17 @@ async def verify_token(data: ConsoleRequest,
                        user_service: UserService = Depends(get_user_service),
                        console_user_service: ConsoleUserService = Depends(get_console_user_service)):
     token_data = None
+    user = None
     try:
         token_data = verify_token_util(token)
+        if data.is_console:
+            user = await console_user_service.get_console_user_by_id(token_data.sub)
+        else:
+            user = await user_service.get_user(token_data.sub)
     except:
         return False
-
-    user = None
-    if data.is_console:
-        user = await console_user_service.get_console_user_by_id(token_data.sub)
-    else:
-        user = await user_service.get_user(token_data.sub)
     if user == None or token != user.access_token:
         return False
-
     return True
 
 
