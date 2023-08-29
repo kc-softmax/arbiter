@@ -83,9 +83,6 @@ class ChatRoom:
         self.set_user_message_summary(user_data.user_id, chat_message_executed_by_adapter["is_bad_comments"])
         return chat_socket_message
 
-    def register_notice(self, notice: str):
-        self.notice = notice
-
     # Chat Room 기준의 데이터 로직
     def set_max_users(self):
         current_user_count = len(self.current_users)

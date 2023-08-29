@@ -118,7 +118,7 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
                 )
 
             if json_data.action == ChatEvent.NOTICE:
-                room.register_notice(json_data.data['message'])
+                room.notice = json_data.data['message']
                 await connection_manager.send_room_broadcast(
                     room.room_id,
                     ChatSocketNoticeMessage(
