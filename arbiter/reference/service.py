@@ -2,15 +2,17 @@ from starlette.websockets import WebSocket, WebSocketState
 from typing import Dict
 from collections import defaultdict
 
-from server.adapter import Adapter
+from reference.adapter import Adapter
 
 import uuid
+import json
 
 
 class Room:
     
     # adapter와 플레이어 수를 관리한다
     def __init__(self, room_id: uuid.UUID, adapter: Adapter):
+        self.room_id = room_id
         self.adapter: Adapter = adapter
         self.number_of_player: Dict[str, int] = defaultdict(int)
         self.clients: Dict[str, WebSocket] = {}
@@ -26,19 +28,17 @@ class Room:
 
     def join_room(self,
         room_id: str,
-        user_name: str,
-        user: object,
+        user_id: str,
         websocket: WebSocket
     ) -> bool:
         if self.number_of_player[room_id] == self.maximum_players:
             return False
         
         self.number_of_player[room_id] += 1
-        self.adapter.env.add_user(user)
         if self.clients.get(room_id):
-            self.clients[room_id][user_name] = websocket
+            self.clients[room_id][user_id] = websocket
         else:
-            self.clients[room_id] = {user_name: websocket}
+            self.clients[room_id] = {user_id: websocket}
         return True
     
     def leave_room(self, user_id) -> None:
@@ -47,14 +47,9 @@ class Room:
     
     async def chat_history(self, room_id: str, user_id: str | int, message: str) -> None:
         processing = self.adapter.execute(user_id, message)
-        self.history.append(
-            {
-                'sender': user_id,
-                'message': processing
-            }
-        )
+        data = json.dumps(processing)
         for _, client in self.clients[room_id].items():
-            await client.send_text(processing)
+            await client.send_text(data)
 
 
 class RoomManager:
