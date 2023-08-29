@@ -141,6 +141,10 @@ class ChatRoomManager:
 
     # user_data ?
     async def join_room(self, websocket: WebSocket, room_id: str, user_data: UserData):
+        # 방에 있으면 떠난다.
+        if user_data.user_id in self.user_in_room:
+            await self.leave_room(websocket, user_data)
+
         # 접속유저리스트 추가
         self.user_in_room[user_data.user_id] = room_id
         # 방에 접속
