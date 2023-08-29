@@ -1,7 +1,10 @@
 import { useState } from "react";
 
 interface UseCommandInputParams {
-  [command: string]: (data: string) => void;
+  [command: string]: {
+    name: string;
+    action: (data: string) => void;
+  };
 }
 
 export const useCommandInput = (commands: UseCommandInputParams) => {
@@ -43,7 +46,7 @@ export const useCommandInput = (commands: UseCommandInputParams) => {
     }
 
     if (command) {
-      commands[command](messageInput);
+      commands[command].action(messageInput);
       resetCommand();
       resetMessageInput();
       return;
@@ -53,7 +56,43 @@ export const useCommandInput = (commands: UseCommandInputParams) => {
     resetMessageInput();
   };
 
+  const CommandAutoComplete = () => {
+    const onClickCommandAutoComplete = (command: string) => {
+      setCommand(command);
+      setMessageInput("");
+    };
+
+    return (
+      <div className="dropdown dropdown-open dropdown-top">
+        <ul
+          tabIndex={0}
+          className="dropdown-content z-[1] menu p-2 shadow rounded-box space-y-2"
+        >
+          {Object.keys(commands)
+            .filter(
+              (commandKey) =>
+                messageInput.length && commandKey.indexOf(messageInput) === 0
+            )
+            .map((commandKey) => (
+              <li key={commandKey}>
+                <button
+                  className="btn btn-sm btn-block btn-outline"
+                  type="button"
+                  onClick={() =>
+                    onClickCommandAutoComplete(commands[commandKey].name)
+                  }
+                >
+                  {commandKey} : {commands[commandKey].name}
+                </button>
+              </li>
+            ))}
+        </ul>
+      </div>
+    );
+  };
+
   return {
+    commands,
     command,
     controls: {
       message: {
@@ -66,5 +105,8 @@ export const useCommandInput = (commands: UseCommandInputParams) => {
     },
     reset: resetMessageInput,
     resetCommand,
+    components: {
+      CommandAutoComplete,
+    },
   };
 };

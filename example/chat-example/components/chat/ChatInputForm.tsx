@@ -10,14 +10,32 @@ const ChatInputForm = () => {
   const { changeRoom, createRoom, sendNotice, sendMessage } = useChat();
   const { id } = useAtomValue(authAtom);
 
-  const { command, controls, resetCommand } = useCommandInput({
-    "/c": (roomId) => createRoom(roomId),
-    "/j": (roomId) => changeRoom(roomId),
-    "/n": (message) =>
-      sendNotice({
-        message,
-        user_id: id,
-      }),
+  const {
+    commands,
+    command,
+    controls,
+    resetCommand,
+    components: { CommandAutoComplete },
+  } = useCommandInput({
+    "/c": {
+      name: "create",
+      action: (roomId) => {
+        createRoom(roomId);
+        changeRoom(roomId);
+      },
+    },
+    "/j": {
+      name: "join",
+      action: (roomId) => changeRoom(roomId),
+    },
+    "/n": {
+      name: "notice",
+      action: (message) =>
+        sendNotice({
+          message,
+          user_id: id,
+        }),
+    },
   });
   const textRef = useRef<HTMLTextAreaElement>(null);
 
@@ -57,13 +75,15 @@ const ChatInputForm = () => {
 
   return (
     <form className="form-control w-full" onSubmit={onSubmit}>
+      <CommandAutoComplete />
+
       <div className="join w-full">
         {command ? (
           <button
             className="btn btn-info join-item h-auto"
             onClick={resetCommand}
           >
-            {command}
+            {commands[command].name}
           </button>
         ) : null}
         <textarea
