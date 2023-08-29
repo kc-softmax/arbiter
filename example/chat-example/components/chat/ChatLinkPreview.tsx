@@ -1,4 +1,4 @@
-import { fetchHeadText } from "@/lib/fetchLinkPreview";
+import { fetchHeadText } from "@/utils/fetchLinkPreview";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
