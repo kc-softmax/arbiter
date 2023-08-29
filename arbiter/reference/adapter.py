@@ -62,10 +62,10 @@ class ChatAdapter(Adapter):
     """
         ChatAdapter for multiplay chatting
     """
-    
+    bert_tokenizer: str = 'bert-base-multilingual-cased'
     max_len: int = 128
     dtype: str = "long"
-    # pre or post
+    # pre or post for padding(fill in array the zero)
     truncating: str = "post"
     padding: str = "post"
     
@@ -73,9 +73,11 @@ class ChatAdapter(Adapter):
     def __init__(self, model_path: str) -> None:
         # model에 사용되는 속성 값이 복잡하여 정의된 속성 값만 사용한다.
         self.model: BertForSequenceClassification = BertForSequenceClassification.from_pretrained(model_path)
-        self.tokenizer: BertTokenizer = BertTokenizer.from_pretrained('bert-base-multilingual-cased', do_lower_case=False)
+        self.tokenizer: BertTokenizer = BertTokenizer.from_pretrained(self.bert_tokenizer, do_lower_case=False)
         self.client_message: deque = deque()
         self.broadcast_message: asyncio.Queue = asyncio.Queue()
+        # 평가모드로 변경
+        self.model.eval()
         if torch.cuda.is_available():    
             self.device = torch.device("cuda")
             print('There are %d GPU(s) available.' % torch.cuda.device_count())
@@ -87,7 +89,7 @@ class ChatAdapter(Adapter):
     def add_user_message(self) -> None:
         pass
     
-    def convert_input_data(self, sentences: list[str]) -> tuple[torch.Tensor, torch.Tensor]:
+    def convert_sentences(self, sentences: list[str]) -> tuple[torch.Tensor, torch.Tensor]:
         # BERT의 토크나이저로 문장을 토큰으로 분리
         tokenized_texts = [
             self.tokenizer.tokenize(sentence) for sentence in sentences
@@ -122,10 +124,8 @@ class ChatAdapter(Adapter):
         tensored_masks: torch.Tensor = torch.tensor(attention_masks)
         return tensored_sequences, tensored_masks
     
-    def apply_bert_model(self, sentences) -> torch.Tensor:
-        # 평가모드로 변경
-        self.model.eval()
-        tensored_sequences, tensored_masks = self.convert_input_data(sentences)
+    def apply_bert_model(self, sentences: list[str]) -> torch.Tensor:
+        tensored_sequences, tensored_masks = self.convert_sentences(sentences)
 
         # 데이터를 GPU or CPU에 넣음
         cpu_sequences_sequences: torch.Tensor = tensored_sequences.to(self.device)
@@ -139,25 +139,20 @@ class ChatAdapter(Adapter):
                 token_type_ids=None, 
                 attention_mask=cpu_masks
             )
-
-            # 로스 구함
             logits: torch.Tensor = outputs[0]
             # CPU로 데이터 이동
             logits = logits.detach().cpu().numpy()
-
         return logits
 
-    def execute(self, user_id: int | str, message: str) -> dict[str, int | str]:
+    def execute(self, user_id: int | str, message: str) -> dict[str, str | int | bool]:
         # 처음에는 단순하게 '비속어'라는 단어의 유무에 따라 유저의 메시지를 분류한다.
         filtered_message: np.ndarray = self.apply_bert_model([message])
         # 가장 큰 인덱스를 리턴시킨다 0 or 1 둘 중 하나
+        # 0은 비속어, 1은 일반어
         idx = np.argmax(filtered_message)
-        if idx == 1:
-            is_bad_comments = False
-        else:
-            is_bad_comments = True
+        if idx == 1: is_bad_comments = False
+        else: is_bad_comments = True
 
-        # return되는 값은 변경될 수 있습니다.
         user_message: dict[str | int, str] = {
             'user_id': user_id,
             'message': message,
