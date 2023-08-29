@@ -50,4 +50,4 @@ async def chat_engine(websocket: WebSocket, room_id: str):
             await available_room.chat_history(room_id, user_id, message['message'])
     except WebSocketDisconnect as err:
         print(err)
-        available_room.leave_room(user_id)
+        available_room.leave_room(room_id, user_id)
