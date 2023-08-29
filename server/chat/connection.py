@@ -3,7 +3,7 @@ from collections import defaultdict
 from pydantic import BaseModel
 
 from server.auth.utils import verify_token
-from server.chat.schemas import ChatSocketBaseMessage
+from server.chat.schemas import ChatSocketBaseMessage, ErrorData
 
 
 class ConnectionManager:
@@ -28,3 +28,6 @@ class ConnectionManager:
         connections = self.active_connections[room_id]
         for connection in connections:
             await connection.send_json(message.dict())
+
+
+connection_manager = ConnectionManager()

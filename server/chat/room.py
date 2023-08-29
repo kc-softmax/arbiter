@@ -2,9 +2,14 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from collections import defaultdict, deque
+from fastapi import WebSocket
 
 from server.adapter import ChatAdapter
-from server.chat.schemas import ClientChatMessage, ChatData, UserData
+from server.chat.schemas import (
+    ChatSocketRoomJoinMessage, ChatSocketUserJoinMessage, ChatSocketUserLeaveMessage,
+    ClientChatMessage, ChatData, RoomJoinData, UserData, UserJoinData, UserLeaveData
+)
+from server.chat.router import connection_manager
 
 
 @dataclass
@@ -39,9 +44,9 @@ class ChatRoom:
     def is_empty(self) -> bool:
         return len(self.current_users) == 0
 
-    def is_duplicate(self, user_id: str) -> bool:
+    def is_duplicate(self, user_id: int) -> bool:
         # token schema sub, userdata user_id랑 자료형이 다름
-        return int(user_id) in [user.user_id for user in self.current_users]
+        return user_id in [user.user_id for user in self.current_users]
 
     def join(self, user_data: UserData):
         self.current_users.append(user_data)
@@ -114,31 +119,82 @@ class ChatRoom:
 
 class ChatRoomManager:
     def __init__(self) -> None:
-        self.rooms: list[ChatRoom] = []
+        self.rooms: dict[str, ChatRoom] = defaultdict(ChatRoom)
+        # 접속유저리스트
+        self.user_in_room: dict[str, str] = {}
 
     def find_available_room(self) -> ChatRoom | None:
-        available_rooms = [room for room in self.rooms if room.is_available()]
+        available_rooms = [room for room_id, room in self.rooms.items() if room.is_available()]
         return available_rooms[0] if available_rooms else None
 
     # room_id 받아서 처리할 수 있도록 추가
-    def create_room(self, receive_room_id: str = '') -> ChatRoom:
+    def create_room(self, receive_room_id: str = '') -> bool:
         room_id = receive_room_id if receive_room_id else str(uuid.uuid4())
         new_room = ChatRoom(room_id, ChatAdapter({}))
-        self.rooms.append(new_room)
-        return new_room
+        self.rooms[room_id] = new_room
+        return True
 
-    def remove_room(self, room: ChatRoom):
-        self.rooms.remove(room)
+    def remove_room(self, room_id: str):
+        self.rooms.pop(room_id)
 
     def get_by_room_id(self, room_id: str) -> ChatRoom | None:
-        for room in self.rooms:
-            if room.room_id == room_id:
-                if room.is_available():
-                    return room
-        return None
+        if room_id not in self.rooms:
+            return None
+        return self.rooms[room_id]
 
-    def get_or_create_room(self, room_id: str) -> ChatRoom:
-        room = self.get_by_room_id(room_id)
-        if room is None:
-            room = self.create_room(room_id)
-        return room
+    # user_data ?
+    async def join_room(self, websocket: WebSocket, room_id: str, user_data: UserData):
+        # 접속유저리스트 추가
+        self.user_in_room[user_data.user_id] = room_id
+        # 방에 접속
+        connection_manager.active_connections[room_id].append(websocket)
+        self.rooms[room_id].join(user_data)
+
+        # 새로 입장한 유저에게 기존 채팅방 데이터를 보내준다.
+        await connection_manager.send_personal_message(
+            websocket,
+            ChatSocketRoomJoinMessage(
+                data=RoomJoinData(
+                    room_id=room_id,
+                    messages=self.rooms[room_id].message_history,
+                    users=self.rooms[room_id].current_users,
+                    number_of_users=len(self.rooms[room_id].current_users),
+                    notice=self.rooms[room_id].notice
+                )
+            )
+        )
+        # 기존에 있었던 유저들에게 새 유저 입장을 알려준다.
+        await connection_manager.send_room_broadcast(
+            room_id,
+            ChatSocketUserJoinMessage(
+                data=UserJoinData(
+                    user=user_data
+                )
+            )
+        )
+        return True
+
+    async def leave_room(self, websocket: WebSocket, user_data: UserData):
+        # 나갈 때 로직 확인 필요
+        user_id = user_data.user_id
+        room_id = self.user_in_room[user_data.user_id]
+
+        connection_manager.disconnect(room_id, websocket)
+        self.rooms[room_id].leave(user_data)
+        if self.rooms[room_id].is_empty():
+            self.remove_room(room_id)
+        else:
+            await connection_manager.send_room_broadcast(
+                room_id,
+                ChatSocketUserLeaveMessage(
+                    data=UserLeaveData(
+                        user=user_data
+                    )
+                )
+            )
+        # 접속유저리스트 제거
+        self.user_in_room.pop(user_id)
+
+    def get_joined_room(self, user_id: int) -> ChatRoom:
+        room_id = self.user_in_room[user_id]
+        return self.rooms[room_id]
