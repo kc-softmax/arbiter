@@ -1,9 +1,7 @@
 "use client";
 
 import { useChat } from "@/hooks/useChat";
-import { authAtom } from "@/store/authAtom";
 import { scrollToBottom } from "@/utils/dom-utils";
-import { useAtomValue } from "jotai";
 import { useEffect, useRef } from "react";
 import ChatBanner from "../chat/ChatBanner";
 import ChatInputForm from "../chat/ChatInputForm";
@@ -11,32 +9,10 @@ import ChatList from "../chat/ChatList";
 import ChatLobby from "../chat/ChatLobby";
 
 const ChattingPanel = () => {
-  const { id, token } = useAtomValue(authAtom);
-  const { data, error, sendMessage, changeRoom, sendNotice } = useChat(token);
-  const { roomId, messages, users, notice } = data;
+  const { data, error } = useChat();
+  const { messages } = data;
 
   const chatPanelRef = useRef<HTMLDivElement>(null);
-
-  const sendChat = (message: string) => {
-    console.log(id, message);
-    sendMessage({
-      user_id: id,
-      message,
-    });
-  };
-
-  const onClickNotice = ({
-    userId,
-    message,
-  }: {
-    userId: string;
-    message: string;
-  }) => {
-    sendNotice({
-      user_id: userId,
-      message,
-    });
-  };
 
   useEffect(() => {
     scrollToBottom(chatPanelRef);
@@ -54,26 +30,15 @@ const ChattingPanel = () => {
             ref={chatPanelRef}
             className="flex-1 w-full overflow-scroll flex flex-col gap-4 px-4"
           >
-            <ChatBanner roomId={roomId} users={users} notice={notice} />
-            <ChatList
-              messages={messages}
-              actions={{
-                onClickNotice,
-              }}
-            />
+            <ChatBanner />
+            <ChatList />
           </div>
           <div className="w-full">
-            <ChatInputForm
-              sendChat={sendChat}
-              commandActions={{
-                changeRoom,
-                sendNotice: (message) => sendNotice({ user_id: id, message }),
-              }}
-            />
+            <ChatInputForm />
           </div>
         </div>
         <div className="flex flex-col gap-4 items-center h-full rounded-e-lg border-2 max-w-4xl border-l-0">
-          <ChatLobby changeRoom={changeRoom} />
+          <ChatLobby />
         </div>
       </div>
     </section>

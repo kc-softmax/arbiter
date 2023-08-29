@@ -1,16 +1,13 @@
 "use client";
 
-import { UserInfo } from "@/@types/chat";
 import { requestUserInfo } from "@/api/auth";
+import { useChat } from "@/hooks/useChat";
 import { useState } from "react";
 
-export interface ChatBannerProps {
-  roomId: string;
-  users: UserInfo[];
-  notice: string | null;
-}
-
-const ChatBanner = ({ roomId, users, notice }: ChatBannerProps) => {
+const ChatBanner = () => {
+  const {
+    data: { roomId, users, notice },
+  } = useChat();
   const [tooltip, setTooltip] = useState<Record<string, string>>({});
 
   const getUserInfo = async (userId: string) => {

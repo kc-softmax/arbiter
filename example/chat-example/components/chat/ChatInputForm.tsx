@@ -1,25 +1,33 @@
 "use client";
 
+import { useChat } from "@/hooks/useChat";
 import { useCommandInput } from "@/hooks/useCommandInput";
+import { authAtom } from "@/store/authAtom";
+import { useAtomValue } from "jotai";
 import { useEffect, useRef } from "react";
 
-interface ChatInputFormProps {
-  sendChat: (message: string) => void;
-  commandActions?: {
-    [command: string]: (data: string) => void;
-  };
-}
+const ChatInputForm = () => {
+  const { changeRoom, createRoom, sendNotice, sendMessage } = useChat();
+  const { id } = useAtomValue(authAtom);
 
-const ChatInputForm = ({ sendChat, commandActions }: ChatInputFormProps) => {
   const { command, controls, resetCommand } = useCommandInput({
-    "/c": (roomId) => commandActions?.changeRoom(roomId),
-    "/n": (message) => commandActions?.sendNotice(message),
+    "/c": (roomId) => createRoom(roomId),
+    "/j": (roomId) => changeRoom(roomId),
+    "/n": (message) =>
+      sendNotice({
+        message,
+        user_id: id,
+      }),
   });
   const textRef = useRef<HTMLTextAreaElement>(null);
 
   const onSubmit = (e?: React.FormEvent<HTMLFormElement>) =>
     controls.form.onSubmit(e, () => {
-      sendChat(controls.message.value);
+      console.log(id, controls.message.value);
+      sendMessage({
+        message: controls.message.value,
+        user_id: id,
+      });
     });
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

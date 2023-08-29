@@ -4,6 +4,7 @@ import LoadingIndicator from "@/app/loading";
 import { usePanel } from "@/hooks/usePanel";
 import ChattingPanel from "./ChattingPanel";
 import StartChatPanel from "./StartChatPanel";
+import { ChatProvider } from "@/hooks/useChat";
 
 const PanelController = () => {
   const { PanelStep, setActiveStep } = usePanel([
@@ -29,7 +30,9 @@ const PanelController = () => {
         <LoadingIndicator />
       </PanelStep>
       <PanelStep name="chatting">
-        <ChattingPanel />
+        <ChatProvider>
+          <ChattingPanel />
+        </ChatProvider>
       </PanelStep>
     </div>
   );

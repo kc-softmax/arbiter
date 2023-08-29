@@ -1,22 +1,17 @@
 import { ChatMessage } from "@/@types/chat";
+import { useChat } from "@/hooks/useChat";
 import { authAtom } from "@/store/authAtom";
 import { useAtomValue } from "jotai";
+import { useState } from "react";
 import ChatLinkPreview from "./ChatLinkPreview";
 
 interface ChatBubbleProps {
   message: ChatMessage;
-  action?: {
-    onClickNotice?: ({
-      userId,
-      message,
-    }: {
-      userId: string;
-      message: string;
-    }) => void;
-  };
 }
 
-const ChatBubble = ({ message, action }: ChatBubbleProps) => {
+const ChatBubble = ({ message }: ChatBubbleProps) => {
+  const { sendNotice } = useChat();
+  const [isReported, setIsReported] = useState(false);
   const { id } = useAtomValue(authAtom);
   const {
     message: messageText,
@@ -26,14 +21,22 @@ const ChatBubble = ({ message, action }: ChatBubbleProps) => {
   } = message;
 
   const onClickNotice = () => {
-    action?.onClickNotice?.({
-      userId: userId.toString(),
+    sendNotice({
+      user_id: userId.toString(),
       message: messageText,
     });
   };
 
   const onClickReport = () => {
-    alert(`Report ${username}'s ${message_id} at ${time}`);
+    setIsReported(true);
+  };
+
+  const onClickGood = () => {
+    console.log("good", message_id);
+  };
+
+  const onClickBad = () => {
+    console.log("bad", message_id);
   };
 
   const isMe = id === userId.toString();
@@ -49,21 +52,38 @@ const ChatBubble = ({ message, action }: ChatBubbleProps) => {
             : "chat-bubble-secondary dropdown-right"
         }`}
       >
-        <p>{messageText}</p>
+        {isReported ? <p>Reported 🚨</p> : <p>{messageText}</p>}
 
         <div
           tabIndex={0}
           className="dropdown-content z-20 p-2 shadow bg-base-100 rounded-box space-y-2"
         >
           <button
-            className="btn btn-warning btn-outline"
+            className="btn btn-warning btn-outline btn-block"
             onClick={onClickNotice}
           >
             Notice
           </button>
-          <button className="btn btn-error btn-outline" onClick={onClickReport}>
+          <button
+            className="btn btn-error btn-outline btn-block"
+            onClick={onClickReport}
+          >
             Report
           </button>
+          <div className="join">
+            <button
+              className="join-item btn btn-outline btn-sm btn-success"
+              onClick={onClickGood}
+            >
+              👍
+            </button>
+            <button
+              className="join-item btn btn-outline btn-sm btn-error"
+              onClick={onClickBad}
+            >
+              👎
+            </button>
+          </div>
         </div>
       </div>
       <time className="chat-footer opacity-50">

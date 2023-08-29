@@ -38,6 +38,13 @@ export interface ChatError {
   reason: string;
 }
 
+export interface ChatSocketMessageRoomCreate {
+  action: typeof ChatActions.ROOM_CREATE;
+  data: {
+    message: string;
+  };
+}
+
 export interface ChatSocketMessageRoomJoin {
   action: typeof ChatActions.ROOM_JOIN;
   data: RoomJoinData;
@@ -71,6 +78,7 @@ export interface ChatSocketMessageError {
 }
 
 export type ChatSocketMessageBase =
+  | ChatSocketMessageRoomCreate
   | ChatSocketMessageRoomJoin
   | ChatSocketMessageUserJoin
   | ChatSocketMessageUserLeave

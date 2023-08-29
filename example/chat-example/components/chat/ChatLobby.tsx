@@ -1,3 +1,4 @@
+import { useChat } from "@/hooks/useChat";
 import { useState } from "react";
 
 const dummyData = [
@@ -15,18 +16,17 @@ const dummyData = [
   },
 ];
 
-interface ChatLobbyProps {
-  changeRoom: (roomId: string) => void;
-}
+const ChatLobby = () => {
+  const { createRoom, changeRoom } = useChat();
 
-const ChatLobby = ({ changeRoom }: ChatLobbyProps) => {
   const [searchInput, setSearchInput] = useState("");
 
-  const createRoom = () => {
+  const onClickCreateRoom = () => {
     const nextRoomId = prompt("Type Room ID");
 
     if (!nextRoomId) return;
 
+    createRoom(nextRoomId);
     changeRoom(nextRoomId);
   };
 
@@ -40,7 +40,7 @@ const ChatLobby = ({ changeRoom }: ChatLobbyProps) => {
         <div className="space-y-2">
           <button
             className="btn btn-primary btn-lg btn-block"
-            onClick={createRoom}
+            onClick={onClickCreateRoom}
           >
             Create Room
           </button>
