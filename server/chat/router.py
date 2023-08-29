@@ -2,14 +2,14 @@ import json
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect, Query
 from fastapi.templating import Jinja2Templates
 
-from server.auth.exceptions import InvalidToken
+from server.auth.exceptions import InvalidToken, UserAlreadyConnected
 from server.auth.utils import verify_token
 from server.auth.models import User
 from server.chat.connection import connection_manager
 from server.chat.room import ChatRoomManager, ChatRoom
 from server.chat.exceptions import (
     AuthorizationFailedClose, RoomDoesNotExist, AlreadyJoinedRoom,
-    RoomIsFull, RoomIsExist
+    RoomIsFull, RoomIsExist, AlreadyConnected
 )
 from server.chat.schemas import (
     ChatEvent, ChatSocketBaseMessage, ClientChatData,
@@ -48,8 +48,11 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
     try:
         await websocket.accept()
         token_data = verify_token(token)
-        # TODO: 중복접속 방지
         user_id = int(token_data.sub)
+
+        # 중복 접속 막기
+        if user_id in chat_room_manager.user_in_room:
+            raise UserAlreadyConnected
 
         async with make_async_session() as session:
             user = await session.get(User, user_id)
@@ -58,6 +61,12 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
             user_id=user.id,
             user_name=user.user_name
         )
+    except UserAlreadyConnected:
+        await websocket.close(
+            AlreadyConnected.CODE,
+            AlreadyConnected.REASON
+        )
+        return
     except InvalidToken:
         await websocket.close(
             AuthorizationFailedClose.CODE,

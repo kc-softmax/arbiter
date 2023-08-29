@@ -40,3 +40,7 @@ class AtLeastOneOwner(BadRequest):
 
 class NotAllowedUpdateRoleMaintainer(BadRequest):
     DETAIL = ErrorCode.NOT_ALLOWED_UPDATE_ROLE_MAINTAINER
+
+
+class UserAlreadyConnected(BadRequest):
+    DETAIL = ErrorCode.USER_ALREADY_CONNECTED

@@ -3,6 +3,11 @@ class AuthorizationFailedClose:
     REASON = "invalid token"
 
 
+class AlreadyConnected:
+    CODE = 3100
+    REASON = "already connected"
+
+
 class AlreadyJoinedRoom:
     CODE = 3500
     REASON = "already joined room"
