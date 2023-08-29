@@ -7,7 +7,10 @@ from server.auth.utils import verify_token
 from server.auth.models import User
 from server.chat.connection import connection_manager
 from server.chat.room import ChatRoomManager, ChatRoom
-from server.chat.exceptions import AuthorizationFailedClose, RoomDoesNotExist, AlreadyJoinedRoom
+from server.chat.exceptions import (
+    AuthorizationFailedClose, RoomDoesNotExist, AlreadyJoinedRoom,
+    RoomIsFull
+)
 from server.chat.schemas import (
     ChatEvent, ChatSocketBaseMessage, ClientChatData,
     ChatSocketChatMessage, ClientChatMessage,
@@ -85,6 +88,19 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
                             data=ErrorData(
                                 code=RoomDoesNotExist.CODE,
                                 reason=RoomDoesNotExist.REASON
+                            )
+                        )
+                    )
+                    continue
+
+                # full 방인 경우
+                if not chat_room_manager.rooms[receive_room_id].is_available():
+                    await connection_manager.send_personal_message(
+                        websocket,
+                        ChatSocketErrorMessage(
+                            data=ErrorData(
+                                code=RoomIsFull.CODE,
+                                reason=RoomIsFull.REASON
                             )
                         )
                     )
