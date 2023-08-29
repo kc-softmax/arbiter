@@ -2,18 +2,15 @@ import { useState } from "react";
 
 const dummyData = [
   {
-    id: "1",
-    roomId: "Room1",
+    roomId: "DEFAULT",
     users: 1,
   },
   {
-    id: "2",
-    roomId: "Room2",
+    roomId: "PARTY",
     users: 2,
   },
   {
-    id: "3",
-    roomId: "Room3",
+    roomId: "RandomRoom",
     users: 3,
   },
 ];
@@ -67,8 +64,8 @@ const ChatLobby = ({ changeRoom }: ChatLobbyProps) => {
               ({ roomId }) =>
                 roomId.toLowerCase().indexOf(searchInput.toLowerCase()) > -1
             )
-            .map(({ id, roomId, users }) => (
-              <li key={id} onClick={() => onClickRoom(roomId)}>
+            .map(({ roomId, users }) => (
+              <li key={roomId} onClick={() => onClickRoom(roomId)}>
                 <div className="card bg-base-100 hover:brightness-90 cursor-pointer border">
                   <div className="card-body p-6">
                     <h2 className="card-title">{roomId}</h2>

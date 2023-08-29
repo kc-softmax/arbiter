@@ -5,25 +5,22 @@ import { useEffect, useRef } from "react";
 
 interface ChatInputFormProps {
   sendChat: (message: string) => void;
+  commandActions?: {
+    [command: string]: (data: string) => void;
+  };
 }
 
-const ChatInputForm = ({ sendChat }: ChatInputFormProps) => {
-  const { command, controls, reset, resetCommand } = useCommandInput({
-    "/c": () => console.log("change room"),
+const ChatInputForm = ({ sendChat, commandActions }: ChatInputFormProps) => {
+  const { command, controls, resetCommand } = useCommandInput({
+    "/c": (roomId) => commandActions?.changeRoom(roomId),
+    "/n": (message) => commandActions?.sendNotice(message),
   });
   const textRef = useRef<HTMLTextAreaElement>(null);
 
-  const onSubmit = (e?: React.FormEvent<HTMLFormElement>) => {
-    e?.preventDefault();
-    const message = controls.message.value;
-
-    if (message.trim() === "") {
-      return;
-    }
-
-    sendChat(message);
-    reset();
-  };
+  const onSubmit = (e?: React.FormEvent<HTMLFormElement>) =>
+    controls.form.onSubmit(e, () => {
+      sendChat(controls.message.value);
+    });
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Enter 키를 눌렀을 때 줄바꿈이 되는 것을 방지하기 위해 먼저 개행 이벤트를 막는다.
@@ -66,8 +63,8 @@ const ChatInputForm = ({ sendChat }: ChatInputFormProps) => {
           placeholder="Type a message"
           rows={1}
           ref={textRef}
-          onKeyUp={onKeyUp}
           onKeyDown={onKeyDown}
+          onKeyUp={onKeyUp}
           {...controls.message}
         ></textarea>
         <button
