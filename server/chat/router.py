@@ -14,10 +14,10 @@ from server.chat.exceptions import (
     RoomIsFull, RoomIsExist, AlreadyConnected
 )
 from server.chat.schemas import (
-    ChatEvent, ChatSocketBaseMessage, ClientChatData,
+    ChatEvent, ChatSocketBaseMessage, ChatSocketUserInviteMessage, ClientChatData,
     ChatSocketChatMessage, ClientChatMessage, RoomChangeData,
     UserData, ChatSocketErrorMessage, ErrorData,
-    ChatSocketNoticeMessage, ChatSocketRoomCreateMessage
+    ChatSocketNoticeMessage, ChatSocketRoomCreateMessage, UserInviteData
 )
 from server.database import make_async_session
 
@@ -193,6 +193,36 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
                 # 제어?
                 # chat_room_manager.is_timer_on = json_data.data['is_timer_on']
                 # chat_room_manager.delay_time = json_data.data['delay_time']
+
+            if json_data.action == ChatEvent.USER_INVITE:
+                room_id = json_data.data['room_id']
+                user_id_from = json_data.data['user_id_from']
+                user_name_to = json_data.data['user_name_to']
+                user_id_to = None
+                user_name_from = None
+
+                # 우선 전체 순회를 하자
+                # user_name으로 user_id를 찾는다
+                for room in chat_room_manager.rooms.values():
+                    for user in room.current_users:
+                        if user.user_name == user_name_to:
+                            user_id_to = user.user_id
+
+                # user_id로 user_name을 찾는다
+                for room in chat_room_manager.rooms.values():
+                    for user in room.current_users:
+                        if user.user_id == user_id_from:
+                            user_name_from = user.user_name
+
+                await connection_manager.send_direct_message(
+                    user_id_to,
+                    ChatSocketUserInviteMessage(
+                        data=UserInviteData(
+                            room_id=room_id,
+                            user_from=user_name_from
+                        )
+                    )
+                )
 
     # 연결이 끊김 -> 유저가 채팅을 나갔다.
     except WebSocketDisconnect:

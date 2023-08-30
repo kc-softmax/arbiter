@@ -14,6 +14,9 @@ class ChatEvent(StrEnum):
     ROOM_CHANGE = "room_change"
     ROOM_CREATE = "room_create"
     LOBBY_REFRESH = "lobby_refresh"
+    USER_INVITE = "user_invite"
+    MESSAGE_DIRECT = "message_direct"
+    MESSAGE_LIKE = "message_like"
 
 
 class ClientChatData(BaseModel):
@@ -67,12 +70,18 @@ class UserLeaveData(BaseModel):
     user: UserData
 
 
+class UserInviteData(BaseModel):
+    user_from: str  # user_name
+    room_id: str
+
+
 class RoomChangeData(BaseModel):
     room_id: str
 
 
 class RoomCreateData(BaseModel):
     room_id: str
+    # TODO: default 값 삭제
     max_users: int = 100
 
 
@@ -114,6 +123,10 @@ class ChatSocketRoomCreateMessage(ChatSocketBaseMessage[ClientChatData]):
 
 class ChatSocketLobbyRefreshMessage(ChatSocketBaseMessage[list[LobbyData]]):
     action = ChatEvent.LOBBY_REFRESH
+
+
+class ChatSocketUserInviteMessage(ChatSocketBaseMessage[UserInviteData]):
+    action = ChatEvent.USER_INVITE
 
 
 class ClientChatMessage(ChatSocketBaseMessage[ClientChatData]):

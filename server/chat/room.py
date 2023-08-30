@@ -153,7 +153,9 @@ class ChatRoomManager:
         # 접속유저리스트 추가
         self.user_in_room[user_data.user_id] = room_id
         # 방에 접속
-        connection_manager.active_connections[room_id].append(websocket)
+        connection_manager.active_connections[room_id].append(
+            {user_data.user_id: websocket}
+        )
         self.rooms[room_id].join(user_data)
 
         # 새로 입장한 유저에게 기존 채팅방 데이터를 보내준다.
@@ -188,7 +190,7 @@ class ChatRoomManager:
         user_id = user_data.user_id
         room_id = self.user_in_room[user_data.user_id]
 
-        connection_manager.disconnect(room_id, websocket)
+        connection_manager.disconnect(room_id, websocket, user_data.user_id)
         self.rooms[room_id].leave(user_data)
         if self.rooms[room_id].is_empty():
             self.remove_room(room_id)
@@ -241,4 +243,8 @@ class ChatRoomManager:
             print(room.room_id, room.current_users)
 
         print(self.user_in_room)
+
+        for rooms in connection_manager.active_connections.values():
+            for room in rooms:
+                print(room)
         print('---------------------------------------')
