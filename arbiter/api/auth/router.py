@@ -5,26 +5,26 @@ from http import HTTPStatus
 from sqlalchemy.ext.asyncio import AsyncSession
 from enum import StrEnum
 
-from server.database import get_async_session
-from server.exceptions import BadRequest
-from server.pagination import PaginationRequest, PaginationResponse, create_pagination
-from server.auth.models import ConsoleRole, ConsoleUser, User
-from server.auth.service import ConsoleUserService, UserService
-from server.auth.utils import (create_token, verify_token as verify_token_util,
-                               get_password_hash, verify_password, list_string_to_list)
-from server.auth.dependencies import (get_console_user_service, get_user_service,
-                                      get_current_user, get_current_console_user,
-                                      allowed_only_for_owner)
-from server.auth.exceptions import (AtLeastOneOwner, UserAlready,
-                                    InvalidCredentials, InvalidToken,
-                                    NotFoundUser, NotFoundUserForDelete,
-                                    NotFoundUserForUpdate, NotAllowedUpdateRoleMaintainer)
-from server.auth.schemas import (ConsoleUserCreate, ConsoleUserGet,
-                                 ConsoleUserUpdate, GamerUserCreateByEmail,
-                                 GamerUserLoginByGuest, GamerUserSchema,
-                                 GamerUserUpdate, TokenRefreshRequest,
-                                 TokenSchema, ConsoleUserSchema,
-                                 ConsoleRequest)
+from arbiter.api.database import get_async_session
+from arbiter.api.exceptions import BadRequest
+from arbiter.api.pagination import PaginationRequest, PaginationResponse, create_pagination
+from arbiter.api.auth.models import ConsoleRole, ConsoleUser, User
+from arbiter.api.auth.service import ConsoleUserService, UserService
+from arbiter.api.auth.utils import (create_token, verify_token as verify_token_util,
+                                    get_password_hash, verify_password, list_string_to_list)
+from arbiter.api.auth.dependencies import (get_console_user_service, get_user_service,
+                                           get_current_user, get_current_console_user,
+                                           allowed_only_for_owner)
+from arbiter.api.auth.exceptions import (AtLeastOneOwner, UserAlready,
+                                         InvalidCredentials, InvalidToken,
+                                         NotFoundUser, NotFoundUserForDelete,
+                                         NotFoundUserForUpdate, NotAllowedUpdateRoleMaintainer)
+from arbiter.api.auth.schemas import (ConsoleUserCreate, ConsoleUserGet,
+                                      ConsoleUserUpdate, GamerUserCreateByEmail,
+                                      GamerUserLoginByGuest, GamerUserSchema,
+                                      GamerUserUpdate, TokenRefreshRequest,
+                                      TokenSchema, ConsoleUserSchema,
+                                      ConsoleRequest)
 
 router = APIRouter(prefix="/auth")
 

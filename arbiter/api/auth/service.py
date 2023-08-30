@@ -1,7 +1,7 @@
 from sqlmodel import func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from server.auth.models import User, LoginType, ConsoleUser, ConsoleRole
+from arbiter.api.auth.models import User, LoginType, ConsoleUser, ConsoleRole
 
 
 class BaseService:

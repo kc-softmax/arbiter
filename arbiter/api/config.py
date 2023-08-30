@@ -1,4 +1,7 @@
+import os
 from pydantic import BaseSettings
+
+path = os.path.abspath(os.path.dirname(__file__))
 
 
 class Settings(BaseSettings):
@@ -12,7 +15,7 @@ class Settings(BaseSettings):
     TEST_RDB_CONNECTION_URL: str = ""
 
     class Config:
-        env_file = "server/.local.env", "server/.prod.env"
+        env_file = path + "/.local.env", path + "/.prod.env"
         env_file_encoding = 'utf-8'
 
 

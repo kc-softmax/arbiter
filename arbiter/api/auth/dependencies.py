@@ -2,11 +2,11 @@ from fastapi import Depends
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from server.database import get_async_session
-from server.auth.models import User, ConsoleUser, ConsoleRole
-from server.auth.service import ConsoleUserService, UserService
-from server.auth.exceptions import InvalidToken, NotFoundUser, AuthorizationFailed
-from server.auth.utils import verify_token
+from arbiter.api.database import get_async_session
+from arbiter.api.auth.models import User, ConsoleUser, ConsoleRole
+from arbiter.api.auth.service import ConsoleUserService, UserService
+from arbiter.api.auth.exceptions import InvalidToken, NotFoundUser, AuthorizationFailed
+from arbiter.api.auth.utils import verify_token
 
 
 def get_user_service(

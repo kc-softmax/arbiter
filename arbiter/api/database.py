@@ -4,9 +4,9 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-from server.config import settings
-from server.auth.models import ConsoleUser, ConsoleRole
-from server.auth.utils import get_password_hash
+from arbiter.api.config import settings
+from arbiter.api.auth.models import ConsoleUser, ConsoleRole
+from arbiter.api.auth.utils import get_password_hash
 
 # sqllite는 쓰레드 통신을 지원하지 않기 때문에, 아래와 같이 connect_args를 추가해줘야 한다.
 connect_args = {"check_same_thread": False}

@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import StrEnum
 from sqlmodel import Column, Field, SQLModel, String
 
-from server.utils import SchemaMeta
+from arbiter.api.utils import SchemaMeta
 
 
 class ConsoleRole(StrEnum):

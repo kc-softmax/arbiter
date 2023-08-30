@@ -1,5 +1,5 @@
-from server.exceptions import BadRequest, NotAuthenticated, PermissionDenied, NotFound
-from server.auth.constants import ErrorCode
+from arbiter.api.exceptions import BadRequest, NotAuthenticated, PermissionDenied, NotFound
+from arbiter.api.auth.constants import ErrorCode
 
 
 class AuthorizationFailed(PermissionDenied):
