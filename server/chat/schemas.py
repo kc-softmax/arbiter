@@ -13,6 +13,7 @@ class ChatEvent(StrEnum):
     NOTICE = "notice"
     ROOM_CHANGE = "room_change"
     ROOM_CREATE = "room_create"
+    LOBBY_REFRESH = "lobby_refresh"
 
 
 class ClientChatData(BaseModel):
@@ -36,10 +37,24 @@ class ChatData(BaseModel):
     time: str
 
 
+class RoomCurrentUserData(BaseModel):
+    current: int
+    max: int
+
+
+class LobbyData(BaseModel):
+    room_id: str
+    current_users: int
+    max_users: int
+
+
 class RoomJoinData(BaseModel):
     room_id: str
     messages: list[ChatData] = []
+    # TODO: 삭제
     number_of_users: int = 0
+    current_users: int
+    max_users: int = 0
     users: list[UserData] = []
     notice: str = ""
 
@@ -58,6 +73,7 @@ class RoomChangeData(BaseModel):
 
 class RoomCreateData(BaseModel):
     room_id: str
+    max_users: int = 100
 
 
 DT = TypeVar('DT')
@@ -94,6 +110,10 @@ class ChatSocketNoticeMessage(ChatSocketBaseMessage[ClientChatData]):
 
 class ChatSocketRoomCreateMessage(ChatSocketBaseMessage[ClientChatData]):
     action = ChatEvent.ROOM_CREATE
+
+
+class ChatSocketLobbyRefreshMessage(ChatSocketBaseMessage[list[LobbyData]]):
+    action = ChatEvent.LOBBY_REFRESH
 
 
 class ClientChatMessage(ChatSocketBaseMessage[ClientChatData]):

@@ -1,3 +1,5 @@
+import asyncio
+from itertools import islice
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -6,8 +8,8 @@ from fastapi import WebSocket
 
 from server.adapter import ChatAdapter
 from server.chat.schemas import (
-    ChatSocketRoomJoinMessage, ChatSocketUserJoinMessage, ChatSocketUserLeaveMessage,
-    ClientChatMessage, ChatData, RoomJoinData, UserData, UserJoinData, UserLeaveData
+    ChatSocketNoticeMessage, ChatSocketRoomJoinMessage, ChatSocketUserJoinMessage, ChatSocketUserLeaveMessage, ClientChatData,
+    ClientChatMessage, ChatData, LobbyData, RoomJoinData, UserData, UserJoinData, UserLeaveData, ChatSocketLobbyRefreshMessage
 )
 from server.chat.router import connection_manager
 
@@ -119,6 +121,9 @@ class ChatRoomManager:
         self.rooms: dict[str, ChatRoom] = defaultdict(ChatRoom)
         # 접속유저리스트
         self.user_in_room: dict[str, str] = {}
+        self.is_timer_on: bool = True
+        self.delay_time: float = 5
+        self.is_begin: bool = False
 
     def find_available_room(self) -> ChatRoom | None:
         available_rooms = [room for room_id, room in self.rooms.items() if room.is_available()]
@@ -159,7 +164,10 @@ class ChatRoomManager:
                     room_id=room_id,
                     messages=self.rooms[room_id].message_history,
                     users=self.rooms[room_id].current_users,
+                    # TODO: 삭제
                     number_of_users=len(self.rooms[room_id].current_users),
+                    current_users=len(self.rooms[room_id].current_users),
+                    max_users=self.rooms[room_id].max_num,
                     notice=self.rooms[room_id].notice
                 )
             )
@@ -194,8 +202,43 @@ class ChatRoomManager:
                 )
             )
         # 접속유저리스트 제거
+        print('EXIT', user_id)
         self.user_in_room.pop(user_id)
 
     def get_joined_room(self, user_id: int) -> ChatRoom:
         room_id = self.user_in_room[user_id]
         return self.rooms[room_id]
+
+    # room_manager에 있는게 맞을까?
+    async def lobby_refresh_timer(self, delay_time: float):
+        if not self.is_begin:
+            self.is_begin = True
+            self.delay_time = delay_time
+            while self.is_timer_on:
+                await asyncio.sleep(self.delay_time)
+                await self.send_lobby_data()
+
+    async def send_lobby_data(self):
+        lobby_data = [
+            LobbyData(
+                room_id=room.room_id,
+                current_users=len(room.current_users),
+                max_users=room.max_num
+            )
+            for room in self.rooms.values()
+        ]
+        # 내림차순 정렬
+        lobby_data = sorted(lobby_data, key=lambda x: x.current_users, reverse=True)
+
+        await connection_manager.send_broadcast(
+            ChatSocketLobbyRefreshMessage(
+                data=lobby_data
+            )
+        )
+
+        # 디버깅 용
+        for room in self.rooms.values():
+            print(room.room_id, room.current_users)
+
+        print(self.user_in_room)
+        print('---------------------------------------')

@@ -1,4 +1,6 @@
+import asyncio
 import json
+import threading
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect, Query
 from fastapi.templating import Jinja2Templates
 
@@ -25,6 +27,7 @@ router = APIRouter(prefix="/chat")
 templates = Jinja2Templates(directory="server/chat/templates")
 
 chat_room_manager = ChatRoomManager()
+asyncio.create_task(chat_room_manager.lobby_refresh_timer(delay_time=5.0))
 
 
 @router.get("/")
@@ -36,13 +39,15 @@ async def chat_page(request: Request):
 async def chatroom_ws(websocket: WebSocket, token: str = Query()):
     # TODO 매칭 메이킹이 만들어지면 room id는 query로 받도록 한다.
     # 굳이 방이 없어도 된다.
+    # TODO: 삭제
     temp_room = chat_room_manager.get_by_room_id('DEFAULT')
     if not temp_room:
         chat_room_manager.create_room('DEFAULT')
         chat_room_manager.rooms['DEFAULT'].max_num = 100
         # 방 이동 테스트용 추가
-        chat_room_manager.create_room('TEST')
-        chat_room_manager.rooms['TEST'].max_num = 100
+        for i in range(10):
+            chat_room_manager.create_room(f'TEST_{i}')
+            chat_room_manager.rooms[f'TEST_{i}'].max_num = 100
 
     user_id = None
     try:
@@ -74,13 +79,15 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
         )
         return
 
-    # DEFAULT 방에 입장
+    # TODO: 삭제
+    # 테스트하기 편하게 DEFAULT 방에 입장하도록 한다
     await chat_room_manager.join_room(websocket, 'DEFAULT', user_data)
 
     # 소켓 메시지 처리
     try:
         while True:
             data = await websocket.receive_text()
+            await asyncio.sleep(0.01)
             json_data = ChatSocketBaseMessage.parse_obj(json.loads(data))
 
             # 접속한 방 가져오기
@@ -144,6 +151,7 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
 
             if json_data.action == ChatEvent.ROOM_CREATE:
                 room_id = json_data.data['room_id']
+                max_users = json_data.data['max_users']
                 # 이미 있는 방인 경우
                 if room_id in chat_room_manager.rooms:
                     await connection_manager.send_personal_message(
@@ -158,6 +166,7 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
                     continue
 
                 chat_room_manager.create_room(room_id)
+                chat_room_manager.rooms[room_id].max_num = max_users
 
                 await connection_manager.send_personal_message(
                     websocket,
@@ -178,6 +187,12 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
                         )
                     )
                 )
+
+            if json_data.action == ChatEvent.LOBBY_REFRESH:
+                await chat_room_manager.send_lobby_data()
+                # 제어?
+                # chat_room_manager.is_timer_on = json_data.data['is_timer_on']
+                # chat_room_manager.delay_time = json_data.data['delay_time']
 
     # 연결이 끊김 -> 유저가 채팅을 나갔다.
     except WebSocketDisconnect:

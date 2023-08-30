@@ -29,5 +29,10 @@ class ConnectionManager:
         for connection in connections:
             await connection.send_json(message.dict())
 
+    async def send_broadcast(self, message: ChatSocketBaseMessage):
+        for connections in self.active_connections.values():
+            for connection in connections:
+                await connection.send_json(message.dict())
+
 
 connection_manager = ConnectionManager()
