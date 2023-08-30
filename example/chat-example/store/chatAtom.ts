@@ -2,6 +2,7 @@ import {
   ChatError,
   ChatMessageListData,
   ChatSocketMessageBase,
+  LobbyRefreshData,
   UserInfo,
 } from "@/@types/chat";
 import { atom } from "jotai";
@@ -14,6 +15,7 @@ interface ChatAtom {
   users: UserInfo[];
   error: ChatError | null;
   eventMessage: ChatSocketMessageBase | null;
+  lobbyRoomList: LobbyRefreshData[];
 }
 
 export const chatAtom = atom<ChatAtom>({
@@ -24,4 +26,5 @@ export const chatAtom = atom<ChatAtom>({
   users: [],
   error: null,
   eventMessage: null,
+  lobbyRoomList: [],
 });

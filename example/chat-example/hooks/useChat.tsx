@@ -10,8 +10,16 @@ import { PropsWithChildren, useCallback, useEffect } from "react";
 const HostAddress = process.env.NEXT_PUBLIC_HOST;
 
 export const useChat = () => {
-  const { error, eventMessage, messages, notice, roomId, users, ws } =
-    useAtomValue(chatAtom);
+  const {
+    error,
+    eventMessage,
+    messages,
+    notice,
+    roomId,
+    users,
+    ws,
+    lobbyRoomList,
+  } = useAtomValue(chatAtom);
 
   const sendSocketBase = <T extends object>(
     action: ChatActionType,
@@ -35,11 +43,12 @@ export const useChat = () => {
     });
   };
 
-  const createRoom = (nextRoomId: string) => {
+  const createRoom = (nextRoomId: string, maxUsers: number = 8) => {
     if (roomId === nextRoomId) return;
 
     sendSocketBase(ChatActions.ROOM_CREATE, {
       room_id: nextRoomId,
+      max_users: maxUsers,
     });
   };
 
@@ -58,12 +67,17 @@ export const useChat = () => {
     });
   };
 
+  const refreshLobby = () => {
+    sendSocketBase(ChatActions.LOBBY_REFRESH, {});
+  };
+
   return {
     data: {
       roomId,
       notice,
       messages,
       users,
+      lobbyRoomList,
     },
     error,
     eventMessage,
@@ -71,6 +85,7 @@ export const useChat = () => {
     createRoom,
     changeRoom,
     sendNotice,
+    refreshLobby,
   };
 };
 
@@ -86,10 +101,7 @@ export const ChatProvider = ({ children }: PropsWithChildren) => {
 
       ws.onclose = (event) => {
         console.log("Chat disconnected", event);
-        if (event.code === 3000) {
-          alert("Invalid Token");
-          location.reload();
-        }
+        alert(event.reason || "Chat disconnected");
       };
 
       ws.onmessage = (event) => {
@@ -198,6 +210,19 @@ export const ChatProvider = ({ children }: PropsWithChildren) => {
           }
           case ChatActions.ROOM_CREATE: {
             alert(data.message);
+
+            break;
+          }
+          case ChatActions.LOBBY_REFRESH: {
+            const lobbyRoomList = data.sort(
+              (a, b) => b.current_users - a.current_users
+            );
+
+            setChatState((prev) => ({
+              ...prev,
+              lobbyRoomList,
+            }));
+
             break;
           }
           default: {

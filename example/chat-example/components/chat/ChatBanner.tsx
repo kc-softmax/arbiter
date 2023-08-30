@@ -24,7 +24,15 @@ const ChatBanner = () => {
 
   return (
     <div className="text-center sticky top-0 z-10 space-y-2">
-      <p className="font-semibold">RoomID: {roomId}</p>
+      <div className="mockup-browser border border-base-300">
+        <div className="mockup-browser-toolbar">
+          <div className="bg-base-200 rounded-md flex-1 p-1">
+            RoomID: {roomId}
+          </div>
+        </div>
+      </div>
+
+      {notice ? <div className="alert">[Notice] {notice}</div> : null}
       <ul>
         {users.map(({ user_id, user_name }, index) => (
           <li
@@ -41,7 +49,6 @@ const ChatBanner = () => {
           </li>
         ))}
       </ul>
-      {notice ? <div className="alert">Notice: {notice}</div> : null}
     </div>
   );
 };

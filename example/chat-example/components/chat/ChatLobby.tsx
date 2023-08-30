@@ -1,23 +1,14 @@
 import { useChat } from "@/hooks/useChat";
+import { sortTargetItemFirst } from "@/utils/sort-utils";
 import { useState } from "react";
 
-const dummyData = [
-  {
-    roomId: "DEFAULT",
-    users: 1,
-  },
-  {
-    roomId: "PARTY",
-    users: 2,
-  },
-  {
-    roomId: "RandomRoom",
-    users: 3,
-  },
-];
-
 const ChatLobby = () => {
-  const { createRoom, changeRoom } = useChat();
+  const {
+    createRoom,
+    changeRoom,
+    refreshLobby,
+    data: { lobbyRoomList, roomId: currentRoomId },
+  } = useChat();
 
   const [searchInput, setSearchInput] = useState("");
 
@@ -36,7 +27,7 @@ const ChatLobby = () => {
 
   return (
     <section className="h-full">
-      <div className="p-4 overflow-scroll h-full space-y-4">
+      <div className="p-4 overflow-scroll h-full space-y-4 relative">
         <div className="space-y-2">
           <button
             className="btn btn-primary btn-lg btn-block"
@@ -59,22 +50,46 @@ const ChatLobby = () => {
           />
         </div>
         <ul className="flex flex-col gap-2">
-          {dummyData
+          {lobbyRoomList
             .filter(
-              ({ roomId }) =>
+              ({ room_id: roomId }) =>
                 roomId.toLowerCase().indexOf(searchInput.toLowerCase()) > -1
             )
-            .map(({ roomId, users }) => (
-              <li key={roomId} onClick={() => onClickRoom(roomId)}>
-                <div className="card bg-base-100 hover:brightness-90 cursor-pointer border">
-                  <div className="card-body p-6">
-                    <h2 className="card-title">{roomId}</h2>
-                    <p>users: {users}</p>
+            .sort((a, b) =>
+              sortTargetItemFirst(a.room_id, b.room_id, currentRoomId)
+            )
+            .map(
+              ({
+                room_id: roomId,
+                current_users: currentUsers,
+                max_users: maxUsers,
+              }) => (
+                <li key={roomId} onClick={() => onClickRoom(roomId)}>
+                  <div
+                    className={`card border ${
+                      currentRoomId === roomId
+                        ? "bg-primary text-primary-content"
+                        : "bg-base-100 hover:brightness-90 cursor-pointer"
+                    }`}
+                  >
+                    <div className="card-body p-6">
+                      <h2 className="card-title">
+                        {roomId} {currentRoomId === roomId ? "(current)" : ""}
+                      </h2>
+                      <p>
+                        users: {currentUsers} / {maxUsers}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              </li>
-            ))}
+                </li>
+              )
+            )}
         </ul>
+        <div className="absolute bottom-4 right-4">
+          <button className="btn btn-circle btn-lg" onClick={refreshLobby}>
+            ♻️
+          </button>
+        </div>
       </div>
     </section>
   );

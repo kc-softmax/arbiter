@@ -33,6 +33,12 @@ export interface UserLeaveData {
   user: UserInfo;
 }
 
+export interface LobbyRefreshData {
+  room_id: string;
+  current_users: number;
+  max_users: number;
+}
+
 export interface ChatError {
   code: number;
   reason: string;
@@ -72,6 +78,11 @@ export interface ChatSocketMessageNotice {
   };
 }
 
+export interface ChatSocketMessageLobbyRefresh {
+  action: typeof ChatActions.LOBBY_REFRESH;
+  data: LobbyRefreshData[];
+}
+
 export interface ChatSocketMessageError {
   action: typeof ChatActions.ERROR;
   data: ChatError;
@@ -84,7 +95,8 @@ export type ChatSocketMessageBase =
   | ChatSocketMessageUserLeave
   | ChatSocketMessageError
   | ChatSocketMessage
-  | ChatSocketMessageNotice;
+  | ChatSocketMessageNotice
+  | ChatSocketMessageLobbyRefresh;
 
 export interface ChatMessageData {
   type: "message";
