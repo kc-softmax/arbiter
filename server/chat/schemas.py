@@ -71,8 +71,8 @@ class UserLeaveData(BaseModel):
 
 
 class UserInviteData(BaseModel):
-    user_from: str  # user_name
     room_id: str
+    user_name_from: str  # user_name
 
 
 class RoomChangeData(BaseModel):
