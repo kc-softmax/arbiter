@@ -4,7 +4,7 @@ from starlette.websockets import WebSocket
 from starlette.websockets import WebSocketDisconnect
 import asyncio
 
-from server.adapter import ChatAdapter
+from arbiter.api.adapter import ChatAdapter
 from reference.service import Room, RoomManager
 from reference.chatting.chatting_env import ChattingEnv
 from reference.chatting.chat_user import ChatUser
@@ -26,7 +26,7 @@ async def chat_engine(websocket: WebSocket, room_id: str):
     init: dict(str | int, str) = await websocket.receive_json()
     user_id: str = init['sender']
     chat_user: ChatUser = ChatUser(user_id)
-    
+
     # check available room and create room if not exist
     available_room = room_manager.find_available_room()
     if available_room:
@@ -39,7 +39,7 @@ async def chat_engine(websocket: WebSocket, room_id: str):
         adapter = ChatAdapter(chat_env)
         available_room = room_manager.create_room(room_id, adapter)
         available_room.join_room(room_id, user_id, chat_user, websocket)
-    
+
     try:
         while True:
             recv_message = await websocket.receive_text()

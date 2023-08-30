@@ -4,10 +4,10 @@ from passlib.context import CryptContext
 from pydantic import ValidationError
 from ast import literal_eval
 
-from server.config import settings
-from server.auth.constants import TOKEN_GENERATE_ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_MINUTES
-from server.auth.schemas import TokenDataSchema
-from server.auth.exceptions import InvalidToken
+from arbiter.api.config import settings
+from arbiter.api.auth.constants import TOKEN_GENERATE_ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_MINUTES
+from arbiter.api.auth.schemas import TokenDataSchema
+from arbiter.api.auth.exceptions import InvalidToken
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 

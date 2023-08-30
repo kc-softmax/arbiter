@@ -3,8 +3,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from collections import defaultdict, deque
 
-from server.adapter import ChatAdapter
-from server.chat.schemas import ClientChatMessage, ChatData
+from arbiter.api.adapter import ChatAdapter
+from arbiter.api.chat.schemas import ClientChatMessage, ChatData
 
 
 @dataclass

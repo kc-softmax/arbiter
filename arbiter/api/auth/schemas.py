@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-from server.auth.models import UserBase, ConsoleUserBase, PKModel
+from arbiter.api.auth.models import UserBase, ConsoleUserBase, PKModel
 
 
 class TokenSchema(BaseModel):

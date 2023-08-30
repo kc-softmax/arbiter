@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from server.database import async_engine
+from arbiter.api.database import async_engine
 
 
 # event_loop fixture를 테스트 케이스마다 주입해줘야 한다. -> @pytest.mark.asyncio가 처리 해줌

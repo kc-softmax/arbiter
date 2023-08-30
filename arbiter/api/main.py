@@ -4,11 +4,11 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from server.exceptions import BadRequest
-from server.database import create_db_and_tables, async_engine
-from server.logging import log_middleware
-from server.auth.router import router as auth_router
-from server.chat.router import router as chat_router
+from arbiter.api.exceptions import BadRequest
+from arbiter.api.database import create_db_and_tables, async_engine
+from arbiter.api.logging import log_middleware
+from arbiter.api.auth.router import router as auth_router
+from arbiter.api.chat.router import router as chat_router
 
 
 app = FastAPI()

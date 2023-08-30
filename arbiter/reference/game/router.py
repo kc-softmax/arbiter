@@ -8,7 +8,7 @@ from typing import Dict, Any
 import asyncio
 import names
 
-from server.adapter import GymAdapter
+from arbiter.api.adapter import GymAdapter
 from reference.service import Room, RoomManager
 
 
@@ -64,7 +64,7 @@ async def client_event(websocket: WebSocket, room: Room) -> None:
 async def game_engine(websocket: WebSocket, room_id: str):
     await websocket.accept()
     user_id = names.get_first_name()
-    
+
     # check available room and create room if not exist
     available_room = room_manager.find_available_room()
     if available_room:
@@ -74,15 +74,15 @@ async def game_engine(websocket: WebSocket, room_id: str):
         adapter = GymAdapter(snake_env)
         available_room = room_manager.create_room(room_id, adapter)
         available_room.join_room(room_id, user_id, websocket)
-    
+
     # user가 입장하면 join 이벤트를 보낸다.
     await websocket.send_json({'user_id': user_id, 'event': 'join'})
-    
+
     # client에서 보내는 이벤트를 받는 태스크와 server 보내는 이벤트 태스크를 생성
     await run_until_first_complete(
         (server_event, {'websocket': websocket, 'room_id': room_id, 'user_id': user_id}),
         (client_event, {'websocket': websocket, 'room_id': room_id, 'user_id': user_id}),
     )
-    
+
     # 클라이언트가 나간 것으로 간주
     available_room.leave_room(user_id)

@@ -2,8 +2,8 @@ from fastapi import WebSocket
 from collections import defaultdict
 from pydantic import BaseModel
 
-from server.auth.utils import verify_token
-from server.chat.schemas import ChatSocketBaseMessage
+from arbiter.api.auth.utils import verify_token
+from arbiter.api.chat.schemas import ChatSocketBaseMessage
 
 
 class ConnectionManager:
