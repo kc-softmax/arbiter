@@ -21,13 +21,11 @@ const ChatBubble = ({ message }: ChatBubbleProps) => {
   } = message;
 
   const onClickNotice = () => {
-    sendNotice({
-      user_id: userId.toString(),
-      message: messageText,
-    });
+    sendNotice(messageText, userId.toString());
   };
 
   const onClickReport = () => {
+    alert(`Reported: ${userId}-${username}'s ${messageText}`);
     setIsReported(true);
   };
 
@@ -70,15 +68,15 @@ const ChatBubble = ({ message }: ChatBubbleProps) => {
           >
             Report
           </button>
-          <div className="join">
+          <div className="join w-full">
             <button
-              className="join-item btn btn-outline btn-sm btn-success"
+              className="join-item flex-1 btn btn-outline btn-sm btn-success"
               onClick={onClickGood}
             >
               👍
             </button>
             <button
-              className="join-item btn btn-outline btn-sm btn-error"
+              className="join-item flex-1 btn btn-outline btn-sm btn-error"
               onClick={onClickBad}
             >
               👎

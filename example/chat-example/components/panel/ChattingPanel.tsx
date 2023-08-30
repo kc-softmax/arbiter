@@ -2,14 +2,21 @@
 
 import { useChat } from "@/hooks/useChat";
 import { scrollToBottom } from "@/utils/dom-utils";
-import { useEffect, useRef } from "react";
+import { use, useEffect, useRef } from "react";
 import ChatBanner from "../chat/ChatBanner";
 import ChatInputForm from "../chat/ChatInputForm";
 import ChatList from "../chat/ChatList";
 import ChatLobby from "../chat/ChatLobby";
+import {
+  chatResetErrorAtom,
+  chatResetInviteMessageAtom,
+} from "@/store/chatAtom";
+import { useSetAtom } from "jotai";
 
 const ChattingPanel = () => {
-  const { data, error } = useChat();
+  const { data, error, inviteMessage, changeRoom } = useChat();
+  const resetInviteMessage = useSetAtom(chatResetInviteMessageAtom);
+  const resetError = useSetAtom(chatResetErrorAtom);
   const { messages } = data;
 
   const chatPanelRef = useRef<HTMLDivElement>(null);
@@ -18,9 +25,25 @@ const ChattingPanel = () => {
     scrollToBottom(chatPanelRef);
   }, [messages]);
 
-  if (error) {
+  useEffect(() => {
+    if (!error) return;
     alert(`${error.code}: ${error.reason}`);
-  }
+    resetError();
+  }, [error, resetError]);
+
+  useEffect(() => {
+    if (!inviteMessage) return;
+
+    const isYes = confirm(
+      `${inviteMessage.user_name_from} invites you to join room: ${inviteMessage.room_id}`
+    );
+
+    if (isYes) {
+      changeRoom(inviteMessage.room_id);
+    }
+
+    resetInviteMessage();
+  }, [inviteMessage, changeRoom, resetInviteMessage]);
 
   return (
     <section>

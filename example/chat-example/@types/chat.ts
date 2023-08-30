@@ -1,5 +1,7 @@
 import { ChatActions } from "@/const/actions";
 
+// SECTION: Common Types
+
 export interface AuthInfo {
   id: string;
   token: string;
@@ -9,6 +11,8 @@ export interface UserInfo {
   user_id: number;
   user_name: string;
 }
+
+// SECTION: Data from Socket
 
 export interface ChatMessage {
   user: UserInfo;
@@ -39,10 +43,17 @@ export interface LobbyRefreshData {
   max_users: number;
 }
 
+export interface InviteUserData {
+  room_id: string;
+  user_name_from: string;
+}
+
 export interface ChatError {
   code: number;
   reason: string;
 }
+
+// SECTION: Socket Message
 
 export interface ChatSocketMessageRoomCreate {
   action: typeof ChatActions.ROOM_CREATE;
@@ -83,6 +94,11 @@ export interface ChatSocketMessageLobbyRefresh {
   data: LobbyRefreshData[];
 }
 
+export interface ChatSocketMessageInviteUser {
+  action: typeof ChatActions.USER_INVITE;
+  data: InviteUserData;
+}
+
 export interface ChatSocketMessageError {
   action: typeof ChatActions.ERROR;
   data: ChatError;
@@ -96,7 +112,10 @@ export type ChatSocketMessageBase =
   | ChatSocketMessageError
   | ChatSocketMessage
   | ChatSocketMessageNotice
-  | ChatSocketMessageLobbyRefresh;
+  | ChatSocketMessageLobbyRefresh
+  | ChatSocketMessageInviteUser;
+
+// SECTION: Client used Data types
 
 export interface ChatMessageData {
   type: "message";
@@ -111,19 +130,12 @@ export interface ChatNotificationData {
   };
 }
 
-export type ChatMessageListData = ChatMessageData | ChatNotificationData;
+export type ChatMessageList = ChatMessageData | ChatNotificationData;
 
 export interface ChatSendMessage {
   action: typeof ChatActions.MESSAGE;
   data: {
     message: string;
     user_id: string;
-  };
-}
-
-export interface ChatSendChangeRoom {
-  action: typeof ChatActions.ROOM_CHANGE;
-  data: {
-    room_id: string;
   };
 }

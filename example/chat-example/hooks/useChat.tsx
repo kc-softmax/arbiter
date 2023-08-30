@@ -19,6 +19,7 @@ export const useChat = () => {
     users,
     ws,
     lobbyRoomList,
+    inviteMessage,
   } = useAtomValue(chatAtom);
 
   const sendSocketBase = <T extends object>(
@@ -60,15 +61,32 @@ export const useChat = () => {
     });
   };
 
-  const sendNotice = ({ message, user_id }: ChatSendMessage["data"]) => {
+  const sendNotice = (message: string, userId: string) => {
     sendSocketBase(ChatActions.NOTICE, {
       message,
-      user_id,
+      user_id: userId,
     });
   };
 
   const refreshLobby = () => {
     sendSocketBase(ChatActions.LOBBY_REFRESH, {});
+  };
+
+  const inviteUser = ({
+    userFrom,
+    userTo,
+  }: {
+    userFrom: string;
+    userTo: string;
+  }) => {
+    console.log("inviteUser", { roomId, userFrom, userTo });
+
+    // TODO: user_id_from 타입 변경 필요
+    sendSocketBase(ChatActions.USER_INVITE, {
+      room_id: roomId,
+      user_id_from: parseInt(userFrom, 10),
+      user_name_to: userTo,
+    });
   };
 
   return {
@@ -79,6 +97,7 @@ export const useChat = () => {
       users,
       lobbyRoomList,
     },
+    inviteMessage,
     error,
     eventMessage,
     sendMessage,
@@ -86,6 +105,7 @@ export const useChat = () => {
     changeRoom,
     sendNotice,
     refreshLobby,
+    inviteUser,
   };
 };
 
@@ -116,6 +136,7 @@ export const ChatProvider = ({ children }: PropsWithChildren) => {
           ...prev,
           eventMessage: chatSocketMessage,
           error: null,
+          inviteMessage: null,
         }));
 
         switch (action) {
@@ -221,6 +242,14 @@ export const ChatProvider = ({ children }: PropsWithChildren) => {
             setChatState((prev) => ({
               ...prev,
               lobbyRoomList,
+            }));
+
+            break;
+          }
+          case ChatActions.USER_INVITE: {
+            setChatState((prev) => ({
+              ...prev,
+              inviteMessage: data,
             }));
 
             break;

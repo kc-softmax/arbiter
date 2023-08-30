@@ -7,7 +7,8 @@ import { useAtomValue } from "jotai";
 import { useEffect, useRef } from "react";
 
 const ChatInputForm = () => {
-  const { changeRoom, createRoom, sendNotice, sendMessage } = useChat();
+  const { changeRoom, createRoom, sendNotice, sendMessage, inviteUser } =
+    useChat();
   const { id } = useAtomValue(authAtom);
 
   const {
@@ -30,11 +31,16 @@ const ChatInputForm = () => {
     },
     "/n": {
       name: "notice",
-      action: (message) =>
-        sendNotice({
-          message,
-          user_id: id,
-        }),
+      action: (message) => sendNotice(message, id),
+    },
+    "/i": {
+      name: "invite",
+      action: (userId) => {
+        inviteUser({
+          userTo: userId,
+          userFrom: id,
+        });
+      },
     },
   });
   const textRef = useRef<HTMLTextAreaElement>(null);
