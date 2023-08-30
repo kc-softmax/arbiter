@@ -195,6 +195,7 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
                 # chat_room_manager.delay_time = json_data.data['delay_time']
 
             if json_data.action == ChatEvent.USER_INVITE:
+                print(json_data.data)
                 room_id = json_data.data['room_id']
                 user_id_from = json_data.data['user_id_from']
                 user_name_to = json_data.data['user_name_to']
@@ -219,10 +220,18 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
                     ChatSocketUserInviteMessage(
                         data=UserInviteData(
                             room_id=room_id,
-                            user_from=user_name_from
+                            user_name_from=user_name_from
                         )
                     )
                 )
+
+            if json_data.action == ChatEvent.MESSAGE_LIKE:
+                message_id = json_data.data['message_id']
+                type = json_data.data['type']  # like or dislike
+                if type == 'like':
+                    await room.message_history[message_id].like_ids.add(user_id)
+
+                await room.message_history[message_id].dislike_ids.add(user_id)
 
     # 연결이 끊김 -> 유저가 채팅을 나갔다.
     except WebSocketDisconnect:
