@@ -3,18 +3,29 @@
 import { useChat } from "@/hooks/useChat";
 import { useCommandInput } from "@/hooks/useCommandInput";
 import { authAtom } from "@/store/authAtom";
-import { useAtomValue } from "jotai";
+import { chatAtom, chatSetWhisperTargetAtom } from "@/store/chatAtom";
+import { useAtomValue, useSetAtom } from "jotai";
 import { useEffect, useRef } from "react";
 
 const ChatInputForm = () => {
-  const { changeRoom, createRoom, sendNotice, sendMessage, inviteUser } =
-    useChat();
+  const {
+    changeRoom,
+    createRoom,
+    sendNotice,
+    sendMessage,
+    sendWhisper,
+    inviteUser,
+  } = useChat();
   const { id } = useAtomValue(authAtom);
+
+  const { whisperTarget } = useAtomValue(chatAtom);
+  const setWhisperTarget = useSetAtom(chatSetWhisperTargetAtom);
 
   const {
     commands,
     command,
     controls,
+    reset,
     resetCommand,
     components: { CommandAutoComplete },
   } = useCommandInput({
@@ -42,10 +53,26 @@ const ChatInputForm = () => {
         });
       },
     },
+    "/w": {
+      name: "whisper",
+      action: (userId) => {
+        setWhisperTarget(userId);
+      },
+    },
   });
   const textRef = useRef<HTMLTextAreaElement>(null);
 
-  const onSubmit = (e?: React.FormEvent<HTMLFormElement>) =>
+  const onSubmit = (e?: React.FormEvent<HTMLFormElement>) => {
+    if (whisperTarget) {
+      sendWhisper({
+        message: controls.message.value,
+        userId: id,
+        whisperTarget,
+      });
+      reset();
+      return;
+    }
+
     controls.form.onSubmit(e, () => {
       console.log(id, controls.message.value);
       sendMessage({
@@ -53,6 +80,7 @@ const ChatInputForm = () => {
         user_id: id,
       });
     });
+  };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Enter 키를 눌렀을 때 줄바꿈이 되는 것을 방지하기 위해 먼저 개행 이벤트를 막는다.
@@ -70,6 +98,7 @@ const ChatInputForm = () => {
 
     if (e.key === "Backspace" && controls.message.value === "") {
       resetCommand();
+      setWhisperTarget(null);
     }
   };
 
@@ -77,7 +106,7 @@ const ChatInputForm = () => {
     if (textRef) {
       textRef.current?.focus();
     }
-  }, [command]);
+  }, [command, whisperTarget]);
 
   return (
     <form className="form-control w-full" onSubmit={onSubmit}>
@@ -90,6 +119,14 @@ const ChatInputForm = () => {
             onClick={resetCommand}
           >
             {commands[command].name}
+          </button>
+        ) : null}
+        {whisperTarget ? (
+          <button
+            className="btn btn-info join-item h-auto"
+            onClick={() => setWhisperTarget(null)}
+          >
+            TO: {whisperTarget}
           </button>
         ) : null}
         <textarea

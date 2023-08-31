@@ -3,7 +3,8 @@
 import { requestUserInfo } from "@/api/auth";
 import { useChat } from "@/hooks/useChat";
 import { authAtom } from "@/store/authAtom";
-import { useAtomValue } from "jotai";
+import { chatSetWhisperTargetAtom } from "@/store/chatAtom";
+import { useAtomValue, useSetAtom } from "jotai";
 import { useState } from "react";
 
 const ChatBanner = () => {
@@ -12,6 +13,7 @@ const ChatBanner = () => {
     inviteUser,
   } = useChat();
   const { id } = useAtomValue(authAtom);
+  const setWhisperTarget = useSetAtom(chatSetWhisperTargetAtom);
   const [tooltip, setTooltip] = useState<Record<string, string>>({});
 
   const getUserInfo = async (userId: string) => {
@@ -26,6 +28,13 @@ const ChatBanner = () => {
     }));
   };
 
+  const onClickUserBadge = (targetUsername: string, targetUserId: string) => {
+    // TODO: 개발 끝나면 풀기
+    // if (targetUserId === id) return alert("You can't whisper to yourself");
+
+    setWhisperTarget(targetUsername);
+  };
+
   const onClickInvite = () => {
     const userTo = prompt("Type usename to Invite");
 
@@ -35,6 +44,14 @@ const ChatBanner = () => {
       userFrom: id,
       userTo,
     });
+  };
+
+  const onClickWhisper = () => {
+    const userTo = prompt("Type usename to Whisper");
+
+    if (!userTo) return;
+
+    setWhisperTarget(userTo);
   };
 
   return (
@@ -56,8 +73,9 @@ const ChatBanner = () => {
             data-tip={tooltip[user_id]}
           >
             <span
-              className="badge badge-lg"
+              className="badge badge-lg cursor-pointer"
               onMouseOver={() => getUserInfo(user_id.toString())}
+              onClick={() => onClickUserBadge(user_name, user_id.toString())}
             >
               {user_name || "Unknown"}
             </span>
@@ -70,6 +88,14 @@ const ChatBanner = () => {
             onClick={onClickInvite}
           >
             + Invite
+          </button>
+        </li>
+        <li>
+          <button
+            className="btn btn-xs btn-primary btn-outline"
+            onClick={onClickWhisper}
+          >
+            &gt;&gt; Whisper
           </button>
         </li>
       </ul>

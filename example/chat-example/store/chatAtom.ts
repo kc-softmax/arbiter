@@ -23,6 +23,7 @@ interface ChatAtom {
   eventMessage: ChatSocketMessageBase | null;
   lobbyRoomList: LobbyRefreshData[];
   inviteMessage: InviteUserData | null;
+  whisperTarget: string | null;
 }
 
 export const chatAtom = atom<ChatAtom>({
@@ -35,6 +36,7 @@ export const chatAtom = atom<ChatAtom>({
   eventMessage: null,
   lobbyRoomList: [],
   inviteMessage: null,
+  whisperTarget: null,
 });
 
 export const chatResetInviteMessageAtom = atom(null, (get, set) => {
@@ -254,6 +256,16 @@ export const chatUpdateLikesAtom = atom<null, [MessageLikeData], void>(
     set(chatAtom, {
       ...get(chatAtom),
       messages,
+    });
+  }
+);
+
+export const chatSetWhisperTargetAtom = atom<null, [string | null], void>(
+  null,
+  (get, set, whisperTarget) => {
+    set(chatAtom, {
+      ...get(chatAtom),
+      whisperTarget,
     });
   }
 );

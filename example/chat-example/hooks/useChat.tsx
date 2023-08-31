@@ -64,6 +64,28 @@ export const useChat = () => {
     });
   };
 
+  const sendWhisper = ({
+    message,
+    userId,
+    whisperTarget,
+  }: {
+    message: string;
+    userId: string;
+    whisperTarget: string;
+  }) => {
+    console.log(
+      "userId, message, whisperTarget :>> ",
+      userId,
+      message,
+      whisperTarget
+    );
+    // sendSocketBase(ChatActions.WHISPER, {
+    //   message,
+    //   user_id: userId,
+    //   whisper_target: whisperTarget,
+    // });
+  };
+
   const refreshLobby = () => {
     sendSocketBase(ChatActions.LOBBY_REFRESH, {});
   };
@@ -104,6 +126,7 @@ export const useChat = () => {
     createRoom,
     changeRoom,
     sendNotice,
+    sendWhisper,
     refreshLobby,
     inviteUser,
     sendLike,

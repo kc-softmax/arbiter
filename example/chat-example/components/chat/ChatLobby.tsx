@@ -1,5 +1,5 @@
 import { useChat } from "@/hooks/useChat";
-import { useState } from "react";
+import { useDeferredValue, useState } from "react";
 
 const ChatLobby = () => {
   const {
@@ -10,6 +10,7 @@ const ChatLobby = () => {
   } = useChat();
 
   const [searchInput, setSearchInput] = useState("");
+  const defferedSearchInput = useDeferredValue(searchInput);
 
   const onClickCreateRoom = () => {
     const nextRoomId = prompt("Type Room ID");
@@ -52,7 +53,9 @@ const ChatLobby = () => {
           {lobbyRoomList
             .filter(
               ({ room_id: roomId }) =>
-                roomId.toLowerCase().indexOf(searchInput.toLowerCase()) > -1
+                roomId
+                  .toLowerCase()
+                  .indexOf(defferedSearchInput.toLowerCase()) > -1
             )
             .map(
               ({

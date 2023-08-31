@@ -80,9 +80,7 @@ export const useCommandInput = (commands: UseCommandInputParams) => {
                 <button
                   className="btn btn-sm btn-block btn-outline"
                   type="button"
-                  onClick={() =>
-                    onClickCommandAutoComplete(commands[commandKey].name)
-                  }
+                  onClick={() => onClickCommandAutoComplete(commandKey)}
                 >
                   {commandKey} : {commands[commandKey].name}
                 </button>
