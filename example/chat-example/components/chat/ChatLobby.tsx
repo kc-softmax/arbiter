@@ -26,8 +26,8 @@ const ChatLobby = () => {
   };
 
   return (
-    <section className="h-full">
-      <div className="p-4 overflow-scroll h-full space-y-4 relative">
+    <section className="h-full relative">
+      <div className="p-4 overflow-scroll h-full space-y-4">
         <div className="space-y-2">
           <button
             className="btn btn-primary btn-lg btn-block"
@@ -85,11 +85,14 @@ const ChatLobby = () => {
               )
             )}
         </ul>
-        <div className="absolute bottom-4 right-4">
-          <button className="btn btn-circle btn-lg" onClick={refreshLobby}>
-            ♻️
-          </button>
-        </div>
+      </div>
+      <div className="absolute bottom-4 right-4">
+        <button
+          className="btn btn-circle btn-lg text-4xl"
+          onClick={refreshLobby}
+        >
+          🔄
+        </button>
       </div>
     </section>
   );

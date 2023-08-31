@@ -12,18 +12,21 @@ export interface UserInfo {
   user_name: string;
 }
 
+export type LikeOrDislike = "like" | "dislike";
+
 // SECTION: Data from Socket
 
-export interface ChatMessage {
+export interface MessageData {
   user: UserInfo;
   message_id: number;
   message: string;
   time: string;
+  like: number;
 }
 
 export interface RoomJoinData {
   room_id: string;
-  messages: ChatMessage[];
+  messages: MessageData[];
   users: UserInfo[];
   number_of_users: number;
   notice: string;
@@ -46,6 +49,11 @@ export interface LobbyRefreshData {
 export interface InviteUserData {
   room_id: string;
   user_name_from: string;
+}
+
+export interface MessageLikeData {
+  message_id: number;
+  like: number;
 }
 
 export interface ChatError {
@@ -79,7 +87,7 @@ export interface ChatSocketMessageUserLeave {
 
 export interface ChatSocketMessage {
   action: typeof ChatActions.MESSAGE | typeof ChatActions.CONTROL;
-  data: ChatMessage;
+  data: MessageData;
 }
 
 export interface ChatSocketMessageNotice {
@@ -99,6 +107,11 @@ export interface ChatSocketMessageInviteUser {
   data: InviteUserData;
 }
 
+export interface ChatSocketMessageLike {
+  action: typeof ChatActions.MESSAGE_LIKE;
+  data: MessageLikeData;
+}
+
 export interface ChatSocketMessageError {
   action: typeof ChatActions.ERROR;
   data: ChatError;
@@ -113,16 +126,17 @@ export type ChatSocketMessageBase =
   | ChatSocketMessage
   | ChatSocketMessageNotice
   | ChatSocketMessageLobbyRefresh
-  | ChatSocketMessageInviteUser;
+  | ChatSocketMessageInviteUser
+  | ChatSocketMessageLike;
 
 // SECTION: Client used Data types
 
-export interface ChatMessageData {
+export interface ChatMessageItem {
   type: "message";
-  data: ChatMessage;
+  data: MessageData;
 }
 
-export interface ChatNotificationData {
+export interface ChatNotificationItem {
   type: "notification";
   data: {
     enter: boolean;
@@ -130,7 +144,7 @@ export interface ChatNotificationData {
   };
 }
 
-export type ChatMessageList = ChatMessageData | ChatNotificationData;
+export type ChatItem = ChatMessageItem | ChatNotificationItem;
 
 export interface ChatSendMessage {
   action: typeof ChatActions.MESSAGE;

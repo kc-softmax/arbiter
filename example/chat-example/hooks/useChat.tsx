@@ -1,10 +1,25 @@
 "use client";
 
-import { ChatSendMessage, ChatSocketMessageBase } from "@/@types/chat";
+import {
+  ChatSendMessage,
+  ChatSocketMessageBase,
+  LikeOrDislike,
+} from "@/@types/chat";
 import { ChatActionType, ChatActions } from "@/const/actions";
 import { authAtom } from "@/store/authAtom";
-import { chatAtom } from "@/store/chatAtom";
-import { useAtom, useAtomValue } from "jotai";
+import {
+  chatAddMessageAtom,
+  chatAtom,
+  chatRoomJoinAtom,
+  chatSetErrorAtom,
+  chatSetInviteUserAtom,
+  chatSetLobbyAtom,
+  chatSetNoticeAtom,
+  chatUpdateLikesAtom,
+  chatUserJoinAtom,
+  chatUsesrLeaveAtom,
+} from "@/store/chatAtom";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { PropsWithChildren, useCallback, useEffect } from "react";
 
 const HostAddress = process.env.NEXT_PUBLIC_HOST;
@@ -79,14 +94,22 @@ export const useChat = () => {
     userFrom: string;
     userTo: string;
   }) => {
-    console.log("inviteUser", { roomId, userFrom, userTo });
-
-    // TODO: user_id_from 타입 변경 필요
+    // TODO: user_id_from의 타입 변경 필요
     sendSocketBase(ChatActions.USER_INVITE, {
       room_id: roomId,
       user_id_from: parseInt(userFrom, 10),
       user_name_to: userTo,
     });
+  };
+
+  const sendLike = (messageId: number, type: LikeOrDislike) => {
+    console.log("sendLike", { messageId, type });
+
+    // TODO: 서버 연동 후 구현 필요
+    // sendSocketBase(ChatActions.MESSAGE_LIKE, {
+    //   message_id: messageId,
+    //   type,
+    // });
   };
 
   return {
@@ -106,12 +129,23 @@ export const useChat = () => {
     sendNotice,
     refreshLobby,
     inviteUser,
+    sendLike,
   };
 };
 
 export const ChatProvider = ({ children }: PropsWithChildren) => {
   const [{ ws }, setChatState] = useAtom(chatAtom);
   const { token } = useAtomValue(authAtom);
+
+  const setRoomData = useSetAtom(chatRoomJoinAtom);
+  const addMessage = useSetAtom(chatAddMessageAtom);
+  const addUser = useSetAtom(chatUserJoinAtom);
+  const removeUser = useSetAtom(chatUsesrLeaveAtom);
+  const setNotice = useSetAtom(chatSetNoticeAtom);
+  const setError = useSetAtom(chatSetErrorAtom);
+  const setLobbyRoomList = useSetAtom(chatSetLobbyAtom);
+  const setInviteUser = useSetAtom(chatSetInviteUserAtom);
+  const updateLike = useSetAtom(chatUpdateLikesAtom);
 
   const join = useCallback(
     (ws: WebSocket) => {
@@ -141,134 +175,69 @@ export const ChatProvider = ({ children }: PropsWithChildren) => {
 
         switch (action) {
           case ChatActions.ROOM_JOIN: {
-            const { room_id, messages, users, notice } = data;
-
-            setChatState((prev) => ({
-              ...prev,
-              roomId: room_id,
-              users,
-              notice,
-              messages: messages.map((message) => ({
-                type: "message",
-                data: message,
-              })),
-            }));
-
+            setRoomData(data);
             break;
           }
           case ChatActions.USER_JOIN: {
-            setChatState((prev) => ({
-              ...prev,
-              users: prev.users.some(
-                (prevUser) => prevUser.user_id === data.user.user_id
-              )
-                ? prev.users
-                : [...prev.users, data.user],
-              messages: [
-                ...prev.messages,
-                {
-                  type: "notification",
-                  data: {
-                    enter: true,
-                    user: data.user,
-                  },
-                },
-              ],
-            }));
-
+            addUser(data.user);
             break;
           }
           case ChatActions.USER_LEAVE: {
-            setChatState((prev) => ({
-              ...prev,
-              users: prev.users.filter(
-                (prevUser) => prevUser.user_id !== data.user.user_id
-              ),
-              messages: [
-                ...prev.messages,
-                {
-                  type: "notification",
-                  data: {
-                    enter: false,
-                    user: data.user,
-                  },
-                },
-              ],
-            }));
-
+            removeUser(data.user);
             break;
           }
           case ChatActions.MESSAGE:
           case ChatActions.CONTROL: {
-            setChatState((prev) => ({
-              ...prev,
-              messages: [
-                ...prev.messages,
-                {
-                  type: "message",
-                  data,
-                },
-              ],
-            }));
-
+            addMessage(data);
             break;
           }
           case ChatActions.NOTICE: {
-            setChatState((prev) => ({
-              ...prev,
-              notice: data.message,
-            }));
-
+            setNotice(data.message);
             break;
           }
           case ChatActions.ERROR: {
-            setChatState((prev) => ({
-              ...prev,
-              error: data,
-            }));
-
+            setError(data);
             break;
           }
           case ChatActions.ROOM_CREATE: {
             alert(data.message);
-
             break;
           }
           case ChatActions.LOBBY_REFRESH: {
-            const lobbyRoomList = data.sort(
-              (a, b) => b.current_users - a.current_users
-            );
-
-            setChatState((prev) => ({
-              ...prev,
-              lobbyRoomList,
-            }));
-
+            setLobbyRoomList(data);
             break;
           }
           case ChatActions.USER_INVITE: {
-            setChatState((prev) => ({
-              ...prev,
-              inviteMessage: data,
-            }));
-
+            setInviteUser(data);
+            break;
+          }
+          case ChatActions.MESSAGE_LIKE: {
+            updateLike(data);
             break;
           }
           default: {
-            setChatState((prev) => ({
-              ...prev,
-              error: {
-                code: 0,
-                reason: `Unhandled action: ${action}`,
-              },
-            }));
+            setError({
+              code: 0,
+              reason: `Unhandled action: ${action}`,
+            });
 
             break;
           }
         }
       };
     },
-    [setChatState]
+    [
+      setRoomData,
+      setChatState,
+      addMessage,
+      addUser,
+      removeUser,
+      setNotice,
+      setError,
+      setLobbyRoomList,
+      setInviteUser,
+      updateLike,
+    ]
   );
 
   useEffect(() => {

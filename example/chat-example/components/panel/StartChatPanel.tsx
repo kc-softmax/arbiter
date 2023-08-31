@@ -39,18 +39,20 @@ const StartChatPanel = ({ next }: StartChatPanelProps) => {
         >
           <div className="border p-4 flex flex-col gap-4 rounded-md">
             <div className="tabs tabs-boxed">
-              <a
+              <button
+                type="button"
                 className={`tab basis-1/2 ${isSignUp ? "" : "tab-active"}`}
                 onClick={() => setIsSignUp(false)}
               >
                 Login
-              </a>
-              <a
+              </button>
+              <button
+                type="button"
                 className={`tab basis-1/2 ${isSignUp ? "tab-active" : ""}`}
                 onClick={() => setIsSignUp(true)}
               >
                 Sign In
-              </a>
+              </button>
             </div>
             <div className="join join-vertical">
               <input

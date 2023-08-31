@@ -1,23 +1,24 @@
 "use client";
 
 import { useChat } from "@/hooks/useChat";
-import { scrollToBottom } from "@/utils/dom-utils";
-import { use, useEffect, useRef } from "react";
-import ChatBanner from "../chat/ChatBanner";
-import ChatInputForm from "../chat/ChatInputForm";
-import ChatList from "../chat/ChatList";
-import ChatLobby from "../chat/ChatLobby";
 import {
   chatResetErrorAtom,
   chatResetInviteMessageAtom,
 } from "@/store/chatAtom";
+import { scrollToBottom } from "@/utils/dom-utils";
 import { useSetAtom } from "jotai";
+import { useEffect, useRef } from "react";
+import ChatBanner from "../chat/ChatBanner";
+import ChatInputForm from "../chat/ChatInputForm";
+import ChatList from "../chat/ChatList";
+import ChatLobby from "../chat/ChatLobby";
 
 const ChattingPanel = () => {
   const { data, error, inviteMessage, changeRoom } = useChat();
+  const { messages } = data;
+
   const resetInviteMessage = useSetAtom(chatResetInviteMessageAtom);
   const resetError = useSetAtom(chatResetErrorAtom);
-  const { messages } = data;
 
   const chatPanelRef = useRef<HTMLDivElement>(null);
 
