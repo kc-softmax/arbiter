@@ -10,7 +10,9 @@ from arbiter.api.database import create_db_and_tables, async_engine
 from arbiter.api.logging import log_middleware
 from arbiter.api.auth.router import router as auth_router
 from arbiter.api.chat.router import router as chat_router
-from arbiter.api.match.match import MatchMaker
+from arbiter.api.match.match_maker import mm
+
+asyncio.create_task(mm.run())
 
 app = FastAPI()
 app.add_middleware(
@@ -37,7 +39,6 @@ async def validation_exception_handler(request, exc):
 @app.on_event("startup")
 async def on_startup():
     await create_db_and_tables()
-    asyncio.create_task(MatchMaker.find_match())
 
 
 # 가비지 pool 쌓이는 것을 방지
