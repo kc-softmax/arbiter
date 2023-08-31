@@ -166,8 +166,6 @@ class ChatRoomManager:
                     room_id=room_id,
                     messages=self.rooms[room_id].message_history,
                     users=self.rooms[room_id].current_users,
-                    # TODO: 삭제
-                    number_of_users=len(self.rooms[room_id].current_users),
                     current_users=len(self.rooms[room_id].current_users),
                     max_users=self.rooms[room_id].max_num,
                     notice=self.rooms[room_id].notice

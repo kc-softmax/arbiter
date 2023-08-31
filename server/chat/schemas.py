@@ -33,11 +33,18 @@ class UserData(BaseModel):
     user_name: str
 
 
+# TODO: message 불러 올때 좋아요 싫어요
 class ChatData(BaseModel):
     message: str
     message_id: int = 0
     user: UserData
     time: str
+    like: int = 0
+
+
+class MessageLikeData(BaseModel):
+    message_id: int
+    like: int = 0
 
 
 class RoomCurrentUserData(BaseModel):
@@ -54,8 +61,6 @@ class LobbyData(BaseModel):
 class RoomJoinData(BaseModel):
     room_id: str
     messages: list[ChatData] = []
-    # TODO: 삭제
-    number_of_users: int = 0
     current_users: int
     max_users: int = 0
     users: list[UserData] = []
@@ -127,6 +132,10 @@ class ChatSocketLobbyRefreshMessage(ChatSocketBaseMessage[list[LobbyData]]):
 
 class ChatSocketUserInviteMessage(ChatSocketBaseMessage[UserInviteData]):
     action = ChatEvent.USER_INVITE
+
+
+class ChatSocketUserLikeMessage(ChatSocketBaseMessage[MessageLikeData]):
+    action = ChatEvent.MESSAGE_LIKE
 
 
 class ClientChatMessage(ChatSocketBaseMessage[ClientChatData]):

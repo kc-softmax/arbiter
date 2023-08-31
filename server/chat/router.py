@@ -14,8 +14,8 @@ from server.chat.exceptions import (
     RoomIsFull, RoomIsExist, AlreadyConnected
 )
 from server.chat.schemas import (
-    ChatEvent, ChatSocketBaseMessage, ChatSocketUserInviteMessage, ClientChatData,
-    ChatSocketChatMessage, ClientChatMessage, RoomChangeData,
+    ChatEvent, ChatSocketBaseMessage, ChatSocketUserInviteMessage, ChatSocketUserLikeMessage, ClientChatData,
+    ChatSocketChatMessage, ClientChatMessage, MessageLikeData, RoomChangeData,
     UserData, ChatSocketErrorMessage, ErrorData,
     ChatSocketNoticeMessage, ChatSocketRoomCreateMessage, UserInviteData
 )
@@ -84,8 +84,9 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
     await chat_room_manager.join_room(websocket, 'DEFAULT', user_data)
 
     # 소켓 메시지 처리
-    try:
-        while True:
+
+    while True:
+        try:
             data = await websocket.receive_text()
             await asyncio.sleep(0.01)
             json_data = ChatSocketBaseMessage.parse_obj(json.loads(data))
@@ -198,6 +199,7 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
                 print(json_data.data)
                 room_id = json_data.data['room_id']
                 user_id_from = json_data.data['user_id_from']
+                # user_name not unique
                 user_name_to = json_data.data['user_name_to']
                 user_id_to = None
                 user_name_from = None
@@ -228,11 +230,26 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
             if json_data.action == ChatEvent.MESSAGE_LIKE:
                 message_id = json_data.data['message_id']
                 type = json_data.data['type']  # like or dislike
-                if type == 'like':
-                    await room.message_history[message_id].like_ids.add(user_id)
 
-                await room.message_history[message_id].dislike_ids.add(user_id)
+                # 단순하게 계산하기
+                # TODO: 우선 클라이언트 라디오 버튼으로 중복 클릭 방지 했는데, 서버에서도 중복 클릭 방지를 해야할듯
+                chat_data = [chat for chat in room.message_history if chat.message_id == message_id][0]
+                chat_data.like = chat_data.like + 1 if type == 'like' else chat_data.like - 1
 
-    # 연결이 끊김 -> 유저가 채팅을 나갔다.
-    except WebSocketDisconnect:
-        await chat_room_manager.leave_room(websocket, user_data)
+                await connection_manager.send_room_broadcast(
+                    room.room_id,
+                    ChatSocketUserLikeMessage(
+                        data=MessageLikeData(
+                            message_id=chat_data.message_id,
+                            like=chat_data.like
+                        )
+                    )
+                )
+        # 디버깅 용
+        except WebSocketDisconnect as e:
+            print('1. WebSocket Disconnect exception', e)
+            await chat_room_manager.leave_room(websocket, user_data)
+            break
+        except Exception as e:
+            print('2. WebSocket Receive exception', e)
+            continue

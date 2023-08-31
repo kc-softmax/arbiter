@@ -1,3 +1,5 @@
+# https://datatracker.ietf.org/doc/html/rfc6455#section-7.4.1
+# TODO: 4000대로 변경해야함
 class AuthorizationFailedClose:
     CODE = 3000
     REASON = "invalid token"
@@ -25,4 +27,9 @@ class RoomIsFull:
 
 class RoomIsExist:
     CODE = 3800
+    REASON = "room is exist"
+
+
+class UnCkeckedError:
+    CODE = 9999
     REASON = "room is exist"
