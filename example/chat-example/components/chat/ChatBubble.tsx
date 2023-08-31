@@ -44,8 +44,8 @@ const ChatBubble = ({ message }: ChatBubbleProps) => {
       <p className="chat-header">{username}</p>
       <div
         tabIndex={0}
-        className={`indicator dropdown dropdown-hover dropdown-bottom dropdown-end chat-bubble flex justify-center items-end cursor-pointer max-w-[70%] ${
-          isMe ? "chat-bubble-primary " : "chat-bubble-secondary "
+        className={`indicator dropdown dropdown-hover dropdown-bottom chat-bubble flex justify-center items-end cursor-pointer max-w-[70%] ${
+          isMe ? "chat-bubble-primary" : "chat-bubble-secondary"
         }`}
       >
         {like ? (
@@ -62,7 +62,9 @@ const ChatBubble = ({ message }: ChatBubbleProps) => {
 
         <div
           tabIndex={0}
-          className="dropdown-content z-20 p-2 shadow bg-base-100 rounded-box space-y-2 w-32"
+          className={`dropdown-content z-20 p-2 shadow bg-base-100 rounded-box space-y-2 w-32 ${
+            isMe ? "right-0" : "left-0"
+          }`}
         >
           <div className="join w-full">
             <input

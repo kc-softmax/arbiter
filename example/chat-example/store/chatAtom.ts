@@ -78,6 +78,19 @@ const chatbotMessage2: ChatItem = {
   },
 };
 
+export const chatSetEventMessageAtom = atom<
+  null,
+  [ChatSocketMessageBase],
+  void
+>(null, (get, set, eventMessage) => {
+  set(chatAtom, {
+    ...get(chatAtom),
+    eventMessage,
+    error: null,
+    inviteMessage: null,
+  });
+});
+
 export const chatRoomJoinAtom = atom<null, [RoomJoinData], void>(
   null,
   (get, set, data) => {
@@ -217,8 +230,7 @@ export const chatSetInviteUserAtom = atom<null, [InviteUserData], void>(
 
 export const chatUpdateLikesAtom = atom<null, [MessageLikeData], void>(
   null,
-  (get, set, data) => {
-    const { message_id, like } = data;
+  (get, set, { like, message_id }) => {
     const messages = get(chatAtom).messages.slice();
 
     const targetMessageIndex = messages.findIndex(

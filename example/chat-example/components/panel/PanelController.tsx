@@ -4,7 +4,7 @@ import LoadingIndicator from "@/app/loading";
 import { usePanel } from "@/hooks/usePanel";
 import ChattingPanel from "./ChattingPanel";
 import StartChatPanel from "./StartChatPanel";
-import { ChatProvider } from "@/hooks/useChat";
+import ChatProvider from "../provider/ChatProvider";
 
 const PanelController = () => {
   const { PanelStep, setActiveStep } = usePanel([
