@@ -33,7 +33,8 @@ const ChatBubble = ({ message }: ChatBubbleProps) => {
   };
 
   const onChangeLike = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const type = e.target.value as LikeOrDislike;
+    const type = e.target.checked ? "like" : "dislike";
+
     sendLike(message_id, type);
   };
 
@@ -48,13 +49,13 @@ const ChatBubble = ({ message }: ChatBubbleProps) => {
           isMe ? "chat-bubble-primary" : "chat-bubble-secondary"
         }`}
       >
-        {like !== 0 ? (
+        {like > 0 ? (
           <span
             className={`indicator-item badge badge-accent ${
               isMe ? "indicator-start" : "indicator-end"
             }`}
           >
-            {like > 0 ? "👍" : "👎"} {like}
+            👍 {like}
           </span>
         ) : null}
 
@@ -62,38 +63,20 @@ const ChatBubble = ({ message }: ChatBubbleProps) => {
 
         <div
           tabIndex={0}
-          className={`dropdown-content z-20 p-2 shadow bg-base-100 rounded-box space-y-2 w-32 ${
+          className={`dropdown-content z-20 p-2 shadow bg-base-100 rounded-box flex flex-col gap-2 w-32 ${
             isMe ? "right-0" : "left-0"
           }`}
         >
-          <div className="join w-full">
-            <input
-              type="radio"
-              name={likeRadioName}
-              className="join-item flex-1 btn btn-outline btn-sm btn-success radio checked:bg-success rounded-lg"
-              aria-label="👍"
-              onChange={onChangeLike}
-              value="like"
-            />
-            <input
-              type="radio"
-              name={likeRadioName}
-              className="join-item flex-1 btn btn-outline btn-sm btn-error radio checked:bg-error rounded-lg"
-              aria-label="👎"
-              onChange={onChangeLike}
-              value="dislike"
-            />
-          </div>
-          <button
-            className="btn btn-info btn-outline btn-block"
-            onClick={onClickNotice}
-          >
+          <input
+            type="checkbox"
+            className="btn btn-outline btn-sm btn-success radio rounded-lg"
+            aria-label="👍"
+            onChange={onChangeLike}
+          />
+          <button className="btn btn-info btn-outline" onClick={onClickNotice}>
             Notice
           </button>
-          <button
-            className="btn btn-error btn-outline btn-block"
-            onClick={onClickReport}
-          >
+          <button className="btn btn-error btn-outline" onClick={onClickReport}>
             Report
           </button>
         </div>

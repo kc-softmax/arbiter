@@ -62,6 +62,8 @@ export const useCommandInput = (commands: UseCommandInputParams) => {
       setMessageInput("");
     };
 
+    if (!messageInput) return null;
+
     return (
       <div className="dropdown dropdown-open dropdown-top">
         <ul

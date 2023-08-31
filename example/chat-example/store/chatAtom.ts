@@ -60,7 +60,7 @@ const chatbotMessage: ChatItem = {
     },
     message_id: 999,
     message: "Welcome to Chat!",
-    time: "2021-01-01 00:00:00",
+    time: new Date().toISOString(),
     like: 7,
   },
 };
@@ -73,7 +73,7 @@ const chatbotMessage2: ChatItem = {
     },
     message_id: 9999,
     message: "Welcome to Chat! It's me mario!",
-    time: "2021-01-01 00:00:00",
+    time: new Date().toISOString(),
     like: 7,
   },
 };
