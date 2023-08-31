@@ -48,7 +48,7 @@ const ChatBubble = ({ message }: ChatBubbleProps) => {
           isMe ? "chat-bubble-primary" : "chat-bubble-secondary"
         }`}
       >
-        {like ? (
+        {like !== 0 ? (
           <span
             className={`indicator-item badge badge-accent ${
               isMe ? "indicator-start" : "indicator-end"

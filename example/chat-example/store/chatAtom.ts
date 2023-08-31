@@ -207,9 +207,12 @@ export const chatSetErrorAtom = atom<null, [ChatError], void>(
 export const chatSetLobbyAtom = atom<null, [LobbyRefreshData[]], void>(
   null,
   (get, set, lobbyRoomListData) => {
-    const lobbyRoomList = lobbyRoomListData.sort(
-      (a, b) => b.current_users - a.current_users
-    );
+    const roomId = get(chatAtom).roomId;
+    const lobbyRoomList = lobbyRoomListData.sort((a, b) => {
+      if (a.room_id === roomId) return -1;
+      if (b.room_id === roomId) return 1;
+      return a.current_users - b.current_users;
+    });
 
     set(chatAtom, {
       ...get(chatAtom),

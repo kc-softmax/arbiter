@@ -1,5 +1,4 @@
 import { useChat } from "@/hooks/useChat";
-import { sortTargetItemFirst } from "@/utils/sort-utils";
 import { useState } from "react";
 
 const ChatLobby = () => {
@@ -54,9 +53,6 @@ const ChatLobby = () => {
             .filter(
               ({ room_id: roomId }) =>
                 roomId.toLowerCase().indexOf(searchInput.toLowerCase()) > -1
-            )
-            .sort((a, b) =>
-              sortTargetItemFirst(a.room_id, b.room_id, currentRoomId)
             )
             .map(
               ({
