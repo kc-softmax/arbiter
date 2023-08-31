@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     TEST_RDB_CONNECTION_URL: str = ""
 
     class Config:
-        env_file = path + "/.local.env", path + "/.prod.env"
+        env_file = f"{path}/.local.env", f"{path}/.prod.env"
         env_file_encoding = 'utf-8'
 
 
