@@ -190,6 +190,7 @@ class ChatRoomManager:
 
         connection_manager.disconnect(room_id, websocket, user_data.user_id)
         self.rooms[room_id].leave(user_data)
+        self.user_in_room.pop(user_id)
         if self.rooms[room_id].is_empty():
             self.remove_room(room_id)
         else:
@@ -203,7 +204,6 @@ class ChatRoomManager:
             )
         # 접속유저리스트 제거
         print('EXIT', user_id)
-        self.user_in_room.pop(user_id)
 
     def get_joined_room(self, user_id: int) -> ChatRoom:
         room_id = self.user_in_room[user_id]
