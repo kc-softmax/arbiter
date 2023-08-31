@@ -4,6 +4,7 @@ from pydantic.generics import GenericModel
 from typing import Generic, TypeVar
 
 
+# TODO: ChatEvent를 도메인별로 관리 되게
 class ChatEvent(StrEnum):
     ROOM_JOIN = "room_join"
     USER_JOIN = "user_join"
@@ -15,12 +16,12 @@ class ChatEvent(StrEnum):
     ROOM_CREATE = "room_create"
     LOBBY_REFRESH = "lobby_refresh"
     USER_INVITE = "user_invite"
-    MESSAGE_DIRECT = "message_direct"
     MESSAGE_LIKE = "message_like"
 
 
 class ClientChatData(BaseModel):
-    message: str = ""
+    room_id: str
+    message: str
 
 
 class ErrorData(BaseModel):
@@ -43,6 +44,7 @@ class ChatData(BaseModel):
 
 
 class MessageLikeData(BaseModel):
+    room_id: str
     message_id: int
     like: int = 0
 
@@ -68,10 +70,12 @@ class RoomJoinData(BaseModel):
 
 
 class UserJoinData(BaseModel):
+    room_id: str
     user: UserData
 
 
 class UserLeaveData(BaseModel):
+    room_id: str
     user: UserData
 
 

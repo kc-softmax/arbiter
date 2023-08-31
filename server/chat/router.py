@@ -1,6 +1,6 @@
 import asyncio
 import json
-import threading
+import traceback
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect, Query
 from fastapi.templating import Jinja2Templates
 
@@ -27,7 +27,7 @@ router = APIRouter(prefix="/chat")
 templates = Jinja2Templates(directory="server/chat/templates")
 
 chat_room_manager = ChatRoomManager()
-asyncio.create_task(chat_room_manager.lobby_refresh_timer(delay_time=5.0))
+asyncio.create_task(chat_room_manager.lobby_refresh_timer(delay_time=20.0))
 
 
 @router.get("/")
@@ -81,7 +81,7 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
 
     # TODO: 삭제
     # 테스트하기 편하게 DEFAULT 방에 입장하도록 한다
-    await chat_room_manager.join_room(websocket, 'DEFAULT', user_data)
+    await chat_room_manager.join_room(websocket, "DEFAULT", user_data)
 
     # 소켓 메시지 처리
 
@@ -91,14 +91,14 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
             await asyncio.sleep(0.01)
             json_data = ChatSocketBaseMessage.parse_obj(json.loads(data))
 
-            # 접속한 방 가져오기
-            room = chat_room_manager.get_joined_room(user_id)
-
+            # join, exit로 나누는게 좋을 꺼 같다.
             if json_data.action == ChatEvent.ROOM_CHANGE:
-                receive_room_id = json_data.data['room_id']
+                # 어떤 방인 지 알 수 없다.
+                room_id_from = json_data.data['room_id_from']
+                room_id_to = json_data.data['room_id_to']
 
                 # 요청한 방이 없을 경우
-                if not receive_room_id in chat_room_manager.rooms:
+                if not room_id_to in chat_room_manager.rooms:
                     await connection_manager.send_personal_message(
                         websocket,
                         ChatSocketErrorMessage(
@@ -111,7 +111,7 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
                     continue
 
                 # full 방인 경우
-                if not chat_room_manager.rooms[receive_room_id].is_available():
+                if not chat_room_manager.rooms[room_id_to].is_available():
                     await connection_manager.send_personal_message(
                         websocket,
                         ChatSocketErrorMessage(
@@ -124,7 +124,7 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
                     continue
 
                 # 같은 방 다시 접속 한 경우
-                if chat_room_manager.rooms[receive_room_id].is_duplicate(user_data.user_id):
+                if chat_room_manager.rooms[room_id_to].is_duplicate(user_data.user_id):
                     await connection_manager.send_personal_message(
                         websocket,
                         ChatSocketErrorMessage(
@@ -135,16 +135,61 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
                         )
                     )
                     continue
-                await chat_room_manager.join_room(websocket, receive_room_id, user_data)
+                await chat_room_manager.leave_room(websocket, room_id_from, user_data)
+                await chat_room_manager.join_room(websocket, room_id_to, user_data)
+
+            if json_data.action == ChatEvent.ROOM_JOIN:
+                room_id = json_data.data['room_id']
+                # 요청한 방이 없을 경우
+                if not room_id in chat_room_manager.rooms:
+                    await connection_manager.send_personal_message(
+                        websocket,
+                        ChatSocketErrorMessage(
+                            data=ErrorData(
+                                code=RoomDoesNotExist.CODE,
+                                reason=RoomDoesNotExist.REASON
+                            )
+                        )
+                    )
+                    continue
+
+                # full 방인 경우
+                if not chat_room_manager.rooms[room_id].is_available():
+                    await connection_manager.send_personal_message(
+                        websocket,
+                        ChatSocketErrorMessage(
+                            data=ErrorData(
+                                code=RoomIsFull.CODE,
+                                reason=RoomIsFull.REASON
+                            )
+                        )
+                    )
+                    continue
+
+                # 같은 방 다시 접속 한 경우
+                if chat_room_manager.rooms[room_id].is_duplicate(user_data.user_id):
+                    await connection_manager.send_personal_message(
+                        websocket,
+                        ChatSocketErrorMessage(
+                            data=ErrorData(
+                                code=AlreadyJoinedRoom.CODE,
+                                reason=AlreadyJoinedRoom.REASON
+                            )
+                        )
+                    )
+                    continue
+                await chat_room_manager.join_room(websocket, room_id, user_data)
 
             if json_data.action == ChatEvent.MESSAGE:
-                chat_message = await room.handle_chat_message(
+                receive_room_id = json_data.data['room_id']
+                chat_message = await chat_room_manager.rooms[receive_room_id].handle_chat_message(
                     user_data,
                     ClientChatMessage.parse_obj(json_data)
                 )
                 # 유저들에게 브로드캐스팅
                 await connection_manager.send_room_broadcast(
-                    room.room_id,
+                    # room.room_id,
+                    receive_room_id,
                     ChatSocketChatMessage(
                         data=chat_message
                     )
@@ -173,17 +218,21 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
                     websocket,
                     ChatSocketRoomCreateMessage(
                         data=ClientChatData(
+                            # TODO: 수정필요, room_id 의미 없음
+                            room_id=room_id,
                             message=f'{room_id} 방이 생성되었습니다.'
                         )
                     )
                 )
 
             if json_data.action == ChatEvent.NOTICE:
-                room.notice = json_data.data['message']
+                room_id = json_data.data['room_id']
+                chat_room_manager.rooms[room_id].notice = json_data.data['message']
                 await connection_manager.send_room_broadcast(
-                    room.room_id,
+                    room_id,
                     ChatSocketNoticeMessage(
                         data=ClientChatData(
+                            room_id=room_id,
                             message=json_data.data['message']
                         )
                     )
@@ -191,12 +240,8 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
 
             if json_data.action == ChatEvent.LOBBY_REFRESH:
                 await chat_room_manager.send_lobby_data()
-                # 제어?
-                # chat_room_manager.is_timer_on = json_data.data['is_timer_on']
-                # chat_room_manager.delay_time = json_data.data['delay_time']
 
             if json_data.action == ChatEvent.USER_INVITE:
-                print(json_data.data)
                 room_id = json_data.data['room_id']
                 user_id_from = json_data.data['user_id_from']
                 # user_name not unique
@@ -228,18 +273,23 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
                 )
 
             if json_data.action == ChatEvent.MESSAGE_LIKE:
+                room_id = json_data.data['room_id']
                 message_id = json_data.data['message_id']
                 type = json_data.data['type']  # like or dislike
 
                 # 단순하게 계산하기
                 # TODO: 우선 클라이언트 라디오 버튼으로 중복 클릭 방지 했는데, 서버에서도 중복 클릭 방지를 해야할듯
-                chat_data = [chat for chat in room.message_history if chat.message_id == message_id][0]
-                chat_data.like = chat_data.like + 1 if type == 'like' else chat_data.like - 1
+                for chat in chat_room_manager.rooms[room_id].message_history:
+                    if chat.message_id == message_id:
+                        chat_data = chat
+                        chat.like = chat.like + 1 if type == 'like' else chat.like - 1
+                        break
 
                 await connection_manager.send_room_broadcast(
-                    room.room_id,
+                    room_id,
                     ChatSocketUserLikeMessage(
                         data=MessageLikeData(
+                            room_id=room_id,
                             message_id=chat_data.message_id,
                             like=chat_data.like
                         )
@@ -248,8 +298,9 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
         # 디버깅 용
         except WebSocketDisconnect as e:
             print('1. WebSocket Disconnect exception', e)
-            await chat_room_manager.leave_room(websocket, user_data)
+            await chat_room_manager.leave_room(websocket, "", user_data)
             break
         except Exception as e:
             print('2. WebSocket Receive exception', e)
+            traceback.print_exc()
             continue
