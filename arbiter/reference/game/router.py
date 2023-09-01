@@ -28,7 +28,8 @@ async def server_event(room: Room, websocket: WebSocket, room_id: str, user_id: 
         else:
             # TODO: obs는 array로 되어있어서 client에 그대로 보낼지 생각해봐야겠다.
             try:
-                data = room.adapter.message.get_nowait()
+                async with room.adapter.get() as data:
+                    pass
             except asyncio.QueueEmpty as err:
                 pass
             data = {

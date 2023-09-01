@@ -242,4 +242,4 @@ pip-selfcheck.json
 *.db
 
 # bert model
-reference/chatting/models/*
+reference/chat/models/*
