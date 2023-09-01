@@ -8,16 +8,17 @@ from server.auth.exceptions import InvalidToken, UserAlreadyConnected
 from server.auth.utils import verify_token
 from server.auth.models import User
 from server.chat.connection import connection_manager
-from server.chat.room import ChatRoomManager, ChatRoom
+from server.chat.room import ChatRoomManager
 from server.chat.exceptions import (
     AuthorizationFailedClose, RoomDoesNotExist, AlreadyJoinedRoom,
     RoomIsFull, RoomIsExist, AlreadyConnected
 )
 from server.chat.schemas import (
-    ChatEvent, ChatSocketBaseMessage, ChatSocketUserInviteMessage, ChatSocketUserLikeMessage, ClientChatData,
-    ChatSocketChatMessage, ClientChatMessage, MessageLikeData, RoomChangeData,
-    UserData, ChatSocketErrorMessage, ErrorData,
-    ChatSocketNoticeMessage, ChatSocketRoomCreateMessage, UserInviteData
+    ChatEvent, ChatSocketBaseMessage, ChatSocketUserInviteMessage,
+    ChatSocketUserLikeMessage, ClientChatData, ChatSocketChatMessage,
+    ClientChatMessage, MessageLikeData, UserData,
+    ChatSocketErrorMessage, ErrorData, ChatSocketNoticeMessage,
+    ChatSocketRoomCreateMessage, UserInviteData
 )
 from server.database import make_async_session
 

@@ -3,20 +3,12 @@ from collections import defaultdict
 from pydantic import BaseModel
 
 from server.auth.utils import verify_token
-from server.chat.schemas import ChatSocketBaseMessage, ErrorData
+from server.chat.schemas import ChatSocketBaseMessage
 
 
 class ConnectionManager:
     def __init__(self) -> None:
         self.active_connections: dict[str, list[dict[str, WebSocket]]] = defaultdict(list)
-
-    # TODO: 삭제
-    # async def connect(self, websocket: WebSocket, room_id: str, token: str) -> str:
-    #     # 유효하지 않은 토큰일지라도 그 에러를 응답으로 보내주기 위해서는 먼저 accept을 해줘야한다.
-    #     await websocket.accept()
-    #     token_data = verify_token(token)
-    #     self.active_connections[room_id].append(websocket)
-    #     return token_data.sub
 
     def disconnect(self, room_id: str, websocket: WebSocket, user_id: int):
         # self.active_connections[room_id].remove(websocket)
@@ -39,6 +31,7 @@ class ConnectionManager:
             for connection in connection_info.values():
                 await connection.send_json(message.dict())
 
+    # connection이 이미 끊겼는데 보낸다.
     async def send_broadcast(self, message: ChatSocketBaseMessage):
         for connection_infos in self.active_connections.values():
             for connection_info in connection_infos:

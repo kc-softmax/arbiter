@@ -3,13 +3,12 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from collections import defaultdict, deque
-from chat.exceptions import AlreadyJoinedRoom, RoomDoesNotExist, RoomIsFull
 from fastapi import WebSocket
 
 from server.adapter import ChatAdapter
 from server.chat.schemas import (
-    ChatSocketErrorMessage, ChatSocketRoomJoinMessage, ChatSocketUserJoinMessage, ChatSocketUserLeaveMessage,
-    ClientChatMessage, ChatData, ErrorData, LobbyData,
+    ChatSocketRoomJoinMessage, ChatSocketUserJoinMessage, ChatSocketUserLeaveMessage,
+    ClientChatMessage, ChatData, LobbyData,
     RoomJoinData, UserData, UserJoinData,
     UserLeaveData, ChatSocketLobbyRefreshMessage
 )
@@ -128,10 +127,6 @@ class ChatRoomManager:
         self.delay_time: float = 5
         self.is_begin: bool = False
 
-    def find_available_room(self) -> ChatRoom | None:
-        available_rooms = [room for room_id, room in self.rooms.items() if room.is_available()]
-        return available_rooms[0] if available_rooms else None
-
     # room_id 받아서 처리할 수 있도록 추가
     def create_room(self, receive_room_id: str = '') -> bool:
         room_id = receive_room_id if receive_room_id else str(uuid.uuid4())
@@ -147,11 +142,8 @@ class ChatRoomManager:
             return None
         return self.rooms[room_id]
 
-    # user_data ?
     async def join_room(self, websocket: WebSocket, room_id: str, user_data: UserData) -> bool:
-        # 접속유저리스트 추가
         self.user_in_room[user_data.user_id].append(room_id)
-        # 방에 접속
         connection_manager.active_connections[room_id].append(
             {user_data.user_id: websocket}
         )
