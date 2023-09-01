@@ -27,7 +27,7 @@ router = APIRouter(prefix="/chat")
 templates = Jinja2Templates(directory="server/chat/templates")
 
 chat_room_manager = ChatRoomManager()
-asyncio.create_task(chat_room_manager.lobby_refresh_timer(delay_time=20.0))
+asyncio.create_task(chat_room_manager.lobby_refresh_timer(delay_time=10.0))
 
 
 @router.get("/")

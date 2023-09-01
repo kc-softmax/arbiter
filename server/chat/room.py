@@ -3,12 +3,13 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from collections import defaultdict, deque
+from chat.exceptions import AlreadyJoinedRoom, RoomDoesNotExist, RoomIsFull
 from fastapi import WebSocket
 
 from server.adapter import ChatAdapter
 from server.chat.schemas import (
-    ChatSocketRoomJoinMessage, ChatSocketUserJoinMessage, ChatSocketUserLeaveMessage,
-    ClientChatMessage, ChatData, LobbyData,
+    ChatSocketErrorMessage, ChatSocketRoomJoinMessage, ChatSocketUserJoinMessage, ChatSocketUserLeaveMessage,
+    ClientChatMessage, ChatData, ErrorData, LobbyData,
     RoomJoinData, UserData, UserJoinData,
     UserLeaveData, ChatSocketLobbyRefreshMessage
 )
@@ -182,8 +183,7 @@ class ChatRoomManager:
         )
         return True
 
-    # TODO
-
+    # TODO: 방 나갔을 때, 접속이 끊겼을때 분리하기
     async def leave_room(self, websocket: WebSocket, room_id: str, user_data: UserData):
         user_id = user_data.user_id
         # 대상이 있으면 그 방만 나가고, 없으면 전부 나간다.
@@ -196,6 +196,7 @@ class ChatRoomManager:
         for room_id in joined_room_ids:
             connection_manager.disconnect(room_id, websocket, user_data.user_id)
             self.rooms[room_id].leave(user_data)
+            self.user_in_room[user_id].remove(room_id)
             if self.rooms[room_id].is_empty():
                 self.remove_room(room_id)
             else:
@@ -209,8 +210,8 @@ class ChatRoomManager:
                     )
                 )
         # 접속한 방이 하나도 없으면 접속유저리스트에서 제거
-        if self.user_in_room[user_id]:
-            self.user_in_room.pop(user_id)
+        if len(self.user_in_room[user_id]) == 0:
+            del self.user_in_room[user_id]
 
     # room_manager에 있는게 맞을까?
     async def lobby_refresh_timer(self, delay_time: float):
@@ -218,8 +219,8 @@ class ChatRoomManager:
             self.is_begin = True
             self.delay_time = delay_time
             while self.is_timer_on:
-                await asyncio.sleep(self.delay_time)
                 await self.send_lobby_data()
+                await asyncio.sleep(self.delay_time)
 
     async def send_lobby_data(self):
         lobby_data = [
