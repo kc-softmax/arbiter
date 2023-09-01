@@ -1,4 +1,5 @@
 import json
+import asyncio
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect, Query
 from fastapi.templating import Jinja2Templates
 
@@ -11,6 +12,8 @@ from server.chat.schemas import (
     ChatSocketUserJoinMessage, UserJoinData, ChatSocketChatMessage,
     ChatSocketUserLeaveMessage, UserLeaveData, ClientChatMessage
 )
+
+WAITING_READY_SECOND = 5
 
 router = APIRouter(prefix="/chat")
 
@@ -27,7 +30,6 @@ async def chat_page(request: Request):
 
 @router.websocket("/ws")
 async def chatroom_ws(websocket: WebSocket, token: str = Query()):
-    global idx
     # TODO 매칭 메이킹이 만들어지면 room id는 query로 받도록 한다.
     room = chat_room_manager.find_available_room()
     if room is None:
@@ -35,13 +37,27 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
 
     # 소켓 연결 및 토큰을 검증하여 user_id를 얻는다.
     try:
-        user_id = await connection_manager.connect(websocket, room.room_id, token, room.adapter)
+        user_id = connection_manager.check_validation(room.room_id, token, room.adapter)
+        # connection이 정상적으로 일어났다면 message 교환 후 task 생성
+        await connection_manager.connect(websocket, room.room_id)
+        # until receive ready message for waiting seconds
+        ready = await asyncio.wait_for(websocket.receive_text(), WAITING_READY_SECOND)
+        if ready:
+            await connection_manager.create_subscription_task(room.room_id)
     except InvalidToken:
         await websocket.close(
             AuthorizationFailedClose.CODE,
             AuthorizationFailedClose.REASON
         )
         return
+    except asyncio.TimeoutError:
+        # server에서 추가 후 변경해야한다
+        await websocket.close(
+            AuthorizationFailedClose.CODE,
+            AuthorizationFailedClose.REASON
+        )
+        return
+
     # 방 입장
     room.join(user_id)
     # 새로 입장한 유저에게 기존 채팅방 데이터를 보내준다.

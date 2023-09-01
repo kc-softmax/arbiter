@@ -15,20 +15,22 @@ class ConnectionManager:
         self.active_connections: dict[str, list[WebSocket]] = defaultdict(list)
         self.adapter: dict[str, ChatAdapter] = {}
 
-    async def connect(self, websocket: WebSocket, room_id: str, token: str, adapter: ChatAdapter) -> str:
+    def check_validation(self, room_id: str, token: str, adapter: ChatAdapter) -> str:
+        self.adapter[room_id] = adapter
+        token_data = verify_token(token)
+        return token_data.sub
+
+    async def connect(self, websocket: WebSocket, room_id: str) -> None:
         # 유효하지 않은 토큰일지라도 그 에러를 응답으로 보내주기 위해서는 먼저 accept을 해줘야한다.
         await websocket.accept()
-        # 이 부분을 어떻게 해야할지 생각해봐야겠다.
-        if len(self.active_connections[room_id]) == 0:
-            asyncio.create_task(self.send_chat_broadcast(room_id))
-        self.adapter[room_id] = adapter
-        # token_data = verify_token(token)
         self.active_connections[room_id].append(websocket)
-        # return token_data.sub
-        return token
 
     def disconnect(self, room_id: str, websocket: WebSocket):
         self.active_connections[room_id].remove(websocket)
+
+    async def create_subscription_task(self, room_id: str):
+        if len(self.active_connections[room_id]) == 1:
+            asyncio.create_task(self.send_chat_broadcast(room_id))
 
     async def send_personal_message(self, websocket: WebSocket, message: ChatSocketBaseMessage):
         await websocket.send_json(message.dict())
