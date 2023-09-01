@@ -36,6 +36,7 @@ class UserData(BaseModel):
 
 # TODO: message 불러 올때 좋아요 싫어요
 class ChatData(BaseModel):
+    room_id: str
     message: str
     message_id: int = 0
     user: UserData

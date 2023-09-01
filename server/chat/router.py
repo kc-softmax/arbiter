@@ -188,7 +188,6 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
                 )
                 # 유저들에게 브로드캐스팅
                 await connection_manager.send_room_broadcast(
-                    # room.room_id,
                     receive_room_id,
                     ChatSocketChatMessage(
                         data=chat_message

@@ -74,6 +74,7 @@ class ChatRoom:
         chat_socket_message = ChatData(
             message=chat_message_executed_by_adapter["message"],
             user=user_data,
+            room_id=self.room_id,
             time=datetime.now().isoformat()
         )
         # 히스토리에 저장
@@ -147,7 +148,6 @@ class ChatRoomManager:
 
     # user_data ?
     async def join_room(self, websocket: WebSocket, room_id: str, user_data: UserData) -> bool:
-
         # 접속유저리스트 추가
         self.user_in_room[user_data.user_id].append(room_id)
         # 방에 접속
@@ -182,15 +182,16 @@ class ChatRoomManager:
         )
         return True
 
+    # TODO
+
     async def leave_room(self, websocket: WebSocket, room_id: str, user_data: UserData):
         user_id = user_data.user_id
         # 대상이 있으면 그 방만 나가고, 없으면 전부 나간다.
         joined_room_ids = []
-        if not room_id:
+        if room_id:
+            joined_room_ids.append(room_id)
+        else:
             joined_room_ids = self.user_in_room[user_id]
-
-        joined_room_ids.append(room_id)
-        self.user_in_room.pop(user_id)
 
         for room_id in joined_room_ids:
             connection_manager.disconnect(room_id, websocket, user_data.user_id)
@@ -207,6 +208,9 @@ class ChatRoomManager:
                         )
                     )
                 )
+        # 접속한 방이 하나도 없으면 접속유저리스트에서 제거
+        if self.user_in_room[user_id]:
+            self.user_in_room.pop(user_id)
 
     # room_manager에 있는게 맞을까?
     async def lobby_refresh_timer(self, delay_time: float):
