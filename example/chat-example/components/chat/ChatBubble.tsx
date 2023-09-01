@@ -1,8 +1,8 @@
-import { MessageData, LikeOrDislike } from "@/@types/chat";
+import { MessageData } from "@/@types/chat";
 import { useChat } from "@/hooks/useChat";
 import { authAtom } from "@/store/authAtom";
 import { useAtomValue } from "jotai";
-import { useId, useState } from "react";
+import { useState } from "react";
 import ChatLinkPreview from "./ChatLinkPreview";
 
 interface ChatBubbleProps {
@@ -10,8 +10,12 @@ interface ChatBubbleProps {
 }
 
 const ChatBubble = ({ message }: ChatBubbleProps) => {
-  const { sendNotice, sendLike } = useChat();
-  const likeRadioName = useId();
+  const {
+    sendNotice,
+    sendLike,
+    changeRoom,
+    data: { roomId: connectedRoomId },
+  } = useChat();
   const [isReported, setIsReported] = useState(false);
   const { id } = useAtomValue(authAtom);
 
@@ -21,10 +25,11 @@ const ChatBubble = ({ message }: ChatBubbleProps) => {
     time,
     user: { user_id: userId, user_name: username },
     like,
+    room_id: messageRoomId,
   } = message;
 
   const onClickNotice = () => {
-    sendNotice(messageText, userId.toString());
+    sendNotice(messageText);
   };
 
   const onClickReport = () => {
@@ -39,19 +44,29 @@ const ChatBubble = ({ message }: ChatBubbleProps) => {
   };
 
   const isMe = id === userId.toString();
+  const isOtherRoom = connectedRoomId !== messageRoomId;
 
   return (
     <div className={`chat ${isMe ? "chat-end" : "chat-start"}`}>
-      <p className="chat-header">{username}</p>
+      <div className="chat-header flex flex-row gap-1 items-center">
+        <p>{username}</p>
+        <button
+          className="badge badge-outline badge-primary badge-sm cursor-pointer hover:bg-primary hover:text-primary-content hover:border-primary"
+          onClick={() => changeRoom(messageRoomId)}
+        >
+          {messageRoomId}
+        </button>
+      </div>
       <div
         tabIndex={0}
-        className={`indicator dropdown dropdown-hover dropdown-bottom chat-bubble flex justify-center items-end cursor-pointer max-w-[70%] ${
-          isMe ? "chat-bubble-primary" : "chat-bubble-secondary"
-        }`}
+        className={`indicator dropdown dropdown-hover dropdown-bottom chat-bubble flex justify-center items-end cursor-pointer max-w-[70%] 
+        ${isMe ? "chat-bubble-primary" : "chat-bubble-secondary"} 
+        ${isOtherRoom ? "bg-opacity-60 text-gray-700" : ""}
+        `}
       >
         {like > 0 ? (
           <span
-            className={`indicator-item badge badge-accent ${
+            className={`indicator-item indicator-bottom badge badge-accent ${
               isMe ? "indicator-start" : "indicator-end"
             }`}
           >
@@ -81,8 +96,8 @@ const ChatBubble = ({ message }: ChatBubbleProps) => {
           </button>
         </div>
       </div>
-      <time className="chat-footer opacity-50">
-        {new Date(time).toLocaleString()}
+      <time className="chat-footer opacity-50 text-xs">
+        {new Date(time).toLocaleTimeString()}
       </time>
       <ChatLinkPreview messageText={messageText} />
     </div>

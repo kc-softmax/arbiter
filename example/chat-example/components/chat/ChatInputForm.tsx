@@ -42,7 +42,7 @@ const ChatInputForm = () => {
     },
     "/n": {
       name: "notice",
-      action: (message) => sendNotice(message, id),
+      action: (message) => sendNotice(message),
     },
     "/i": {
       name: "invite",
@@ -75,10 +75,7 @@ const ChatInputForm = () => {
 
     controls.form.onSubmit(e, () => {
       console.log(id, controls.message.value);
-      sendMessage({
-        message: controls.message.value,
-        user_id: id,
-      });
+      sendMessage(controls.message.value);
     });
   };
 

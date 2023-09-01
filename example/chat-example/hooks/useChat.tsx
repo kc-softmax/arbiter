@@ -1,9 +1,10 @@
 "use client";
 
-import { ChatSendMessage, LikeOrDislike } from "@/@types/chat";
+import { LikeOrDislike } from "@/@types/chat";
 import { ChatActionType, ChatActions } from "@/const/actions";
 import { chatAtom } from "@/store/chatAtom";
 import { useAtomValue } from "jotai";
+import { useCallback } from "react";
 
 export const useChat = () => {
   const {
@@ -18,29 +19,29 @@ export const useChat = () => {
     inviteMessage,
   } = useAtomValue(chatAtom);
 
-  const sendSocketBase = <T extends object>(
-    action: ChatActionType,
-    data: T
-  ) => {
-    const chatData: {
-      action: ChatActionType;
-      data: T;
-    } = {
-      action,
-      data,
-    };
+  const sendSocketBase = useCallback(
+    <T extends object>(action: ChatActionType, data: T) => {
+      const chatData: {
+        action: ChatActionType;
+        data: T;
+      } = {
+        action,
+        data,
+      };
 
-    ws?.send(JSON.stringify(chatData));
-  };
+      ws?.send(JSON.stringify(chatData));
+    },
+    [ws]
+  );
 
-  const sendMessage = ({ message, user_id }: ChatSendMessage["data"]) => {
+  const sendMessage = (message: string) => {
     sendSocketBase(ChatActions.MESSAGE, {
+      room_id: roomId,
       message,
-      user_id,
     });
   };
 
-  const createRoom = (nextRoomId: string, maxUsers: number = 8) => {
+  const createRoom = (nextRoomId: string, maxUsers: number = 50) => {
     if (roomId === nextRoomId) return;
 
     sendSocketBase(ChatActions.ROOM_CREATE, {
@@ -53,14 +54,23 @@ export const useChat = () => {
     if (roomId === nextRoomId) return;
 
     sendSocketBase(ChatActions.ROOM_CHANGE, {
+      room_id_from: roomId,
+      room_id_to: nextRoomId,
+    });
+  };
+
+  const joinRoom = (nextRoomId: string) => {
+    if (roomId === nextRoomId) return;
+
+    sendSocketBase(ChatActions.ROOM_JOIN, {
       room_id: nextRoomId,
     });
   };
 
-  const sendNotice = (message: string, userId: string) => {
+  const sendNotice = (message: string) => {
     sendSocketBase(ChatActions.NOTICE, {
+      room_id: roomId,
       message,
-      user_id: userId,
     });
   };
 
@@ -86,9 +96,9 @@ export const useChat = () => {
     // });
   };
 
-  const refreshLobby = () => {
+  const refreshLobby = useCallback(() => {
     sendSocketBase(ChatActions.LOBBY_REFRESH, {});
-  };
+  }, [sendSocketBase]);
 
   const inviteUser = ({
     userFrom,
@@ -106,6 +116,7 @@ export const useChat = () => {
 
   const sendLike = (messageId: number, type: LikeOrDislike) => {
     sendSocketBase(ChatActions.MESSAGE_LIKE, {
+      room_id: roomId,
       message_id: messageId,
       type,
     });
@@ -125,6 +136,7 @@ export const useChat = () => {
     sendMessage,
     createRoom,
     changeRoom,
+    joinRoom,
     sendNotice,
     sendWhisper,
     refreshLobby,

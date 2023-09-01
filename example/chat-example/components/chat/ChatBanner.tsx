@@ -4,6 +4,7 @@ import { requestUserInfo } from "@/api/auth";
 import { useChat } from "@/hooks/useChat";
 import { authAtom } from "@/store/authAtom";
 import { chatSetWhisperTargetAtom } from "@/store/chatAtom";
+import { useAutoAnimate } from "@formkit/auto-animate/react";
 import { useAtomValue, useSetAtom } from "jotai";
 import { useState } from "react";
 
@@ -12,6 +13,7 @@ const ChatBanner = () => {
     data: { roomId, users, notice },
     inviteUser,
   } = useChat();
+  const [parentRef] = useAutoAnimate();
   const { id } = useAtomValue(authAtom);
   const setWhisperTarget = useSetAtom(chatSetWhisperTargetAtom);
   const [tooltip, setTooltip] = useState<Record<string, string>>({});
@@ -56,7 +58,7 @@ const ChatBanner = () => {
 
   return (
     <div className="text-center sticky top-0 z-10 space-y-2">
-      <div className="mockup-browser border border-base-300">
+      <div className="mockup-browser border border-base-300 bg-base-100">
         <div className="mockup-browser-toolbar">
           <div className="bg-base-200 rounded-md flex-1 p-1">
             RoomID: {roomId}
@@ -65,7 +67,10 @@ const ChatBanner = () => {
       </div>
 
       {notice ? <div className="alert">[Notice] {notice}</div> : null}
-      <ul className="flex flex-wrap justify-center items-center gap-2">
+      <ul
+        className="flex flex-wrap justify-center items-center gap-2"
+        ref={parentRef}
+      >
         {users.map(({ user_id, user_name }, index) => (
           <li
             key={`${user_id}-${user_name}(${index})`}
@@ -84,7 +89,7 @@ const ChatBanner = () => {
 
         <li>
           <button
-            className="btn btn-xs btn-primary btn-outline"
+            className="btn btn-xs btn-primary btn-outline bg-base-100"
             onClick={onClickInvite}
           >
             + Invite
@@ -92,7 +97,7 @@ const ChatBanner = () => {
         </li>
         <li>
           <button
-            className="btn btn-xs btn-primary btn-outline"
+            className="btn btn-xs btn-primary btn-outline bg-base-100"
             onClick={onClickWhisper}
           >
             &gt;&gt; Whisper

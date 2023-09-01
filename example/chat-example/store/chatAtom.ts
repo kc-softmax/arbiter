@@ -57,26 +57,28 @@ const chatbotMessage: ChatItem = {
   type: "message",
   data: {
     user: {
-      user_id: 6,
+      user_id: 999,
       user_name: "Chatbot",
     },
     message_id: 999,
     message: "Welcome to Chat!",
     time: new Date().toISOString(),
     like: 7,
+    room_id: "DEFAULT",
   },
 };
 const chatbotMessage2: ChatItem = {
   type: "message",
   data: {
     user: {
-      user_id: 999,
-      user_name: "Chatbot",
+      user_id: 9999,
+      user_name: "Mario",
     },
     message_id: 9999,
-    message: "Welcome to Chat! It's me mario!",
+    message: "It's me mario!",
     time: new Date().toISOString(),
     like: 7,
+    room_id: "Super Mario",
   },
 };
 

@@ -17,6 +17,7 @@ export type LikeOrDislike = "like" | "dislike";
 // SECTION: Data from Socket
 
 export interface MessageData {
+  room_id: string;
   user: UserInfo;
   message_id: number;
   message: string;
@@ -28,15 +29,18 @@ export interface RoomJoinData {
   room_id: string;
   messages: MessageData[];
   users: UserInfo[];
-  number_of_users: number;
+  current_users: number;
+  max_users: number;
   notice: string;
 }
 
 export interface UserJoinData {
+  room_id: string;
   user: UserInfo;
 }
 
 export interface UserLeaveData {
+  room_id: string;
   user: UserInfo;
 }
 
@@ -52,6 +56,7 @@ export interface InviteUserData {
 }
 
 export interface MessageLikeData {
+  room_id: string;
   message_id: number;
   like: number;
 }

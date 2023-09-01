@@ -1,5 +1,6 @@
 import { useChat } from "@/hooks/useChat";
-import { useDeferredValue, useState } from "react";
+import { useDeferredValue, useEffect, useState } from "react";
+import { useAutoAnimate } from "@formkit/auto-animate/react";
 
 const ChatLobby = () => {
   const {
@@ -10,6 +11,8 @@ const ChatLobby = () => {
   } = useChat();
 
   const [searchInput, setSearchInput] = useState("");
+  const [parentRef] = useAutoAnimate();
+
   const defferedSearchInput = useDeferredValue(searchInput);
 
   const onClickCreateRoom = () => {
@@ -24,6 +27,12 @@ const ChatLobby = () => {
   const onClickRoom = (roomId: string) => {
     changeRoom(roomId);
   };
+
+  useEffect(() => {
+    if (!currentRoomId) return;
+
+    refreshLobby();
+  }, [refreshLobby, currentRoomId]);
 
   return (
     <section className="h-full relative">
@@ -49,7 +58,7 @@ const ChatLobby = () => {
             value={searchInput}
           />
         </div>
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col gap-2" ref={parentRef}>
           {lobbyRoomList
             .filter(
               ({ room_id: roomId }) =>

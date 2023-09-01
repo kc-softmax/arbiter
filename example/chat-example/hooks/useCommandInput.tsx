@@ -82,7 +82,8 @@ export const useCommandInput = (commands: UseCommandInputParams) => {
                   type="button"
                   onClick={() => onClickCommandAutoComplete(commandKey)}
                 >
-                  {commandKey} : {commands[commandKey].name}
+                  <kbd className="kbd kbd-xs">{commandKey}</kbd> :{" "}
+                  {commands[commandKey].name}
                 </button>
               </li>
             ))}
