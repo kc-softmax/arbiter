@@ -140,6 +140,11 @@ class ChatRoomManager:
     def remove_room(self, room_id: str):
         self.rooms.pop(room_id)
 
+    def get_by_room_id(self, room_id: str) -> ChatRoom | None:
+        if room_id not in self.rooms:
+            return None
+        return self.rooms[room_id]
+
     # user_data ?
     async def join_room(self, websocket: WebSocket, room_id: str, user_data: UserData) -> bool:
 
