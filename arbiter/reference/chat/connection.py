@@ -4,9 +4,9 @@ from fastapi import WebSocket
 from collections import defaultdict
 from pydantic import BaseModel
 
-from server.auth.utils import verify_token
-from server.chat.schemas import ChatSocketBaseMessage
-from reference.adapter import ChatAdapter
+from arbiter.api.auth.utils import verify_token
+from arbiter.api.chat.schemas import ChatSocketBaseMessage
+from arbiter.reference.adapter import ChatAdapter
 
 
 class ConnectionManager:
@@ -41,6 +41,8 @@ class ConnectionManager:
             await connection.send_json(message.dict())
 
     async def send_chat_broadcast(self, room_id: str):
+        # room이 없는데 실행되는 경우에 대한 예외처리
+        if self.adapter.get(room_id) is None: raise ValueError("Can't find room")
         async with self.adapter[room_id].subscribe() as chatting:
             async for message in chatting:
                 connections = self.active_connections[room_id]

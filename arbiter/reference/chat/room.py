@@ -3,8 +3,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from collections import defaultdict, deque
 
-from reference.adapter import ChatAdapter
-from server.chat.schemas import ClientChatMessage, ChatData, ChatSocketChatMessage
+from arbiter.reference.adapter import ChatAdapter
+from arbiter.api.chat.schemas import ClientChatMessage, ChatData, ChatSocketChatMessage
 
 
 @dataclass
@@ -60,6 +60,8 @@ class ChatRoom:
             return
         # 각 클라이언트에게 보내줄 메시지 오브젝트를 구성(어댑터 프로세스 적용)
         chat_message = await self.adapter.execute(user_id, chat_data.message)
+        if chat_message['is_bad_comments']:
+            chat_message['message'] = len(chat_message['message']) * '*'
         chat_socket_message = ChatData(
             message=chat_message["message"],
             user=user_id,
@@ -117,7 +119,7 @@ class ChatRoomManager:
         return available_rooms[0] if available_rooms else None
 
     def create_room(self) -> ChatRoom:
-        new_room = ChatRoom(str(uuid.uuid4()), ChatAdapter('reference/chat/models'))
+        new_room = ChatRoom(str(uuid.uuid4()), ChatAdapter('arbiter/reference/chat/models'))
         self.rooms.append(new_room)
         return new_room
 

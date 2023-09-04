@@ -3,13 +3,13 @@ import asyncio
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect, Query
 from fastapi.templating import Jinja2Templates
 
-from server.auth.exceptions import InvalidToken
-from reference.chat.connection import ConnectionManager
-from reference.chat.room import ChatRoomManager
-from server.chat.exceptions import AuthorizationFailedClose
-from server.chat.schemas import (
+from arbiter.api.auth.exceptions import InvalidToken
+from arbiter.reference.chat.connection import ConnectionManager
+from arbiter.reference.chat.room import ChatRoomManager
+from arbiter.api.chat.exceptions import AuthorizationFailedClose
+from arbiter.api.chat.schemas import (
     ChatSocketRoomJoinMessage, RoomJoinData,
-    ChatSocketUserJoinMessage, UserJoinData, ChatSocketChatMessage,
+    ChatSocketUserJoinMessage, UserJoinData,
     ChatSocketUserLeaveMessage, UserLeaveData, ClientChatMessage
 )
 
@@ -17,7 +17,7 @@ WAITING_READY_SECOND = 5
 
 router = APIRouter(prefix="/chat")
 
-templates = Jinja2Templates(directory="reference/chat/templates")
+templates = Jinja2Templates(directory="arbiter/reference/chat/templates")
 
 chat_room_manager = ChatRoomManager()
 connection_manager = ConnectionManager()
