@@ -35,7 +35,7 @@
         function join(name) {
           // var host = window.location.host.split(":")[0];
           var ws = new WebSocket(
-            `ws://192.168.0.48:8000/chat/ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2OTE0NzQxMDksInN1YiI6ImhvbmdAa2MuY29tIiwibG9naW5fdHlwZSI6ImVtYWlsIn0.tjOMAnNUG_oKf9JP4q93wI7mmOkHMF-Dn8KQtZM0mQo`
+            `ws://192.168.0.48:8000/chat/ws?token=${name}`
           );
           var container = $("div#msgs");
           ws.onopen = function () {

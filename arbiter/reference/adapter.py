@@ -1,5 +1,4 @@
 import asyncio
-import timeit
 import gymnasium as gym
 import torch
 import numpy as np
@@ -43,16 +42,18 @@ class GymAdapter(AsyncAdapter):
     def __init__(self, env: gym.Env) -> None:
         super().__init__()
         self.env: gym.Env = env
+        self.actions: list[tuple[str | int, int]] = []
 
     def add_user_message(self, agent_id: int | str, action: int) -> list:
         # action은 미리 env에서 정의한 gym.spaces.Discrete의 범위내 값이다.
         self.actions.append((agent_id, action))
 
-    async def execute(self) -> None:
+    async def execute(self) -> any:
         actions: dict[str | int, int] = {
             agent_id: action
             for agent_id, action in self.actions
         }
+        self.actions.clear()
         # env의 step에서 action에 대한 타입 체크를 해야한다.
         # multiagent일 경우 step에서 dict으로 처리해야한다.
         obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
