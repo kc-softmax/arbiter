@@ -8,6 +8,7 @@ from typing import Generic, TypeVar
 class ChatEvent(StrEnum):
     ROOM_JOIN = "room_join"
     USER_JOIN = "user_join"
+    ROOM_LEAVE = "room_leave"
     USER_LEAVE = "user_leave"
     ERROR = "error"
     MESSAGE = "message"
@@ -15,6 +16,7 @@ class ChatEvent(StrEnum):
     ROOM_CHANGE = "room_change"
     ROOM_CREATE = "room_create"
     LOBBY_REFRESH = "lobby_refresh"
+    INVITEE_LIST = "invitee_list"
     USER_INVITE = "user_invite"
     MESSAGE_LIKE = "message_like"
 
@@ -38,7 +40,7 @@ class UserData(BaseModel):
 class ChatData(BaseModel):
     room_id: str
     message: str
-    message_id: int = 0
+    message_id: str
     user: UserData
     time: str
     like: int = 0
@@ -46,7 +48,7 @@ class ChatData(BaseModel):
 
 class MessageLikeData(BaseModel):
     room_id: str
-    message_id: int
+    message_id: str
     like: int = 0
 
 
@@ -93,6 +95,10 @@ class RoomCreateData(BaseModel):
     room_id: str
     # TODO: default 값 삭제
     max_users: int = 100
+    
+class InviteeData(BaseModel):
+    user: UserData
+    is_online: bool
 
 
 DT = TypeVar('DT')
@@ -141,6 +147,9 @@ class ChatSocketUserInviteMessage(ChatSocketBaseMessage[UserInviteData]):
 
 class ChatSocketUserLikeMessage(ChatSocketBaseMessage[MessageLikeData]):
     action = ChatEvent.MESSAGE_LIKE
+
+class ChatSocketInviteeListMessage(ChatSocketBaseMessage[list[InviteeData]]):
+    action = ChatEvent.INVITEE_LIST
 
 
 class ClientChatMessage(ChatSocketBaseMessage[ClientChatData]):

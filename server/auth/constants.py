@@ -13,6 +13,8 @@ class ErrorCode(StrEnum):
     PROTECT_OWNER = "At least one OWNER permission must be maintained."
     NOT_ALLOWED_UPDATE_ROLE_MAINTAINER = "Maintainer can't update role"
     USER_ALREADY_CONNECTED = "User already connected"
+    EMAIL_NOT_VALID = "Email is not valid"
+    EMAIL_OR_PASSWORD_INCORRECT = "Email or password is incorrect"
 
 
 class TOKEN_GENERATE_ALGORITHM(StrEnum):

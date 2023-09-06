@@ -1,4 +1,6 @@
 import sys
+from typing import Type, TypeVar
+from sqlalchemy import and_, column
 from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -17,7 +19,7 @@ if "pytest" in sys.modules:
 
 async_engine = create_async_engine(
     db_url,
-    echo=True,
+    echo=False,
     future=True,
     connect_args=connect_args
 )
@@ -68,3 +70,63 @@ async def set_default_console_user():
                 )
             )
             await session.commit()
+
+
+# 우선 database에 class에 정의
+T = TypeVar("T", bound=SQLModel)
+
+
+class DatabaseManager:
+    async def create(self, session: AsyncSession, obj: T) -> T:
+        session.add(obj)
+        await session.commit()
+        await session.refresh(obj)
+        return obj
+
+    async def get_one(self, session: AsyncSession, model: Type[T], **clauses) -> T | None:
+        where_clauses = [
+            column(key) == value for key, value in clauses.items()
+        ]
+        state = select(model).where(and_(*where_clauses))
+        result = await session.exec(state)
+        return result.first()
+
+    async def get_all(self, session: AsyncSession, model: Type[T], **clauses) -> list[T] | None:
+        where_clauses = [
+            column(key) == value for key, value in clauses.items()
+        ]
+        state = select(model).where(and_(*where_clauses))
+        result = await session.exec(state)
+        return result.all()
+
+    async def update(self, session: AsyncSession, obj_in: T, obj: T) -> T:
+        update_data = obj_in.dict(exclude_unset=True)
+        for field in update_data:
+            setattr(obj, field, update_data[field])
+        return await self.create(session, obj)
+
+    # delete 정리 필요
+    async def delete_one(self, session: AsyncSession, obj: T) -> bool:
+        try:
+            await session.delete(obj)
+            await session.commit()
+        except Exception as e:
+            return False
+        return True
+
+    async def delete_all(self, session: AsyncSession, model: Type[T], obj_ids: list[int]) -> bool:
+        try:
+            for obj_id in obj_ids:
+                db_obj = await session.get(model, obj_id)
+                if not db_obj:
+                    raise Exception(f"User id {obj_id} is not found")
+                await session.delete(db_obj)
+        except Exception as e:
+            print(e)
+            await session.rollback()
+            return False
+        await session.commit()
+        return True
+
+
+db_manager = DatabaseManager()

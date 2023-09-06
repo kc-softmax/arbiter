@@ -10,9 +10,19 @@ class AlreadyConnected:
     REASON = "already connected"
 
 
+class UserDisconnected:
+    CODE = 3101
+    REASON = "user disconnected"
+
+
 class AlreadyJoinedRoom:
     CODE = 3500
     REASON = "already joined room"
+
+
+class AlreadyLeftRoom:
+    CODE = 3501
+    REASON = "already left room"
 
 
 class RoomDoesNotExist:
@@ -26,10 +36,15 @@ class RoomIsFull:
 
 
 class RoomIsExist:
+    CODE = 3701
+    REASON = "room is exist"
+
+
+class MessageIsNotExists:
     CODE = 3800
-    REASON = "room is exist"
+    REASON = "message is not exists"
 
 
-class UnCkeckedError:
+class UnCheckedError:
     CODE = 9999
-    REASON = "room is exist"
+    REASON = "Chat Server Error"

@@ -1,3 +1,4 @@
+import re
 import uuid
 from fastapi import APIRouter, Depends
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
@@ -15,10 +16,11 @@ from server.auth.utils import (create_token, verify_token as verify_token_util,
 from server.auth.dependencies import (get_console_user_service, get_user_service,
                                       get_current_user, get_current_console_user,
                                       allowed_only_for_owner)
-from server.auth.exceptions import (AtLeastOneOwner, UserAlready,
+from server.auth.exceptions import (AtLeastOneOwner, EmailNotValid, UserAlready,
                                     InvalidCredentials, InvalidToken,
                                     NotFoundUser, NotFoundUserForDelete,
-                                    NotFoundUserForUpdate, NotAllowedUpdateRoleMaintainer)
+                                    NotFoundUserForUpdate, NotAllowedUpdateRoleMaintainer,
+                                    EmailNotValid, EmailOrPasswordIncorrect)
 from server.auth.schemas import (ConsoleUserCreate, ConsoleUserGet,
                                  ConsoleUserUpdate, GamerUserCreateByEmail,
                                  GamerUserLoginByGuest, GamerUserSchema,
@@ -93,10 +95,17 @@ async def refresh_token(data: TokenRefreshRequest,
              response_model=GamerUserSchema)
 # 이메일 게이머 가입
 async def signup_email(data: GamerUserCreateByEmail, user_service: UserService = Depends(get_user_service)):
+    # 이메일 형식일 경우 이메일 ID를 username으로 사용
+    if not re.match(r'^[a-zA-Z0-9+-_.]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$', data.email):
+        raise EmailNotValid
+
     user = await user_service.check_user_by_email(data.email)
     if user is not None:
         raise UserAlready
-    user = await user_service.register_user_by_email(data.email, get_password_hash(data.password))
+
+    user_name = data.email.split('@')[0]
+
+    user = await user_service.register_user_by_email(data.email, get_password_hash(data.password), user_name)
     return user
 
 
@@ -105,11 +114,16 @@ async def signup_email(data: GamerUserCreateByEmail, user_service: UserService =
              response_model=TokenSchema)
 # 이메일 게이머 로그인
 async def login(form_data: OAuth2PasswordRequestForm = Depends(), user_service: UserService = Depends(get_user_service)):
+    if not re.match(r'^[a-zA-Z0-9+-_.]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$', form_data.username):
+        raise EmailNotValid
+
     user = await user_service.check_user_by_email(form_data.username)
-    if user is None:
-        raise NotFoundUser
-    if not verify_password(form_data.password, user.password):
-        raise InvalidCredentials
+    # if user is None:
+    #     raise NotFoundUser
+    # if not verify_password(form_data.password, user.password):
+    #     raise InvalidCredentials
+    if user is None or not verify_password(form_data.password, user.password):
+        raise EmailOrPasswordIncorrect
 
     token = TokenSchema(
         access_token=create_token(user.id),

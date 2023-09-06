@@ -44,3 +44,11 @@ class NotAllowedUpdateRoleMaintainer(BadRequest):
 
 class UserAlreadyConnected(BadRequest):
     DETAIL = ErrorCode.USER_ALREADY_CONNECTED
+
+
+class EmailNotValid(BadRequest):
+    DETAIL = ErrorCode.EMAIL_NOT_VALID
+
+
+class EmailOrPasswordIncorrect(BadRequest):
+    DETAIL = ErrorCode.EMAIL_OR_PASSWORD_INCORRECT
