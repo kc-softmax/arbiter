@@ -17,7 +17,7 @@ if "pytest" in sys.modules:
 
 async_engine = create_async_engine(
     db_url,
-    echo=True,
+    echo=False,
     future=True,
     connect_args=connect_args
 )

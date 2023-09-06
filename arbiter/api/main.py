@@ -10,9 +10,9 @@ from arbiter.api.database import create_db_and_tables, async_engine
 from arbiter.api.logging import log_middleware
 from arbiter.api.auth.router import router as auth_router
 from arbiter.api.chat.router import router as chat_router
-from arbiter.api.match.match_maker import mm
+from arbiter.api.match.match_maker import match_maker
 
-asyncio.create_task(mm.run())
+asyncio.create_task(match_maker.run())
 
 app = FastAPI()
 app.add_middleware(
