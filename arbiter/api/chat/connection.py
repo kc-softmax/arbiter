@@ -1,33 +1,42 @@
-import uuid
+import asyncio
 from fastapi import WebSocket
+from fastapi.websockets import WebSocketState
 from collections import defaultdict
-from pydantic import BaseModel
 
-from arbiter.api.auth.utils import verify_token
 from arbiter.api.chat.schemas import ChatSocketBaseMessage
+
+
+class IterQueue(asyncio.Queue):
+    async def __aiter__(self):
+        while True:
+            item = await self.get()
+            yield item
 
 
 class ConnectionManager:
 
     def __init__(self) -> None:
-        self.active_connections: dict[str, list[WebSocket]] = defaultdict(list)
+        self.active_connections: dict[str, WebSocket] = defaultdict()
+        self.queue: IterQueue = IterQueue()
+        self.task = asyncio.create_task(self.start_broadcast_message())
 
-    async def connect(self, websocket: WebSocket, room_id: str, token: str) -> str:
-        # 유효하지 않은 토큰일지라도 그 에러를 응답으로 보내주기 위해서는 먼저 accept을 해줘야한다.
-        # await websocket.accept()
-        self.active_connections[room_id].append(websocket)
-        return str(uuid.uuid4())
-        # token_data = verify_token(token)
-        # self.active_connections[room_id].append(websocket)
-        # return token_data.sub
+    def connect(self, user_id: str, websocket: WebSocket):
+        self.active_connections[user_id] = websocket
 
-    def disconnect(self, room_id: str, websocket: WebSocket):
-        self.active_connections[room_id].remove(websocket)
+    def disconnect(self, user_id: str):
+        self.active_connections.pop(user_id)
 
-    async def send_personal_message(self, websocket: WebSocket, message: ChatSocketBaseMessage):
+    async def send_personal_message(self, user_id: str, message: ChatSocketBaseMessage):
+        websocket = self.active_connections.get(user_id)
+        if not websocket or websocket.client_state == WebSocketState.DISCONNECTED:
+            return
         await websocket.send_json(message.dict())
 
-    async def send_room_broadcast(self, room_id: str, message: ChatSocketBaseMessage):
-        connections = self.active_connections[room_id]
-        for connection in connections:
-            await connection.send_json(message.dict())
+    async def start_broadcast_message(self):
+        async for message in self.queue:
+            for websocket in self.active_connections.values():
+                if websocket.client_state != WebSocketState.DISCONNECTED:
+                    await websocket.send_json(message.dict())
+
+    async def stop_broadcast_message(self):
+        self.task.cancel()

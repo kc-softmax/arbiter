@@ -2,9 +2,11 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from collections import defaultdict, deque
+from fastapi import WebSocket, WebSocketDisconnect
 
 from arbiter.api.adapter import ChatAdapter
-from arbiter.api.chat.schemas import ClientChatMessage, ChatData
+from arbiter.api.chat.schemas import ChatSocketChatMessage, ChatSocketRoomJoinMessage, ChatSocketUserJoinMessage, ChatSocketUserLeaveMessage, ClientChatMessage, ChatData, RoomJoinData, UserJoinData, UserLeaveData
+from arbiter.api.chat.connection import ConnectionManager
 
 
 @dataclass
@@ -28,28 +30,56 @@ class ChatRoom:
         self.room_id = room_id
         self.adapter = adapter
         self.message_history: deque[ChatData] = []
-        self.current_users: deque[str] = []
+        # self.current_users: deque[str] = []
         self.chat_room_data: ChatRoomData = ChatRoomData(
-            created_at=round(datetime.now().timestamp() * 1000))
+            created_at=round(datetime.now().timestamp() * 1000)
+        )
+        self.connection_manager: ConnectionManager = ConnectionManager()
 
     def is_available(self) -> bool:
-        return len(self.current_users) < self.max_num
+        return len(self.connection_manager.active_connections) < self.max_num
 
     def is_empty(self) -> bool:
-        return len(self.current_users) == 0
+        return len(self.connection_manager.active_connections) == 0
 
-    def join(self, user_id: str):
-        self.current_users.append(user_id)
+    async def join(self, user_id: str, websocket: WebSocket):
+        # self.current_users.append(user_id)
+        self.connection_manager.connect(user_id, websocket)
         # 채팅방에 접속한 최대 인원 수
         self.set_max_users()
+        await self.connection_manager.send_personal_message(
+            user_id,
+            ChatSocketRoomJoinMessage(
+                data=RoomJoinData(
+                    room_id=self.room_id,
+                    messages=self.message_history,
+                    users=list(self.connection_manager.active_connections.keys())
+                )
+            ))
+        await self.connection_manager.queue.put(
+            ChatSocketUserJoinMessage(
+                data=UserJoinData(
+                    user=user_id
+                )
+            )
+        )
 
-    def leave(self, user_id):
-        self.current_users.remove(user_id)
+    async def leave(self, user_id: str):
+        # self.current_users.remove(user_id)
+        self.connection_manager.disconnect(user_id)
         if self.is_empty():
             # 채팅방 종료된 시간
             self.set_finished_time()
             # 데이터 저장
             self.save_chat_room()
+        else:
+            await self.connection_manager.queue.put(
+                ChatSocketUserLeaveMessage(
+                    data=UserLeaveData(
+                        user=user_id
+                    )
+                )
+            )
 
     # 소켓 메시지 처리에 대한 비즈니스 로직 부분
     async def handle_chat_message(self, user_id, client_message: ClientChatMessage) -> ChatData:
@@ -69,11 +99,14 @@ class ChatRoom:
         # Chat room에서 각 유저별 채팅 횟수와 비속어 횟수
         # 지금은 메시지를 받을 때마다 매번 기록하지만, 방이 없어질 때 message_history를 순회하면서 한번에 기록도 가능하다.
         self.set_user_message_summary(user_id, chat_message_excuted_by_adapter["is_bad_comments"])
-        return chat_socket_message
+        await self.connection_manager.queue.put(
+            ChatSocketChatMessage(
+                data=chat_socket_message
+            ))
 
     # Chat Room 기준의 데이터 로직
     def set_max_users(self):
-        currnet_user_count = len(self.current_users)
+        currnet_user_count = len(self.connection_manager.active_connections)
         if (currnet_user_count <= self.chat_room_data.max_users):
             return
         self.chat_room_data.max_users = currnet_user_count
@@ -85,7 +118,7 @@ class ChatRoom:
             message_summary.bad_comments_count += 1
 
     def set_finished_time(self):
-        if (len(self.current_users) > 0):
+        if (len(self.connection_manager.active_connections) > 0):
             return
         self.chat_room_data.finished_at = round(datetime.now().timestamp() * 1000)
 
@@ -102,6 +135,7 @@ class ChatRoom:
         return user_scores
 
 
+# TODO move to 매치메이커
 class ChatRoomManager:
     def __init__(self) -> None:
         self.rooms: list[ChatRoom] = []
@@ -110,14 +144,15 @@ class ChatRoomManager:
         available_rooms = [room for room in self.rooms if room.is_available()]
         return available_rooms[0] if available_rooms else None
 
-    def create_room(self, room_id: str | None) -> ChatRoom:
+    def create_room(self, room_id: str | None = None) -> ChatRoom:
         new_room_id = str(uuid.uuid4()) if room_id == None else room_id
         new_room = ChatRoom(new_room_id, ChatAdapter({}))
         self.rooms.append(new_room)
         return new_room
 
-    def remove_room(self, room: ChatRoom):
+    async def remove_room(self, room: ChatRoom):
         self.rooms.remove(room)
+        await room.connection_manager.stop_broadcast_message()
 
     def get_room(self, room_id: str):
         filtered = [room for room in self.rooms if room.room_id == room_id]
