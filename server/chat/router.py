@@ -333,15 +333,17 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
                 )
 
             if json_data.action == ChatEvent.LOBBY_REFRESH:
-                await lobby_manager.send_lobby_data()
+                keyword_room_id = json_data.data['keyword_room_id']
+                await lobby_manager.send_lobby_data(keyword_room_id)
 
             # 이벤트 유저 name like
             if json_data.action == ChatEvent.INVITEE_LIST:
+                keyword_user_name = json_data.data['keyword_user_name']
 
                 await connection_manager.send_personal_message(
                     websocket,
                     ChatSocketInviteeListMessage(
-                        data=await room_manager.get_invitee_users()
+                        data=await room_manager.get_invitee_users(keyword_user_name)
                     )
                 )
 

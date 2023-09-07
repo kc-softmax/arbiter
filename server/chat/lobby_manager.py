@@ -13,9 +13,9 @@ async def lobby_refresh_timer(delay_time: float):
         await asyncio.sleep(delay_time)
 
 
-async def send_lobby_data():
+async def send_lobby_data(keyword_room_id: str = ''):
     lobby_data = []
-    active_rooms = await room_manager.get_chat_active_rooms()
+    active_rooms = await room_manager.get_chat_active_rooms(keyword_room_id)
     for room in active_rooms:
         lobby_data.append(
             LobbyData(

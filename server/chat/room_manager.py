@@ -50,9 +50,11 @@ async def get_chat_room(room_id: str) -> ChatRoom | None:
 
 
 # TODO: 방 삭제 정책 정리 확실히 되면 다시
-async def get_chat_active_rooms() -> list[ChatRoom]:
+async def get_chat_active_rooms(keyword_room_id: str) -> list[ChatRoom]:
     async with make_async_session() as session:
-        return await db_manager.get_all(session, ChatRoom)
+        state = select(ChatRoom).where(ChatRoom.room_id.like('%'+ keyword_room_id + '%'))
+        results = await session.exec(state)
+        return results.all()
 
 
 async def get_room_connected_users(room_id: str) -> list[ChatRoomUser]:
@@ -178,10 +180,13 @@ async def set_chat_reaction(message_id: int, user_id: int, type: str) -> ChatRea
         else:
             return await db_manager.create(session, ChatReaction(message_id=message_id, user_id=user_id, type=type))
 
-async def get_invitee_users() -> list[InviteeData]:
+# TODO: last_login을 추가자하자
+async def get_invitee_users(keyword_user_name: str ="") -> list[InviteeData]:
     async with make_async_session() as session:
-        users = await db_manager.get_all(session, User)
-        # 최근 만든 아이디
+        # full scan 수정필요
+        state = select(User).where(User.user_name.like('%' + keyword_user_name + '%'))
+        results = await session.exec(state)
+        users = results.all()
         invitees: list[InviteeData] = []
         for user in users:
             invitees.append(
