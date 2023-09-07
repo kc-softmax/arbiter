@@ -20,7 +20,7 @@ async def send_lobby_data():
         lobby_data.append(
             LobbyData(
                 room_id=room.room_id,
-                current_users=len(await room_manager.get_room_connected_users(room.id)),
+                current_users=len(await room_manager.get_room_connected_users(room.room_id)),
                 max_users=room.max_users
             )
         )

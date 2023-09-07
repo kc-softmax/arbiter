@@ -42,6 +42,8 @@ class TimestampModel(SQLModel):
     )
 
 
+# chat_room.room_id chat_room_user.room_id Join
+# room_id를 유지 시키려다가 설계 실수함, room_name을 따로 만들었어야 했음.
 class ChatRoomBase(BaseSQLModel, TimestampModel):
     room_id: str | None = Field(sa_column=Column(String(128), unique=True))
     room_name: str = Field(sa_column=Column(String(128)))
