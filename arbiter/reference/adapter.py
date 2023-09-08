@@ -72,7 +72,6 @@ class ChatAdapter(AsyncAdapter):
     truncating: str = "post"
     padding: str = "post"
 
-
     def __init__(self, model_path: str) -> None:
         super().__init__()
         # model에 사용되는 속성 값이 복잡하여 정의된 속성 값만 사용한다.
@@ -80,14 +79,14 @@ class ChatAdapter(AsyncAdapter):
         self.tokenizer: BertTokenizer = BertTokenizer.from_pretrained(self.bert_tokenizer, do_lower_case=False)
         # 평가모드로 변경
         self.model.eval()
-        if torch.cuda.is_available():    
+        if torch.cuda.is_available():
             self.device = torch.device("cuda")
             print('There are %d GPU(s) available.' % torch.cuda.device_count())
             print('We will use the GPU:', torch.cuda.get_device_name(0))
         else:
             self.device = torch.device("cpu")
             print('No GPU available, using the CPU instead.')
-    
+
     def convert_sentences(self, sentences: list[str]) -> tuple[torch.Tensor, torch.Tensor]:
         # BERT의 토크나이저로 문장을 토큰으로 분리
         tokenized_texts = [
@@ -99,7 +98,7 @@ class ChatAdapter(AsyncAdapter):
             self.tokenizer.convert_tokens_to_ids(tokenized_text)
             for tokenized_text in tokenized_texts
         ]
-        
+
         # 문장을 MAX_LEN 길이에 맞게 자르고, 모자란 부분을 패딩 0으로 채움
         padding_sequences: np.ndarray = pad_sequences(
             token_ids,
@@ -125,20 +124,20 @@ class ChatAdapter(AsyncAdapter):
         tensored_sequences: torch.Tensor = torch.tensor(padding_sequences)
         tensored_masks: torch.Tensor = torch.tensor(attention_masks)
         return tensored_sequences, tensored_masks
-    
+
     def apply_bert_model(self, sentences: list[str]) -> torch.Tensor:
         tensored_sequences, tensored_masks = self.convert_sentences(sentences)
 
         # 데이터를 GPU or CPU에 넣음
         cpu_sequences_sequences: torch.Tensor = tensored_sequences.to(self.device)
         cpu_masks: torch.Tensor = tensored_masks.to(self.device)
-            
+
         # 그래디언트 계산 안함
-        with torch.no_grad():     
+        with torch.no_grad():
             # Forward 수행
             outputs = self.model(
-                cpu_sequences_sequences, 
-                token_type_ids=None, 
+                cpu_sequences_sequences,
+                token_type_ids=None,
                 attention_mask=cpu_masks
             )
             logits: torch.Tensor = outputs[0]
@@ -152,8 +151,10 @@ class ChatAdapter(AsyncAdapter):
         # 가장 큰 인덱스를 리턴시킨다 0 or 1 둘 중 하나
         # 0은 비속어, 1은 일반어
         idx = np.argmax(filtered_message)
-        if idx == 1: is_bad_comments = False
-        else: is_bad_comments = True
+        if idx == 1:
+            is_bad_comments = False
+        else:
+            is_bad_comments = True
 
         user_message: dict[str | int, str] = {
             'user_id': user_id,

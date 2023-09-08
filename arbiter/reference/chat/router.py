@@ -1,6 +1,7 @@
 import json
 import asyncio
-from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi import APIRouter, FastAPI, Request, WebSocket, WebSocketDisconnect, Query
 from fastapi.templating import Jinja2Templates
 
 from arbiter.api.auth.exceptions import InvalidToken
@@ -95,8 +96,8 @@ async def chatroom_ws(websocket: WebSocket, token: str = Query()):
         connection_manager.disconnect(room.room_id, websocket)
         room.leave(user_id)
         if room.is_empty():
-            await room.adapter._queue.put(None)
             chat_room_manager.remove_room(room)
+            connection_manager.task.cancel()
         else:
             await connection_manager.send_room_broadcast(
                 room.room_id,

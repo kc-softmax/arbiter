@@ -14,6 +14,7 @@ class ConnectionManager:
     def __init__(self) -> None:
         self.active_connections: dict[str, list[WebSocket]] = defaultdict(list)
         self.adapter: dict[str, ChatAdapter] = {}
+        self.task = None
 
     def check_validation(self, room_id: str, token: str, adapter: ChatAdapter) -> str:
         self.adapter[room_id] = adapter
@@ -30,7 +31,7 @@ class ConnectionManager:
 
     async def create_subscription_task(self, room_id: str):
         if len(self.active_connections[room_id]) == 1:
-            asyncio.create_task(self.send_chat_broadcast(room_id))
+            self.task = asyncio.create_task(self.send_chat_broadcast(room_id))
 
     async def send_personal_message(self, websocket: WebSocket, message: ChatSocketBaseMessage):
         await websocket.send_json(message.dict())
@@ -42,7 +43,8 @@ class ConnectionManager:
 
     async def send_chat_broadcast(self, room_id: str):
         # room이 없는데 실행되는 경우에 대한 예외처리
-        if self.adapter.get(room_id) is None: raise ValueError("Can't find room")
+        if self.adapter.get(room_id) is None:
+            raise ValueError("Can't find room")
         async with self.adapter[room_id].subscribe() as chatting:
             async for message in chatting:
                 connections = self.active_connections[room_id]
