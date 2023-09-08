@@ -73,7 +73,7 @@ class ChatRoom:
         # 지금은 메시지를 받을 때마다 매번 기록하지만, 방이 없어질 때 message_history를 순회하면서 한번에 기록도 가능하다.
         self.set_user_message_summary(user_id, chat_message["is_bad_comments"], chat_message["score"])
         await self.adapter._queue.put(
-                ChatSocketChatMessage(
+            ChatSocketChatMessage(
                 data=chat_socket_message
             )
         )
