@@ -1,5 +1,6 @@
 import inspect
 import asyncio
+import uuid
 from typing import Any, Callable, Coroutine
 from contextlib import asynccontextmanager
 from collections import defaultdict
@@ -75,8 +76,12 @@ class SocketService():
         room = None
         # 추가적인 유효성 체크가 가능하다.
         try:
-            token_data = verify_token(token)
-            user_id = token_data.sub
+            # TODO: 예제에서 토큰이 매번 필요해서 임시 주석 처리
+            # token_data = verify_token(token)
+            # user_id = token_data.sub
+
+            # TEMP
+            user_id = str(uuid.uuid4())
 
             self.ready = await asyncio.wait_for(websocket.receive_text(), WAITING_READY_SECOND)
             if not self.ready:
@@ -94,7 +99,7 @@ class SocketService():
             self.room_connections[room.room_id].add_websocket(user_id, websocket)
             await self.run_event_handler("join_room", False, None, user_id, room)
 
-            yield token_data, room
+            yield user_id, room
         except InvalidToken:
             print("!!!!!!!!!!! 이상한 토큰 !!!!!!!!!!!!!!!!")
             await websocket.close(
