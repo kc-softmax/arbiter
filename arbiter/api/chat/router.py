@@ -104,5 +104,5 @@ async def test_ws(websocket: WebSocket, token: str = Query()):
     async with socket_service.connect(websocket, token) as result:
         if not result:
             return
-        token_data, room = result
-        await socket_service.start(websocket, token_data.sub, room)
+        user_id, room = result
+        await socket_service.start(websocket, user_id, room)
