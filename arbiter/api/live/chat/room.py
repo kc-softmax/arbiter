@@ -1,11 +1,13 @@
-import uuid
+from typing import Any
 from dataclasses import dataclass, field
 from datetime import datetime
 from collections import defaultdict, deque
-from fastapi import WebSocket
 
-from arbiter.api.adapter import ChatAdapter
-from arbiter.api.chat.schemas import ChatSocketChatMessage, ClientChatMessage, ChatData
+from arbiter.api.live.room import BaseLiveRoom
+from arbiter.api.live.chat.schemas import (
+    ClientChatData,
+    ChatData
+)
 
 
 @dataclass
@@ -22,29 +24,16 @@ class ChatRoomData:
     finished_at: int = 0
 
 
-class ChatRoom:
-    max_num = 2
-
-    def __init__(self, room_id: str, adapter: ChatAdapter) -> None:
-        self.room_id = room_id
-        self.adapter = adapter
+class ChatRoom(BaseLiveRoom):
+    def __init__(self, room_id: str, max_users: int | None, adapter: Any) -> None:
+        super().__init__(room_id, max_users, adapter)
         self.message_history: deque[ChatData] = []
-        self.current_users: deque[str] = []
         self.chat_room_data: ChatRoomData = ChatRoomData(
             created_at=round(datetime.now().timestamp() * 1000)
         )
 
-    def is_available(self) -> bool:
-        return len(self.current_users) < self.max_num
-
-    def is_empty(self) -> bool:
-        return len(self.current_users) == 0
-
-    def join(self, user_id: str, websocket: WebSocket):
-        self.current_users.append(user_id)
-
-    async def leave(self, user_id: str):
-        self.current_users.remove(user_id)
+    def leave(self, user_id: str):
+        super().leave(user_id)
         if self.is_empty():
             # 채팅방 종료된 시간
             self.set_finished_time()
@@ -52,13 +41,9 @@ class ChatRoom:
             self.save_chat_room()
 
     # 소켓 메시지 처리에 대한 비즈니스 로직 부분
-    async def handle_chat_message(self, user_id, client_message: ClientChatMessage) -> ChatData:
-        # 채팅 메시지가 없으면 오류
-        chat_data = client_message.data
-        if (chat_data is None):
-            return
+    async def handle_chat_message(self, user_id, client_chat_data: ClientChatData) -> ChatData:
         # 각 클라이언트에게 보내줄 메시지 오브젝트를 구성(어댑터 프로세스 적용)
-        chat_message = await self.adapter.execute(user_id, chat_data.message)
+        chat_message = await self.adapter.execute(user_id, client_chat_data.message)
         if chat_message['is_bad_comments']:
             chat_message['message'] = len(chat_message['message']) * '*'
         chat_socket_message = ChatData(
@@ -90,27 +75,3 @@ class ChatRoom:
 
     def save_chat_room(self):
         print('데이터', self.chat_room_data)
-
-
-# TODO move to 매치메이커
-class ChatRoomManager:
-    def __init__(self) -> None:
-        self.rooms: list[ChatRoom] = []
-
-    def find_available_room(self) -> ChatRoom | None:
-        available_rooms = [room for room in self.rooms if room.is_available()]
-        return available_rooms[0] if available_rooms else None
-
-    def create_room(self, room_id: str | None = None) -> ChatRoom:
-        new_room_id = str(uuid.uuid4()) if room_id == None else room_id
-        new_room = ChatRoom(new_room_id, ChatAdapter('arbiter/reference/chat/models'))
-        self.rooms.append(new_room)
-        return new_room
-
-    async def remove_room(self, room: ChatRoom):
-        self.rooms.remove(room)
-
-    def get_room(self, room_id: str):
-        filtered = [room for room in self.rooms if room.room_id == room_id]
-        room = filtered[0] if len(filtered) != 0 else None
-        return room

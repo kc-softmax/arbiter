@@ -1,13 +1,14 @@
+from __future__ import annotations
 import asyncio
 import gymnasium as gym
 import torch
 import numpy as np
-
-from arbiter.api.chat.schemas import ChatSocketChatMessage
 from typing import Generator, AsyncIterator
 from contextlib import asynccontextmanager
 from transformers import BertForSequenceClassification, BertTokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
+
+from arbiter.api.live.chat.schemas import ChatSocketChatMessage
 
 
 class AsyncAdapter:
@@ -15,19 +16,19 @@ class AsyncAdapter:
         self._queue: asyncio.Queue = asyncio.Queue()
 
     @asynccontextmanager
-    async def subscribe(self) -> AsyncIterator['AsyncAdapter']:
+    async def subscribe(self) -> AsyncIterator[AsyncAdapter]:
         try:
             yield self
         finally:
             pass
 
-    async def get(self) -> ChatSocketChatMessage:
+    async def get(self) -> dict:
         item = await self._queue.get()
         if item is None:
             raise StopAsyncIteration
         return item
 
-    async def __aiter__(self) -> Generator[ChatSocketChatMessage, None, None]:
+    async def __aiter__(self) -> Generator[dict, None, None]:
         try:
             while True:
                 yield await self.get()
