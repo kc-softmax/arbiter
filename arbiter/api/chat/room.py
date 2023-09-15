@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from collections import defaultdict, deque
 
-from arbiter.api.live.room import BaseLiveRoom
+from arbiter.api.live.legacy.room import BaseLiveRoom
 from arbiter.api.live.chat.schemas import (
     ClientChatData,
     ChatData

@@ -2,7 +2,7 @@ import uuid
 from typing import Any, Type, TypeVar, Generic
 from collections import deque
 
-from arbiter.api.live.adapter import AsyncAdapter
+from arbiter.api.live.legacy.adapter import AsyncAdapter
 
 
 class LiveRoomConfig:

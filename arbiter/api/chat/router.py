@@ -3,10 +3,10 @@ from fastapi.templating import Jinja2Templates
 from typing import Any
 
 from arbiter.api.auth.dependencies import get_current_user
-from arbiter.api.live.adapter import ChatAdapter
+from arbiter.api.live.legacy.adapter import ChatAdapter
 from arbiter.api.live.chat.room import ChatRoom
-from arbiter.api.live.socket import SocketService
-from arbiter.api.live.room import LiveRoomConfig, RoomManager
+from arbiter.api.live.legacy.socket import SocketService
+from arbiter.api.live.legacy.room import LiveRoomConfig, RoomManager
 from arbiter.api.live.chat.schemas import (
     ChatSocketChatMessage,
     ChatSocketRoomJoinMessage,
