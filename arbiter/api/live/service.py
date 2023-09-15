@@ -87,7 +87,7 @@ class LiveService:
 
     async def publish_to_engine(self, websocket: WebSocket, user_id: str):
         # send engine to join 
-        self.engine.init_user(user_id)        
+        self.engine.setup_adapter(user_id)        
         async for message in websocket.iter_bytes():
             if self.connections[user_id].state != LiveConnectionState.CLOSE:
                 break
