@@ -10,8 +10,8 @@ from fastapi.websockets import WebSocketState
 from arbiter.api.auth.exceptions import InvalidToken
 from arbiter.api.auth.utils import verify_token
 from arbiter.api.live.chat.schemas import ChatSocketBaseMessage
-from arbiter.api.live.exceptions import AuthorizationFailedClose
-from arbiter.api.live.room import BaseLiveRoom, LiveRoomConfig, RoomManager, RoomType
+from arbiter.api.live.legacy.exceptions import AuthorizationFailedClose
+from arbiter.api.live.legacy.room import BaseLiveRoom, LiveRoomConfig, RoomManager, RoomType
 
 
 WAITING_READY_SECOND = 5
