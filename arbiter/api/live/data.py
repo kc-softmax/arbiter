@@ -1,5 +1,7 @@
-from dataclasses import dataclass
+import asyncio
+from typing import Any
 from fastapi import WebSocket
+from dataclasses import dataclass
 from live.const import LiveConnectionState, LiveSystemEvent
 
 
@@ -21,3 +23,8 @@ class LiveMessage:
 class LiveUser:
     user_id: str
     message_count: int = 0
+
+class LiveAdapter:
+    async def adapt(self, message: Any):
+        await asyncio.sleep(1)
+        return message
