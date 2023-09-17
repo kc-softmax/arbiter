@@ -20,8 +20,7 @@ class LiveEngine:
         
         self.adapter_map: dict[str, Adapter] = collections.defaultdict()
         
-        self._publish_queue: asyncio.Queue = asyncio.Queue()
-        self._subscribe_queue: collections.deque[LiveMessage] = collections.deque()
+        self._queue: collections.deque[LiveMessage] = collections.deque()
 
     def setup_adapter(self, user_id: str):
         self.adapter_map[user_id] = Adapter()
@@ -30,26 +29,9 @@ class LiveEngine:
         # apply adapter ?
         if message.src in self.adapter_map:
             adapted_message =  await self.adapter_map[message.src].adapt(message)
-            self._subscribe_queue.append(adapted_message)
+            self._queue.append(adapted_message)
         else:
-            self._subscribe_queue.append(message)
-
-    def pre_processing(self) -> LiveMessage:
-        pass
-
-    def post_processing(self) -> LiveMessage:
-        pass
-
-    def processing(self) -> LiveMessage:
-        # message를 모아서 처리한다.
-        processed_messages: list[LiveMessage] = []
-        while self._subscribe_queue:
-            message = self._subscribe_queue.pop()
-            processed_messages.append(message)        
-        return processed_messages
-    
-    def reset(self):
-        pass
+            self._queue.append(message)
 
     @asynccontextmanager
     async def subscribe(self) -> LiveEngine:
