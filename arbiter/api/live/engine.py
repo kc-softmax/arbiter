@@ -15,12 +15,11 @@ class Adapter:
 
 class LiveEngine:
 
-    def __init__(self, frame_rate: int = 30):
-        # self._waiters: set[asyncio.Future] = set() ?
+    def __init__(self):
         
         self.adapter_map: dict[str, Adapter] = collections.defaultdict()
         
-        self._queue: collections.deque[LiveMessage] = collections.deque()
+        self._queue: asyncio.Queue = asyncio.Queue()
 
     def setup_adapter(self, user_id: str):
         self.adapter_map[user_id] = Adapter()
@@ -29,9 +28,9 @@ class LiveEngine:
         # apply adapter ?
         if message.src in self.adapter_map:
             adapted_message =  await self.adapter_map[message.src].adapt(message)
-            self._queue.append(adapted_message)
+            self._queue.put_nowait(adapted_message)
         else:
-            self._queue.append(message)
+            self._queue.put_nowait(message)
 
     @asynccontextmanager
     async def subscribe(self) -> LiveEngine:
