@@ -8,9 +8,9 @@ from contextlib import asynccontextmanager
 from collections import defaultdict
 from fastapi import WebSocket, WebSocketDisconnect
 from fastapi.websockets import WebSocketState
-from live.const import LiveConnectionEvent, LiveConnectionState, LiveSystemEvent
-from live.data import LiveConnection, LiveMessage
-from live.engine import LiveEngine
+from arbiter.api.live.const import LiveConnectionEvent, LiveConnectionState, LiveSystemEvent
+from arbiter.api.live.data import LiveConnection, LiveMessage
+from arbiter.api.live.engine import LiveEngine
 
 
 class LiveService:
@@ -26,7 +26,6 @@ class LiveService:
             Any, str], Coroutine | None]] = defaultdict()
         self.subscribe_to_engine_task: Task = asyncio.create_task(
             self.subscribe_to_engine())
-        self.engine_task: Task = asyncio.create_task(self.engine.run())
 
     @asynccontextmanager
     async def connect(self, websocket: WebSocket, token: str):
@@ -45,8 +44,9 @@ class LiveService:
         finally:
             if websocket.client_state != WebSocketState.DISCONNECTED:
                 await websocket.close()
-            # 내가 나가는 경우
             # 끝날 때 공통으로 해야할 것
+            self.engine.remove_user(user_id)
+            
 
     async def run_event_handler(self, event_type: LiveConnectionEvent, *args):
         event_handlers = self.connection_evnet_handlers
@@ -97,6 +97,9 @@ class LiveService:
         async with self.engine.subscribe() as engine:
             async for event in engine:
                 event: LiveMessage
+                if not event.target:
+                     # send to all
+                    self.send_messages(self.connections.values(), event)
                 if event.systemEvent:
                     self.handle_system_message(event)
                 elif user := self.connections.get(event.target, None):
@@ -118,7 +121,7 @@ class LiveService:
                 await connection.websocket.send_bytes(message.data)
 
 
-live_service = LiveService(LiveEngine())
+# live_service = LiveService(LiveEngine())
 
 
 # async def ws(websocket: WebSocket, token: str):
