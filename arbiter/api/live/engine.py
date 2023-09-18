@@ -11,7 +11,7 @@ class Adapter:
     
     async def adapt(self, message: Any):
         await asyncio.sleep(1)
-        return message
+        return message # action
 
 class LiveEngine:
 
@@ -21,10 +21,10 @@ class LiveEngine:
         
         self._emit_queue: asyncio.Queue = asyncio.Queue()
 
-    async def setup_user(self, user_id: str):
+    async def setup_user(self, user_id: str, user_name: str=None):
         self.adapter_map[user_id] = Adapter()
         
-    async def remove_user(self, user_id: str):
+    async def remove_user(self, user_id: str, user_name: str=None):
         self.adapter_map.pop(user_id)
         
     async def on(self, message: LiveMessage):

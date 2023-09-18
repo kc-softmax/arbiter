@@ -3,7 +3,7 @@ import uuid
 import inspect
 import asyncio
 from asyncio.tasks import Task
-from typing import Any, Callable, Coroutine
+from typing import Any, Callable, Coroutine, Tuple
 from contextlib import asynccontextmanager
 from collections import defaultdict
 from fastapi import WebSocket, WebSocketDisconnect
@@ -28,16 +28,17 @@ class LiveService:
             self.subscribe_to_engine())
 
     @asynccontextmanager
-    async def connect(self, websocket: WebSocket, token: str):
+    async def connect(self, websocket: WebSocket, token: str) -> Tuple[str, str]:
         await websocket.accept()
         try:
             # TODO: 예제에서 토큰이 매번 필요해서 임시 주석 처리
             # token_data = verify_token(token)
             # user_id = token_data.sub
             user_id = str(uuid.uuid4())
+            user_name = "MG JU HONG"
             self.connections[user_id] = LiveConnection(websocket)
             await self.run_event_handler(LiveConnectionEvent.VALIDATE)
-            yield user_id
+            yield user_id, user_name
             # await subscribe_to_engine
         except Exception as e:
             yield
@@ -46,6 +47,7 @@ class LiveService:
                 await websocket.close()
             # 끝날 때 공통으로 해야할 것
             self.engine.remove_user(user_id)
+            print('close, remove user')
             
 
     async def run_event_handler(self, event_type: LiveConnectionEvent, *args):
@@ -85,9 +87,9 @@ class LiveService:
                 # if target is None ->  send all users
                 pass
 
-    async def publish_to_engine(self, websocket: WebSocket, user_id: str):
+    async def publish_to_engine(self, websocket: WebSocket, user_id: str, user_name: str = None):
         # send engine to join 
-        self.engine.setup_adapter(user_id)        
+        await self.engine.setup_user(user_id, user_name)
         async for message in websocket.iter_bytes():
             if self.connections[user_id].state != LiveConnectionState.CLOSE:
                 break
@@ -96,26 +98,26 @@ class LiveService:
     async def subscribe_to_engine(self):
         async with self.engine.subscribe() as engine:
             async for event in engine:
-                event: LiveMessage
                 if not event.target:
                      # send to all
-                    self.send_messages(self.connections.values(), event)
+                    await self.send_messages(self.connections.values(), event)
                 if event.systemEvent:
                     self.handle_system_message(event)
-                elif user := self.connections.get(event.target, None):
-                    self.send_personal_message(self.connections[user], event)
-                elif group := self.group_connections.get(event.target, None):
-                    self.send_messages(self.group_connections[group], event)
+                elif user_connection := self.connections.get(event.target, None):
+                    await self.send_personal_message(user_connection, event)
+                elif group_connections := self.group_connections.get(event.target, None):
+                    self.send_messages(group_connections, event)
                 else:  # send to all
-                    self.send_messages(self.connections.values(), event)
+                    raise Exception('not implemented')
+        print('close')
 
-    async def send_personal_message(connection: LiveConnection, message: LiveMessage):
+    async def send_personal_message(self, connection: LiveConnection, message: LiveMessage):
         # personal message는 state에 덜 종속적이다. 현재는 pending 상태에서 보낼 수 있다.
         if connection.state == LiveConnectionState.CLOSE:
             return
         await connection.websocket.send_bytes(message.data)
 
-    async def send_messages(connections: list[LiveConnection], message: LiveMessage):
+    async def send_messages(self, connections: list[LiveConnection], message: LiveMessage):
         for connection in connections:
             if connection.state == LiveConnectionState.ACTIVATE:
                 await connection.websocket.send_bytes(message.data)

@@ -15,6 +15,6 @@ class LiveSystemEvent(IntEnum):
 
 
 class LiveConnectionState(IntEnum):
-    PENDING = 201
     ACTIVATE = 202
     CLOSE = 203
+    BLOCK = 204

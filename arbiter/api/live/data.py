@@ -9,14 +9,14 @@ from arbiter.api.live.const import LiveConnectionState, LiveSystemEvent
 class LiveConnection:
     websocket: WebSocket
     # websocket state is not enough some case
-    state: LiveConnectionState = LiveConnectionState.PENDING
+    state: LiveConnectionState = LiveConnectionState.ACTIVATE
 
 
 @dataclass
 class LiveMessage:
-    src: str
     target: str
     data: bytes
+    src: str = None
     systemEvent: LiveSystemEvent = None
 
 @dataclass
