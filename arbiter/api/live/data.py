@@ -2,7 +2,7 @@ import asyncio
 from typing import Any
 from fastapi import WebSocket
 from dataclasses import dataclass
-from live.const import LiveConnectionState, LiveSystemEvent
+from arbiter.api.live.const import LiveConnectionState, LiveSystemEvent
 
 
 @dataclass

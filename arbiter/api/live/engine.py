@@ -1,11 +1,11 @@
 from __future__ import annotations
-
 import asyncio
 import collections
-from typing import Any, Callable, Coroutine
+import timeit
+from asyncio.tasks import Task
+from typing import Any
 from contextlib import asynccontextmanager
-from live.data import LiveMessage, LiveSystemEvent, LiveUser
-from live.engine import LiveEngine
+from arbiter.api.live.data import LiveMessage
 
 class Adapter:
     
@@ -19,18 +19,21 @@ class LiveEngine:
         
         self.adapter_map: dict[str, Adapter] = collections.defaultdict()
         
-        self._queue: asyncio.Queue = asyncio.Queue()
+        self._emit_queue: asyncio.Queue = asyncio.Queue()
 
-    def setup_adapter(self, user_id: str):
+    async def setup_user(self, user_id: str):
         self.adapter_map[user_id] = Adapter()
+        
+    async def remove_user(self, user_id: str):
+        self.adapter_map.pop(user_id)
         
     async def on(self, message: LiveMessage):
         # apply adapter ?
         if message.src in self.adapter_map:
-            adapted_message =  await self.adapter_map[message.src].adapt(message)
-            self._queue.put_nowait(adapted_message)
+            adapted_message = await self.adapter_map[message.src].adapt(message)
+            self._emit_queue.put_nowait(adapted_message)
         else:
-            self._queue.put_nowait(message)
+            self._emit_queue.put_nowait(message)
 
     @asynccontextmanager
     async def subscribe(self) -> LiveEngine:
@@ -49,7 +52,56 @@ class LiveEngine:
             pass
 
     async def get(self) -> LiveMessage:  # TOO
-        item = await self._queue.get()
+        item = await self._emit_queue.get()
         if item is None:
             raise Exception()
         return item
+
+class LiveAsyncEngine(LiveEngine):
+
+    def __init__(self, frame_rate: int = 30):
+        super().__init__()
+        self.frame_rate = frame_rate
+        self.terminate = False        
+        self._listen_queue: asyncio.Queue = asyncio.Queue()
+        self.emit_task: Task = asyncio.create_task(self.emit())
+
+        
+    async def on(self, message: LiveMessage):
+        # not override, change behavior
+        if message.src in self.adapter_map:
+            adapted_message =  await self.adapter_map[message.src].adapt(message)
+            self._listen_queue.put_nowait(adapted_message)
+        else:
+            self._listen_queue.put_nowait(message)
+
+    async def pre_processing(self):
+        NotImplementedError()
+    
+    async def post_processing(self):
+        NotImplementedError()
+    
+    async def processing(self, messages: list[LiveMessage]):
+        # await self._emit_queue.put_nowait(
+            # LiveMessage(data='Hello World)
+        NotImplementedError()
+        
+    async def emit(self):
+        time_interval = 1 / self.frame_rate
+        waiting_time = time_interval
+        while not self.terminate:
+            waiting_time > 0 and await asyncio.sleep(waiting_time)
+            turn_start_time = timeit.default_timer()
+            current_message_count = self._listen_queue.qsize()            
+
+            turn_messages = []
+            for _ in range(current_message_count):
+                turn_messages = self._listen_queue.get_nowait()
+            await self.pre_processing()
+            await self.processing(turn_messages)
+            await self.post_processing()
+            
+            elapsed_time = timeit.default_timer() - turn_start_time
+            waiting_time = time_interval - elapsed_time
+        await self._emit_queue.put_nowait(None)
+        
