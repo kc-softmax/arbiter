@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-from arbiter.api.auth.models import UserBase, ConsoleUserBase, PKModel
+from arbiter.api.auth.models import UserBase, PKModel
 
 
 class TokenSchema(BaseModel):
@@ -13,17 +13,13 @@ class TokenDataSchema(BaseModel):
     exp: int
 
 
-class ConsoleRequest(BaseModel):
-    is_console: bool = True
-
-
-class TokenRefreshRequest(TokenSchema, ConsoleRequest):
+class TokenRefreshRequest(TokenSchema):
     pass
 
 
-class GamerUserSchema(UserBase):
+class GamerUserSchema(UserBase, PKModel):
     class Config:
-        omit_fields = {"password", "access_token", "refresh_token"}
+        omit_fields = {"password"}
 
 
 class GamerUserCreateByEmail(UserBase):
@@ -39,22 +35,3 @@ class GamerUserUpdate(UserBase):
 class GamerUserLoginByGuest(UserBase):
     class Config:
         pick_fields = {"device_id"}
-
-
-class ConsoleUserSchema(ConsoleUserBase):
-    class Config:
-        omit_fields = {"password", "access_token", "refresh_token"}
-
-
-class ConsoleUserGet(PKModel):
-    pass
-
-
-class ConsoleUserCreate(ConsoleUserBase):
-    class Config:
-        pick_fields = {"email", "password", "user_name", "role"}
-
-
-class ConsoleUserUpdate(ConsoleUserBase, PKModel):
-    class Config:
-        pick_fields = {"id", "email",  "password", "user_name", "role"}

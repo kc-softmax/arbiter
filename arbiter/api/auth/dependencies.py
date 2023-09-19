@@ -1,29 +1,16 @@
 from fastapi import Depends
 from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from arbiter.api.database import get_async_session
-from arbiter.api.auth.models import User, ConsoleUser, ConsoleRole
-from arbiter.api.auth.service import ConsoleUserService, UserService
-from arbiter.api.auth.exceptions import InvalidToken, NotFoundUser, AuthorizationFailed
+from arbiter.api.auth.models import User
+from arbiter.api.auth.exceptions import InvalidToken, NotFoundUser
 from arbiter.api.auth.utils import verify_token
-
-
-def get_user_service(
-    session: AsyncSession = Depends(get_async_session)
-) -> UserService:
-    return UserService(session=session)
-
-
-def get_console_user_service(
-    session: AsyncSession = Depends(get_async_session)
-) -> ConsoleUserService:
-    return ConsoleUserService(session=session)
+from arbiter.api.database import UnitOfWork
+from arbiter.api.dependencies import get_uow
 
 
 async def get_current_user(
     token: str = Depends(OAuth2PasswordBearer(tokenUrl="/auth/login")),
-    user_service: UserService = Depends(get_user_service)
+    uow: UnitOfWork = Depends(get_uow),
 ) -> User:
     ''' 
     # jwt 토큰을 디코딩하여 현재 auth 정보를 불러온다.
@@ -33,36 +20,10 @@ async def get_current_user(
     (저장된 토큰과 헤더에 담겨 온 토큰이 다르다는 것은 이미 deprecated된 토큰으로 요청을 보냈다는 뜻)
     '''
     token_data = verify_token(token)
-    user = await user_service.get_user(token_data.sub)
+    user = await uow.gamer_users.get_by_id(token_data.sub)
     if user is None:
         raise NotFoundUser
     # 저장된 액세스토큰과 같은 토큰인지 확인
     if user.access_token != token:
         raise InvalidToken
     return user
-
-
-async def get_current_console_user(
-    token: str = Depends(OAuth2PasswordBearer(tokenUrl="/auth/console/login")),
-    user_service: ConsoleUserService = Depends(get_console_user_service)
-) -> ConsoleUser:
-    token_data = verify_token(token)
-    user = await user_service.get_console_user_by_id(token_data.sub)
-    if user is None:
-        raise NotFoundUser
-    if user.access_token != token:
-        raise InvalidToken
-    return user
-
-
-class ConsoleRoleChecker:
-    def __init__(self, allowed_roles: list):
-        self.allowed_roles = allowed_roles
-
-    def __call__(self, console_user: ConsoleUser = Depends(get_current_console_user)):
-        if console_user.role not in self.allowed_roles:
-            raise AuthorizationFailed
-        return console_user
-
-
-allowed_only_for_owner = ConsoleRoleChecker([ConsoleRole.OWNER])
