@@ -51,13 +51,3 @@ def decode_token(token: str, is_refresh_token: bool = False):
     except (JWTError, ValidationError):
         raise InvalidToken
     return token_data
-
-
-# parse list string and transfrom to list
-def list_string_to_list(list_string: str):
-    if list_string.isnumeric():
-        return [list_string]
-    try:
-        return literal_eval(list_string)
-    except:
-        return None

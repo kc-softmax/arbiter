@@ -5,11 +5,6 @@ from sqlmodel import Column, Field, SQLModel, String
 from arbiter.api.utils import SchemaMeta
 
 
-class ConsoleRole(StrEnum):
-    OWNER = "owner"
-    MAINTAINER = "maintainer"
-
-
 class LoginType(StrEnum):
     GUEST = "guest"
     EMAIL = "email"
@@ -57,13 +52,5 @@ class UserBase(CommonUserBase, TimestampModel):
     login_type: LoginType = LoginType.GUEST
 
 
-class ConsoleUserBase(CommonUserBase, TimestampModel):
-    role: ConsoleRole = ConsoleRole.MAINTAINER
-
-
 class User(PKModel, UserBase, table=True):
     __tablename__ = "user"
-
-
-class ConsoleUser(PKModel, ConsoleUserBase, table=True):
-    __tablename__ = "console_user"
