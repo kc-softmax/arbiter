@@ -14,9 +14,9 @@ class LiveConnection:
 
 @dataclass
 class LiveMessage:
-    target: str
-    data: bytes
+    data: bytes = None
     src: str = None
+    target: str = None
     systemEvent: LiveSystemEvent = None
 
 @dataclass

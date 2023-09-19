@@ -91,24 +91,33 @@ class LiveService:
         # send engine to join 
         await self.engine.setup_user(user_id, user_name)
         async for message in websocket.iter_bytes():
-            if self.connections[user_id].state != LiveConnectionState.CLOSE:
-                break
-            self.engine.on(user_id, message)
+            # block
+            match self.connections[user_id].state:
+                case LiveConnectionState.CLOSE:
+                    break
+                case LiveConnectionState.BLOCK:
+                    continue
+            live_message = LiveMessage(src=user_id, data=message)
+            await self.engine.on(live_message)
 
     async def subscribe_to_engine(self):
         async with self.engine.subscribe() as engine:
-            async for event in engine:
-                if not event.target:
-                     # send to all
-                    await self.send_messages(self.connections.values(), event)
-                if event.systemEvent:
-                    self.handle_system_message(event)
-                elif user_connection := self.connections.get(event.target, None):
-                    await self.send_personal_message(user_connection, event)
-                elif group_connections := self.group_connections.get(event.target, None):
-                    self.send_messages(group_connections, event)
-                else:  # send to all
-                    raise Exception('not implemented')
+            try:
+                async for event in engine:
+                    if event.target is None:
+                        # send to all
+                        await self.send_messages(self.connections.values(), event)
+                    elif event.systemEvent:
+                        self.handle_system_message(event)
+                    elif user_connection := self.connections.get(event.target, None):
+                        await self.send_personal_message(user_connection, event)
+                    elif group_connections := self.group_connections.get(event.target, None):
+                        await self.send_messages(group_connections, event)
+                    else:  # send to all
+                        raise Exception('not implemented')
+            except Exception as e:
+                print(e)
+
         print('close')
 
     async def send_personal_message(self, connection: LiveConnection, message: LiveMessage):
