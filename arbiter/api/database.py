@@ -38,7 +38,6 @@ def make_async_session():
         class_=AsyncSession,
         autocommit=False,
         autoflush=False,
-        expire_on_commit=False
     )
     return async_session()
 
