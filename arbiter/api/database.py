@@ -44,6 +44,7 @@ def make_async_session():
 
 class UnitOfWork():
     def __init__(self) -> None:
+        # TODO 자동으로 가져올 수 있도록 하기
         self.gamer_users = GamerUserRepository()
 
     @asynccontextmanager
