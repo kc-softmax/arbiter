@@ -41,11 +41,14 @@ class LiveService:
             yield user_id, user_name
             # await subscribe_to_engine
         except Exception as e:
-            yield
+            print(e)
+            yield None, None
         finally:
             if websocket.client_state != WebSocketState.DISCONNECTED:
                 await websocket.close()
             # 끝날 때 공통으로 해야할 것
+            # 하나의 로직으로 출발해서 순차적으로 종료시켜라
+            self.connections.pop(user_id, None)
             self.engine.remove_user(user_id)
             print('close, remove user')
             
@@ -104,8 +107,7 @@ class LiveService:
         async with self.engine.subscribe() as engine:
             try:
                 async for event in engine:
-                    if event.target is None:
-                        # send to all
+                    if event.target is None: # send to all
                         await self.send_messages(self.connections.values(), event)
                     elif event.systemEvent:
                         self.handle_system_message(event)
@@ -116,9 +118,7 @@ class LiveService:
                     else:  # send to all
                         raise Exception('not implemented')
             except Exception as e:
-                print(e)
-
-        print('close')
+                print(e, 'in subscribe_to_engine')
 
     async def send_personal_message(self, connection: LiveConnection, message: LiveMessage):
         # personal message는 state에 덜 종속적이다. 현재는 pending 상태에서 보낼 수 있다.
