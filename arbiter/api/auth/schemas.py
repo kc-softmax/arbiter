@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-from arbiter.api.auth.models import UserBase, PKModel
+from arbiter.api.auth.models import GameUserBase, PKModel
 
 
 class TokenSchema(BaseModel):
@@ -17,21 +17,21 @@ class TokenRefreshRequest(TokenSchema):
     pass
 
 
-class GamerUserSchema(UserBase, PKModel):
+class GamerUserSchema(GameUserBase, PKModel):
     class Config:
         omit_fields = {"password"}
 
 
-class GamerUserCreateByEmail(UserBase):
+class GamerUserCreateByEmail(GameUserBase):
     class Config:
         pick_fields = {"email", "password"}
 
 
-class GamerUserUpdate(UserBase):
+class GamerUserUpdate(GameUserBase):
     class Config:
         pick_fields = {"user_name"}
 
 
-class GamerUserLoginByGuest(UserBase):
+class GamerUserLoginByGuest(GameUserBase):
     class Config:
         pick_fields = {"device_id"}
