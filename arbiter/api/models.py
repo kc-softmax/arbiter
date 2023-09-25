@@ -1,4 +1,6 @@
+from sqlmodel import Field, SQLModel
 from sqlmodel.main import SQLModelMetaclass
+from datetime import datetime
 from typing import Any
 
 
@@ -37,3 +39,25 @@ class SchemaMeta(SQLModelMetaclass):
                 new_fields[field] = fields[field]
         namespaces['__annotations__'] = new_annotations
         namespaces['__fields__'] = new_fields
+
+
+class BaseSQLModel(SQLModel, metaclass=SchemaMeta):
+    pass
+
+
+class PKModel(BaseSQLModel):
+    id: int | None = Field(default=None, primary_key=True)
+
+
+class TimestampModel(BaseSQLModel):
+    created_at: datetime = Field(
+        default_factory=datetime.utcnow,
+        nullable=False
+    )
+    updated_at: datetime = Field(
+        default_factory=datetime.utcnow,
+        nullable=False
+    )
+    deprecated_at: datetime | None = Field(
+        nullable=True
+    )

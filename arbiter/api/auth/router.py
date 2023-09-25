@@ -6,7 +6,8 @@ from enum import StrEnum
 
 import arbiter.api.auth.exceptions as AuthExceptions
 import arbiter.api.auth.schemas as AuthSchemas
-from arbiter.api.auth.models import LoginType, User
+from arbiter.api.auth.repository import game_uesr_repository
+from arbiter.api.auth.models import LoginType, GameUser
 from arbiter.api.auth.dependencies import get_current_user
 from arbiter.api.auth.utils import (
     create_token,
@@ -15,11 +16,7 @@ from arbiter.api.auth.utils import (
     verify_password,
 )
 from arbiter.api.exceptions import BadRequest
-from arbiter.api.database import UnitOfWork
-from arbiter.api.dependencies import get_uow
-
-
-router = APIRouter(prefix="/auth")
+from arbiter.api.dependencies import UnitOfWork
 
 
 class AuthRouterTag(StrEnum):
@@ -27,21 +24,25 @@ class AuthRouterTag(StrEnum):
     GAMER = "Auth(game)"
 
 
+repositories = [game_uesr_repository]
+router = APIRouter(
+    prefix="/auth",
+    dependencies=[Depends(UnitOfWork(repositories))]
+)
+
+
 @router.post(
     "/token/verify",
     tags=[AuthRouterTag.TOKEN],
     response_model=bool
 )
-async def verify_token(
-        token: str = Depends(OAuth2PasswordBearer(tokenUrl="")),
-        uow: UnitOfWork = Depends(get_uow),
-):
+async def verify_token(token: str = Depends(OAuth2PasswordBearer(tokenUrl=""))):
     try:
         token_data = verify_token_util(token)
     except AuthExceptions.InvalidToken:
         return False
 
-    user = await uow.gamer_users.get_by_id(token_data.sub)
+    user = await game_uesr_repository.get_by_id(token_data.sub)
     if user == None or user.access_token != token:
         return False
     return True
@@ -52,13 +53,10 @@ async def verify_token(
     tags=[AuthRouterTag.TOKEN],
     response_model=AuthSchemas.TokenSchema
 )
-async def refresh_token(
-    data: AuthSchemas.TokenRefreshRequest,
-    uow: UnitOfWork = Depends(get_uow),
-):
+async def refresh_token(data: AuthSchemas.TokenRefreshRequest):
     token_data = verify_token_util(data.refresh_token, True)
     # DB에 저장된 토큰과 같은 토큰인 지 확인
-    user = await uow.gamer_users.get_by_id(token_data.sub)
+    user = await game_uesr_repository.get_by_id(token_data.sub)
     if user == None or data.access_token != user.access_token or data.refresh_token != user.refresh_token:
         raise AuthExceptions.InvalidToken
 
@@ -69,7 +67,7 @@ async def refresh_token(
     )
     user.access_token = new_token.access_token
     user.refresh_token = new_token.refresh_token
-    await uow.gamer_users.update(user)
+    await game_uesr_repository.update(user)
     return new_token
 
 
@@ -80,15 +78,12 @@ async def refresh_token(
     response_model=AuthSchemas.GamerUserSchema
 )
 # 이메일 게이머 가입
-async def signup_email(
-    data: AuthSchemas.GamerUserCreateByEmail,
-    uow: UnitOfWork = Depends(get_uow),
-):
-    user = await uow.gamer_users.get_one_by(email=data.email)
+async def signup_email(data: AuthSchemas.GamerUserCreateByEmail):
+    user = await game_uesr_repository.get_one_by(email=data.email)
     if user != None:
         raise AuthExceptions.UserAlready
-    user = await uow.gamer_users.add(
-        User(
+    user = await game_uesr_repository.add(
+        GameUser(
             email=data.email,
             password=get_password_hash(data.password),
             login_type=LoginType.EMAIL,
@@ -103,11 +98,8 @@ async def signup_email(
     response_model=AuthSchemas.GamerUserSchema
 )
 # 이메일 게이머 로그인
-async def login(
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    uow: UnitOfWork = Depends(get_uow),
-):
-    user = await uow.gamer_users.get_one_by(email=form_data.username)
+async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    user = await game_uesr_repository.get_one_by(email=form_data.username)
     if user == None:
         raise AuthExceptions.NotFoundUser
     if not verify_password(form_data.password, user.password):
@@ -119,7 +111,7 @@ async def login(
     )
     user.access_token = token.access_token
     user.refresh_token = token.refresh_token
-    await uow.gamer_users.update(user)
+    await game_uesr_repository.update(user)
     return user
 
 
@@ -130,11 +122,11 @@ async def login(
     response_model=AuthSchemas.GamerUserSchema
 )
 # 게스트 게이머 가입
-async def signup_guest(uow: UnitOfWork = Depends(get_uow),):
+async def signup_guest():
     # 임의의 id 생성
     device_id = uuid.uuid4()
-    user: User = await uow.gamer_users.add(
-        User(
+    user = await game_uesr_repository.add(
+        GameUser(
             device_id=str(device_id),
             login_type=LoginType.GUEST,
         )
@@ -145,14 +137,11 @@ async def signup_guest(uow: UnitOfWork = Depends(get_uow),):
 @router.post(
     "/game/login/guest",
     tags=[AuthRouterTag.GAMER],
-    response_model=AuthSchemas.TokenSchema
+    response_model=AuthSchemas.GamerUserSchema
 )
 # 게스트 게이머 로그인
-async def login_guest(
-    data: AuthSchemas.GamerUserLoginByGuest,
-    uow: UnitOfWork = Depends(get_uow),
-):
-    user = await uow.gamer_users.get_one_by(device_id=data.device_id)
+async def login_guest(data: AuthSchemas.GamerUserLoginByGuest):
+    user = await game_uesr_repository.get_one_by(device_id=data.device_id)
     if user == None:
         raise BadRequest
     token = AuthSchemas.TokenSchema(
@@ -161,7 +150,7 @@ async def login_guest(
     )
     user.access_token = token.access_token
     user.refresh_token = token.refresh_token
-    await uow.gamer_users.update(user)
+    await game_uesr_repository.update(user)
     return user
 
 
@@ -170,7 +159,7 @@ async def login_guest(
     tags=[AuthRouterTag.GAMER],
     response_model=AuthSchemas.GamerUserSchema
 )
-async def get_me(user: User = Depends(get_current_user)):
+async def get_me(user: GameUser = Depends(get_current_user)):
     return user
 
 
@@ -179,11 +168,8 @@ async def get_me(user: User = Depends(get_current_user)):
     tags=[AuthRouterTag.GAMER],
     response_model=AuthSchemas.GamerUserSchema
 )
-async def leave(
-    user: User = Depends(get_current_user),
-    uow: UnitOfWork = Depends(get_uow),
-):
-    await uow.gamer_users.delete(user.id)
+async def leave(user: GameUser = Depends(get_current_user)):
+    await game_uesr_repository.delete(user.id)
     return user
 
 
@@ -193,11 +179,10 @@ async def leave(
     response_model=AuthSchemas.GamerUserSchema
 )
 # 게이머 본인 정보 수정
-async def update_user_info(
+async def update_me_info(
         data: AuthSchemas.GamerUserUpdate,
-        user: User = Depends(get_current_user),
-        uow: UnitOfWork = Depends(get_uow),
+        user: GameUser = Depends(get_current_user)
 ):
     user.user_name = data.user_name
-    await uow.gamer_users.update(user)
+    await game_uesr_repository.update(user)
     return user

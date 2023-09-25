@@ -1,10 +1,12 @@
-from __future__ import annotations
+from datetime import datetime
 from typing import Generic, Type, TypeVar
 from sqlmodel import select, and_
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel.sql.expression import SelectOfScalar
 
-T = TypeVar('T')
+from arbiter.api.models import BaseSQLModel
+
+T = TypeVar('T', bound=BaseSQLModel)
 
 
 class BaseCRUDRepository(Generic[T]):
@@ -41,6 +43,7 @@ class BaseCRUDRepository(Generic[T]):
         return record
 
     async def update(self, record: T) -> T:
+        record.updated_at = datetime.utcnow()
         self.session.add(record)
         await self.session.flush()
         await self.session.refresh(record)

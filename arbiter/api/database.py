@@ -1,14 +1,10 @@
-from __future__ import annotations
 import sys
-from typing import AsyncIterator
-from contextlib import asynccontextmanager
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import sessionmaker
 
 from arbiter.api.config import settings
-from arbiter.api.auth.repository import GamerUserRepository
 
 # sqllite는 쓰레드 통신을 지원하지 않기 때문에, 아래와 같이 connect_args를 추가해줘야 한다.
 connect_args = {"check_same_thread": False}
@@ -40,28 +36,3 @@ def make_async_session():
         autoflush=False,
     )
     return async_session()
-
-
-class UnitOfWork():
-    def __init__(self) -> None:
-        # TODO 자동으로 가져올 수 있도록 하기
-        self.gamer_users = GamerUserRepository()
-
-    @asynccontextmanager
-    async def transaction(self, session: AsyncSession) -> AsyncIterator[UnitOfWork]:
-        try:
-            self.set_session_in_repository(session)
-            yield self
-            await session.commit()
-        except Exception as e:
-            print(f'database transaction error: {e}')
-            await session.rollback()
-            raise e
-        finally:
-            self.set_session_in_repository(None)
-
-    def set_session_in_repository(self, session: AsyncSession | None):
-        self.gamer_users.session = session
-
-
-unit_of_work = UnitOfWork()

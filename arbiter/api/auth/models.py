@@ -1,8 +1,7 @@
-from datetime import datetime
 from enum import StrEnum
-from sqlmodel import Column, Field, SQLModel, String
+from sqlmodel import Column, Field, String
 
-from arbiter.api.utils import SchemaMeta
+from arbiter.api.models import PKModel, BaseSQLModel, TimestampModel
 
 
 class LoginType(StrEnum):
@@ -12,29 +11,6 @@ class LoginType(StrEnum):
     APPLE = "apple"
     STEAM = "steam"
     GOOGLE = "google"
-
-
-# TODO 가장 상위 공통 모델들로 빼기
-class BaseSQLModel(SQLModel, metaclass=SchemaMeta):
-    pass
-
-
-class PKModel(SQLModel):
-    id: int | None = Field(default=None, primary_key=True)
-
-
-class TimestampModel(SQLModel):
-    created_at: datetime = Field(
-        default_factory=datetime.utcnow,
-        nullable=False
-    )
-    updated_at: datetime = Field(
-        default_factory=datetime.utcnow,
-        nullable=False
-    )
-    deprecated_at: datetime | None = Field(
-        nullable=True
-    )
 
 
 # auth 도메인 모델들
@@ -47,10 +23,10 @@ class CommonUserBase(BaseSQLModel):
     deprecated: bool = False
 
 
-class UserBase(CommonUserBase, TimestampModel):
+class GameUserBase(CommonUserBase, TimestampModel):
     device_id: str | None = Field(sa_column=Column(String(128), unique=True))
     login_type: LoginType = LoginType.GUEST
 
 
-class User(PKModel, UserBase, table=True):
+class GameUser(PKModel, GameUserBase, table=True):
     __tablename__ = "user"
