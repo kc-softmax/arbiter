@@ -1,7 +1,7 @@
 from enum import StrEnum
 
 
-class ErrorCode(StrEnum):
+class ErrorCode(str, Enum):
     AUTHENTICATION_REQUIRED = "Authentication required."
     AUTHORIZATION_FAILED = "Authorization failed. User has no access."
     INVALID_TOKEN = "Invalid token."
