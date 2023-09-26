@@ -2,7 +2,7 @@ import uuid
 from fastapi import APIRouter, Depends
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from http import HTTPStatus
-from enum import StrEnum
+from enum import Enum
 
 import arbiter.api.auth.exceptions as AuthExceptions
 import arbiter.api.auth.schemas as AuthSchemas
@@ -19,7 +19,7 @@ from arbiter.api.exceptions import BadRequest
 from arbiter.api.dependencies import UnitOfWork
 
 
-class AuthRouterTag(StrEnum):
+class AuthRouterTag(str, Enum):
     TOKEN = "Token"
     GAMER = "Auth(game)"
 

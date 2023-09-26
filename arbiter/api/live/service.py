@@ -1,12 +1,11 @@
 from __future__ import annotations
-import uuid
 import inspect
 import asyncio
 from asyncio.tasks import Task
 from typing import Any, Callable, Coroutine, Tuple
 from contextlib import asynccontextmanager
 from collections import defaultdict
-from fastapi import WebSocket, WebSocketDisconnect
+from fastapi import WebSocket
 from fastapi.websockets import WebSocketState
 from arbiter.api.live.const import LiveConnectionEvent, LiveConnectionState, LiveSystemEvent
 from arbiter.api.live.data import LiveConnection, LiveMessage
@@ -28,16 +27,18 @@ class LiveService:
             self.subscribe_to_engine())
 
     @asynccontextmanager
-    async def connect(self, websocket: WebSocket, token: str) -> Tuple[str, str]:
+    async def connect(self, websocket: WebSocket, user_id: str, team: int, use_adapter: bool) -> Tuple[str, str]:
         await websocket.accept()
         try:
             # TODO: 예제에서 토큰이 매번 필요해서 임시 주석 처리
             # token_data = verify_token(token)
             # user_id = token_data.sub
-            user_id = str(uuid.uuid4())
+            # user_id = str(uuid.uuid4())
             user_name = "MG JU HONG"
+            setattr(websocket, "user_id", user_id)
             self.connections[user_id] = LiveConnection(websocket)
             await self.run_event_handler(LiveConnectionEvent.VALIDATE)
+            self.engine.env.add_agent(user_id, team)
             yield user_id, user_name
             # await subscribe_to_engine
         except Exception as e:
@@ -49,7 +50,8 @@ class LiveService:
             # 끝날 때 공통으로 해야할 것
             # 하나의 로직으로 출발해서 순차적으로 종료시켜라
             self.connections.pop(user_id, None)
-            self.engine.remove_user(user_id)
+            await self.engine.remove_user(user_id, use_adapter)
+            self.engine.env.remove_agent(user_id)
             print('close, remove user')
             
 
@@ -90,9 +92,9 @@ class LiveService:
                 # if target is None ->  send all users
                 pass
 
-    async def publish_to_engine(self, websocket: WebSocket, user_id: str, user_name: str = None):
+    async def publish_to_engine(self, websocket: WebSocket, user_id: str, use_adapter: bool = False):
         # send engine to join 
-        await self.engine.setup_user(user_id, user_name)
+        await self.engine.setup_user(user_id, use_adapter)
         async for message in websocket.iter_bytes():
             # block
             match self.connections[user_id].state:
@@ -127,9 +129,12 @@ class LiveService:
         await connection.websocket.send_bytes(message.data)
 
     async def send_messages(self, connections: list[LiveConnection], message: LiveMessage):
-        for connection in connections:
-            if connection.state == LiveConnectionState.ACTIVATE:
-                await connection.websocket.send_bytes(message.data)
+        try:
+            for connection in connections:
+                if connection.state == LiveConnectionState.ACTIVATE:
+                    await connection.websocket.send_bytes(message.data)
+        except Exception as err:
+            print('skip player')
 
 
 # live_service = LiveService(LiveEngine())
