@@ -1,10 +1,10 @@
-from enum import StrEnum
+from enum import Enum
 from sqlmodel import Column, Field, String
 
 from arbiter.api.models import PKModel, BaseSQLModel, TimestampModel
 
 
-class LoginType(StrEnum):
+class LoginType(str, Enum):
     GUEST = "guest"
     EMAIL = "email"
     FACEBOOK = "facebook"

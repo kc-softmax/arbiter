@@ -1,7 +1,7 @@
-from enum import StrEnum
+from enum import Enum
 
 
-class ErrorCode(StrEnum):
+class ErrorCode(str, Enum):
     AUTHENTICATION_REQUIRED = "Authentication required."
     AUTHORIZATION_FAILED = "Authorization failed. User has no access."
     INVALID_TOKEN = "Invalid token."
@@ -14,7 +14,7 @@ class ErrorCode(StrEnum):
     NOT_ALLOWED_UPDATE_ROLE_MAINTAINER = "Maintainer can't update role"
 
 
-class TOKEN_GENERATE_ALGORITHM(StrEnum):
+class TOKEN_GENERATE_ALGORITHM(str, Enum):
     HS256 = "HS256"
 
 

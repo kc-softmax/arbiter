@@ -1,10 +1,10 @@
-from enum import StrEnum
+from enum import Enum
 from pydantic import BaseModel
 from pydantic.generics import GenericModel
 from typing import Generic, TypeVar
 
 
-class ChatEvent(StrEnum):
+class ChatEvent(str, Enum):
     ROOM_JOIN = "room_join"
     USER_JOIN = "user_join"
     USER_LEAVE = "user_leave"

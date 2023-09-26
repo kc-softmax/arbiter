@@ -18,17 +18,6 @@ live_async_env_engine = LiveAsyncEnvEngine(
 live_service = LiveService(live_async_env_engine)
 
 
-"""
-    message
-    LiveMessage(
-        src: 메시지를 보내는 주체
-        target: 메시지를 받는 대상(없으면 broadcast)
-        data: 채팅 내용 혹은 게임의 액션
-        LiveSystemEvent: JOIN, LEAVE 등 목적에 맞는 처리
-    )
-"""
-
-
 @router.websocket("/chat")
 async def play_chat(websocket: WebSocket, user_id: str = Query(), team: int = Query(default=501), use_adapter: bool = Query(default=False)):
     async with live_service.connect(websocket, user_id, team, use_adapter) as user_info:
