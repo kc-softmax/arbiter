@@ -20,8 +20,8 @@ class Adapter:
     ):
         self.trainer: dict[str, MARWILTorchPolicy] = Policy.from_checkpoint(check_point)
 
-    async def adapt(self, obs: list):
-        prediction: tuple = self.trainer['policy_1'].compute_single_action(np.array(obs))
+    async def adapt(self, obs: np.ndarray):
+        prediction: tuple = self.trainer['policy_1'].compute_single_action(obs)
         action = prediction[0]
         return [action]
 
@@ -80,15 +80,15 @@ class LiveAsyncEngine(LiveEngine):
         
     async def on(self, message: LiveMessage):
         # not override, change behavior
-        serialize = {
+        deserialize = {
             message.src: json.loads(base64.urlsafe_b64decode(message.data))
         }
-        self._listen_queue.put_nowait(serialize)
+        self._listen_queue.put_nowait(deserialize)
 
     async def pre_processing(self, turn_messages: dict[str, list[any]]):
         for agent_id, adapter in self.adapter_map.items():
             # env의 obs에 agent가 add되었는지 체크해야한다(유저가 들어왔을 때 run이 실행되고있는 타이밍이 안맞을 수 있다
-            # 동시에 시작하는 게임이라면 고려할 필요가 없다
+            # 동시에 시작하는 게임이라면 고려할 필요가 없다(env에 이미 유저가 존재한다)
             if agent_id in self.env.obs:
                 turn_messages[agent_id] = await adapter.adapt(self.env.obs[agent_id])
     
@@ -135,25 +135,33 @@ class LiveAsyncEngine(LiveEngine):
 
 
 class LiveAsyncEnvEngine(LiveAsyncEngine):
-    """LiveAsyncEnvEngine summary
+    """LiveAsyncEnvEngine Summary
 
     Args:
         env_id (str): 사용할 env의 id를 지정한다(gymnasium에서 env 초기화시 사용)
+        
+        entry_point (str): env의 package 경로를 다음과 같이 입력한다
+
+        ex) from maenv.dusty.dusty_env import DustyEnv
+            `maenv.dusty.dusty_env:DustyEnv`
         
         env_config (dict): env를 초기화 할 때 사용할 config를 정의한다
         
         frame_rate (int): 초당 rendering 수를 지정한다
     """
-    def __init__(self, env_id: str, entry_point: str, env_config: dict = {}, frame_rate: int = 30) -> None:
-        self.env: gym.Env = gym.make(env_id)
+    def __init__(self, *args, **kwargs) -> None:
+        self.env: gym.Env = gym.make(kwargs.get('env_id'))
         self.obs, _ = self.env.reset()
-        super().__init__(frame_rate)
+        super().__init__(kwargs.get('frame_rate'))
 
     def __new__(cls, *args, **kwargs) -> LiveAsyncEnvEngine:
-        if kwargs.get('env_id') not in registry:
+        if not kwargs.get('env_id') or not kwargs.get('entry_point'):
+            raise AttributeError("Check your env_id and entroy_point field")
+
+        if kwargs['env_id'] not in registry:
             register(
                 id=kwargs['env_id'],
-                entry_point=kwargs.get('entry_point'),
+                entry_point=kwargs['entry_point'],
                 kwargs=kwargs.get('env_config', {})
             )
         return super().__new__(cls)
