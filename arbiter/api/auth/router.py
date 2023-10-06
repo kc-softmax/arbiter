@@ -18,11 +18,9 @@ from arbiter.api.auth.utils import (
 from arbiter.api.exceptions import BadRequest
 from arbiter.api.dependencies import UnitOfWork
 
-
 class AuthRouterTag(str, Enum):
     TOKEN = "Token"
     GAMER = "Auth(game)"
-
 
 repositories = [game_uesr_repository]
 router = APIRouter(

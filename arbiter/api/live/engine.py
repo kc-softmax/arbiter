@@ -35,10 +35,12 @@ class LiveEngine:
         self._emit_queue: asyncio.Queue = asyncio.Queue()
 
     async def setup_user(self, user_id: str, user_name: str=None):
-        raise NotImplementedError()
+        pass
+        # raise NotImplementedError()
         
     async def remove_user(self, user_id: str, user_name: str=None):
-        raise NotImplementedError()
+        pass
+        # raise  NotImplementedError()
         
     async def on(self, message: LiveMessage):
         # apply adapter ?

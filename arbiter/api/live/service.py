@@ -132,7 +132,6 @@ class LiveService:
     async def send_messages(self, connections: list[LiveConnection], message: LiveMessage):
         for connection in connections:
             if connection.state == LiveConnectionState.ACTIVATE:
-                
                 await connection.websocket.send_bytes(message.data)
 
 
