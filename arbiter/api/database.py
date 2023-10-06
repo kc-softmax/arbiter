@@ -3,6 +3,7 @@ from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy import event
 
 from arbiter.api.config import settings
 
@@ -17,8 +18,14 @@ async_engine = create_async_engine(
     db_url,
     echo=False,
     future=True,
-    connect_args=connect_args
+    connect_args=connect_args,
 )
+
+
+# SQLite는 기본적으로 외래키 제약 조건이 비활성화되어 있기 때문에 활성화를 해준다.
+@event.listens_for(async_engine.sync_engine, "connect")
+def engine_connect(connection, record):
+    connection.execute('pragma foreign_keys=ON')
 
 
 # TODO: 마이그레이션 로직 추가되면 제거
@@ -34,5 +41,6 @@ def make_async_session():
         class_=AsyncSession,
         autocommit=False,
         autoflush=False,
+        expire_on_commit=False
     )
     return async_session()
