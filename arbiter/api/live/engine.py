@@ -34,11 +34,11 @@ class LiveEngine:
         
         self._emit_queue: asyncio.Queue = asyncio.Queue()
 
-    async def setup_user(self, user_id: str, use_adapter: bool = False):
-        if use_adapter: self.adapter_map[user_id] = Adapter()
+    async def setup_user(self, user_id: str, user_name: str=None):
+        raise NotImplementedError()
         
-    async def remove_user(self, user_id: str, use_adapter: bool = False):
-        if use_adapter: self.adapter_map.pop(user_id)
+    async def remove_user(self, user_id: str, user_name: str=None):
+        raise NotImplementedError()
         
     async def on(self, message: LiveMessage):
         # apply adapter ?
@@ -54,6 +54,7 @@ class LiveEngine:
             yield self
         finally:
             # finally check before release engine
+            
             pass
 
     async def __aiter__(self):
@@ -80,17 +81,17 @@ class LiveAsyncEngine(LiveEngine):
         self.emit_task: Task = asyncio.create_task(self.emit())
         
     async def on(self, message: LiveMessage):
-        # not override, change behavior
-        if message.src in self.adapter_map:
-            adapted_message = await self.adapter_map[message.src].adapt(message)
-            self._emit_queue.put_nowait(adapted_message)
-        else:
-            self._emit_queue.put_nowait(message)
+        # # not override, change behavior
+        # if message.src in self.adapter_map:
+        #     adapted_message = await self.adapter_map[message.src].adapt(message)
+        #     self._listen_queue.put_nowait(adapted_message)
+        # else:
+        self._listen_queue.put_nowait(message)
 
-    async def pre_processing(self, turn_messages: dict[str, list[any]]):
+    async def pre_processing(self, messages: list[LiveMessage]):
         NotImplementedError()
     
-    async def post_processing(self, turn_messages: dict[str, list[any]]):
+    async def post_processing(self, ):
         NotImplementedError()
     
     async def processing(self, turn_messages: dict[str, list[any]]):
@@ -107,93 +108,6 @@ class LiveAsyncEngine(LiveEngine):
             current_message_count = self._listen_queue.qsize()
             for _ in range(current_message_count):
                 turn_messages.appendleft(self._listen_queue.get_nowait())
-            try:
-                await self.pre_processing(turn_messages)
-                await self.processing(turn_messages)
-                await self.post_processing(turn_messages)
-            except Exception as e:
-                print(e)
-            elapsed_time = timeit.default_timer() - turn_start_time
-            waiting_time = time_interval - elapsed_time
-        print('emit task end')
-        await self._emit_queue.put_nowait(None)
-
-
-class LiveAsyncEnvEngine(LiveAsyncEngine):
-    """LiveAsyncEnvEngine Summary
-
-    Args:
-        env_id (str): 사용할 env의 id를 지정한다(gymnasium에서 env 초기화시 사용)
-        
-        entry_point (str): env의 package 경로를 다음과 같이 입력한다
-
-        ex) from maenv.dusty.dusty_env import DustyEnv
-            `maenv.dusty.dusty_env:DustyEnv`
-        
-        env_config (dict): env를 초기화 할 때 사용할 config를 정의한다
-        
-        frame_rate (int): 초당 rendering 수를 지정한다
-    """
-    def __init__(self, *args, **kwargs) -> None:
-        self.env: gym.Env = gym.make(kwargs.get('env_id'))
-        self.obs, _ = self.env.reset()
-        super().__init__(kwargs.get('frame_rate'))
-
-    def __new__(cls, *args, **kwargs) -> LiveAsyncEnvEngine:
-        if not kwargs.get('env_id') or not kwargs.get('entry_point'):
-            raise AttributeError("Check your env_id and entroy_point field")
-
-        if kwargs['env_id'] not in registry:
-            register(
-                id=kwargs['env_id'],
-                entry_point=kwargs['entry_point'],
-                kwargs=kwargs.get('env_config', {})
-            )
-        return super().__new__(cls)
-    
-    async def on(self, message: LiveMessage):
-        # not override, change behavior
-        deserialize = {
-            message.src: json.loads(base64.urlsafe_b64decode(message.data))
-        }
-        self._listen_queue.put_nowait(deserialize)
-
-    async def pre_processing(self, turn_messages: dict[str, list[any]]):
-        for agent_id, adapter in self.adapter_map.items():
-            # env의 obs에 agent가 add되었는지 체크해야한다(유저가 들어왔을 때 run이 실행되고있는 타이밍이 안맞을 수 있다
-            # 동시에 시작하는 게임이라면 고려할 필요가 없다(env에 이미 유저가 존재한다)
-            if agent_id in self.env.obs:
-                turn_messages[agent_id] = await adapter.adapt(self.env.obs[agent_id])
-    
-    async def post_processing(self, turn_messages: dict[str, list[any]]):
-        # run에서 다시 turn_messages를 할당하기 때문에 필요가 없지만, 나중에 무엇이 필요할지 생각해봐야겠다.
-        turn_messages.clear()
-    
-    async def processing(self, turn_messages: dict[str, list[any]]):
-        # obs는 agent가 사용하고 infos를 client에 보낸다
-        self.obs, self.rewards, self.terminateds, self.truncateds, self.infos = self.env.step(turn_messages)
-        live_message = LiveMessage(
-            src='server',
-            target=None,
-            data=base64.urlsafe_b64encode(json.dumps(self.infos).encode()),
-            systemEvent=None
-        )
-        await self._emit_queue.put(live_message)
-        
-    async def emit(self):
-        time_interval = 1 / self.frame_rate
-        waiting_time = time_interval
-        # turn_messages = collections.deque()
-        while not self.terminate:
-            waiting_time > 0 and await asyncio.sleep(waiting_time)
-            turn_start_time = timeit.default_timer()
-            current_message_count = self._listen_queue.qsize()
-            turn_messages = {
-                agent_id: [None]
-                for agent_id in self.env.agents
-            }
-            for _ in range(current_message_count):
-                turn_messages.update(self._listen_queue.get_nowait())
             try:
                 await self.pre_processing(turn_messages)
                 await self.processing(turn_messages)

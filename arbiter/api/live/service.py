@@ -73,7 +73,7 @@ class LiveService:
             return callback
         return callback_wrapper
 
-    def handle_system_message(self, message: LiveMessage):
+    async def handle_system_message(self, message: LiveMessage):
         match LiveSystemEvent(message.systemEvent):
             case LiveSystemEvent.JOIN_GROUP:
                 if connection := self.connections.get(message.target, None):
@@ -87,6 +87,7 @@ class LiveService:
             case LiveSystemEvent.KICK_USER:
                 if connection := self.connections.get(message.target, None):
                     connection.state = LiveConnectionState.CLOSE
+                    await connection.websocket.close()
             case LiveSystemEvent.ERROR:
                 # TODO: error handling
                 # if target is None ->  send all users
@@ -112,7 +113,7 @@ class LiveService:
                     if event.target is None: # send to all
                         await self.send_messages(self.connections.values(), event)
                     elif event.systemEvent:
-                        self.handle_system_message(event)
+                        await self.handle_system_message(event)
                     elif user_connection := self.connections.get(event.target, None):
                         await self.send_personal_message(user_connection, event)
                     elif group_connections := self.group_connections.get(event.target, None):
@@ -129,12 +130,10 @@ class LiveService:
         await connection.websocket.send_bytes(message.data)
 
     async def send_messages(self, connections: list[LiveConnection], message: LiveMessage):
-        try:
-            for connection in connections:
-                if connection.state == LiveConnectionState.ACTIVATE:
-                    await connection.websocket.send_bytes(message.data)
-        except Exception as err:
-            print('skip player')
+        for connection in connections:
+            if connection.state == LiveConnectionState.ACTIVATE:
+                
+                await connection.websocket.send_bytes(message.data)
 
 
 # live_service = LiveService(LiveEngine())
