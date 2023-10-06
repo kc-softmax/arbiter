@@ -25,7 +25,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.add_middleware(BaseHTTPMiddleware, dispatch=log_middleware)
+# app.add_middleware(BaseHTTPMiddleware, dispatch=log_middleware)
 app.include_router(auth_router)
 
 
