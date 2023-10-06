@@ -3,6 +3,7 @@ import asyncio
 import collections
 import timeit
 import numpy as np
+import gymnasium as gym
 from asyncio.tasks import Task
 from typing import Any
 from contextlib import asynccontextmanager
@@ -11,12 +12,13 @@ from arbiter.api.live.engine import LiveAsyncEngine, Adapter
 from gymnasium.envs.registration import register, registry
 from ray.rllib.policy.policy import Policy
 from ray.rllib.algorithms.marwil.marwil_torch_policy import MARWILTorchPolicy
-from ray.train import Checkpoint
+# from ray.train import Checkpoint
 
 class MARWILTorchAdapter(Adapter):
     def __init__(self, path: str = 's3://arbiter-server/BC/checkpoint_010000/'):
-        check_point = Checkpoint(path)
-        self.trainer: dict[str, MARWILTorchPolicy] = Policy.from_checkpoint(check_point)
+        # check_point = Checkpoint(path)
+        self.trainer: dict[str, MARWILTorchPolicy] = Policy.from_checkpoint(
+            '/Users/jared/github/arbiter-server/arbiter/api/live/checkpoint_010000/')
 
     async def adapt(self, obs: np.ndarray):
         prediction: tuple = self.trainer['policy_1'].compute_single_action(obs)
@@ -58,6 +60,7 @@ class LiveAsyncEnvEngine(LiveAsyncEngine):
 
     def setup_user(self, user_id: str, user_name: str = None):
         # need add agent to env
+        self.adapter_map[user_id] = MARWILTorchAdapter()
         return super().setup_user(user_id, user_name)
     
     def remove_user(self, user_id: str, user_name: str = None):
