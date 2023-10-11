@@ -1,6 +1,7 @@
 from __future__ import annotations
 import inspect
 import asyncio
+import uuid
 from asyncio.tasks import Task
 from typing import Any, Callable, Coroutine, Tuple
 from contextlib import asynccontextmanager
@@ -10,6 +11,17 @@ from fastapi.websockets import WebSocketState
 from arbiter.api.live.const import LiveConnectionEvent, LiveConnectionState, LiveSystemEvent
 from arbiter.api.live.data import LiveConnection, LiveMessage
 from arbiter.api.live.engine import LiveEngine
+
+
+# 임시로 만들어본다. db를 조회해서 adapter를 가지고있는지 확인해서 adapter를 붙인다
+# def check_adapter(engine: any, user_id: str):
+#     with Session(engine) as session:
+#         statement = select(adapter_table).where(
+#                         adapter_table.game == "Spider-Boy",
+#                         adapter_table.user_id == user_id
+#                     )
+#         adapter = session.exec(statement).first()
+#     return adapter
 
 
 class LiveService:
@@ -27,18 +39,25 @@ class LiveService:
             self.subscribe_to_engine())
 
     @asynccontextmanager
-    async def connect(self, websocket: WebSocket, user_id: str, team: int, use_adapter: bool) -> Tuple[str, str]:
+    async def connect(self, websocket: WebSocket, token: str) -> Tuple[str, str]:
         await websocket.accept()
         try:
             # TODO: 예제에서 토큰이 매번 필요해서 임시 주석 처리
             # token_data = verify_token(token)
             # user_id = token_data.sub
-            # user_id = str(uuid.uuid4())
+            user_id = str(uuid.uuid4())
+
+            # 어댑터를 가지고있는지 확인한다
+            # adapter = check_adapter(user_id) str | None이 리턴된다
+
             user_name = "MG JU HONG"
-            setattr(websocket, "user_id", user_id)
+            # setattr(websocket, "user_id", user_id)
+            # self.connections[user_id] = LiveConnection(
+            #     websocket=websocket,
+            #     adapter=MARWILTorchAdapter(adapter) if adapter else None
+            # )
             self.connections[user_id] = LiveConnection(websocket)
             await self.run_event_handler(LiveConnectionEvent.VALIDATE)
-            self.engine.env.add_agent(user_id, team)
             yield user_id, user_name
             # await subscribe_to_engine
         except Exception as e:
@@ -50,8 +69,6 @@ class LiveService:
             # 끝날 때 공통으로 해야할 것
             # 하나의 로직으로 출발해서 순차적으로 종료시켜라
             self.connections.pop(user_id, None)
-            await self.engine.remove_user(user_id, use_adapter)
-            self.engine.env.remove_agent(user_id)
             print('close, remove user')
             
 
