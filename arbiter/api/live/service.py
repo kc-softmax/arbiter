@@ -9,7 +9,7 @@ from collections import defaultdict
 from fastapi import WebSocket
 from fastapi.websockets import WebSocketState
 from arbiter.api.live.const import LiveConnectionEvent, LiveConnectionState, LiveSystemEvent
-from arbiter.api.live.data import LiveConnection, LiveMessage
+from arbiter.api.live.data import LiveConnection, LiveMessage, LiveAdapter
 from arbiter.api.live.engine import LiveEngine
 
 
@@ -57,6 +57,11 @@ class LiveService:
             #     adapter=MARWILTorchAdapter(adapter) if adapter else None
             # )
             self.connections[user_id] = LiveConnection(websocket)
+            # if user
+            self.add_group('default_user_group', self.connections[user_id])
+            # if bot
+            # self.add_group('default_bot_group', self.connections[user_id])
+            
             await self.run_event_handler(LiveConnectionEvent.VALIDATE)
             yield user_id, user_name
             # await subscribe_to_engine
@@ -68,9 +73,24 @@ class LiveService:
                 await websocket.close()
             # 끝날 때 공통으로 해야할 것
             # 하나의 로직으로 출발해서 순차적으로 종료시켜라
+            self.remove_group(self.connections[user_id])
             self.connections.pop(user_id, None)
-            print('close, remove user')
-            
+            await self.engine.remove_user(user_id)
+            print('close, remove user')                    
+
+    def add_group(self, group_name: str, connection: LiveConnection):
+        if group_name in connection.joined_groups:
+            return
+        self.group_connections[group_name].append(connection)
+        connection.joined_groups.append(group_name)
+
+    def remove_group(self, connection: LiveConnection):
+        for group_name in connection.joined_groups:
+            self.group_connections[group_name].remove(connection)
+        connection.joined_groups = []
+        
+    async def set_adapter(self, user_id: str, adapter: LiveAdapter):
+        self.connections[user_id].adapter = adapter
 
     async def run_event_handler(self, event_type: LiveConnectionEvent, *args):
         event_handlers = self.connection_evnet_handlers
@@ -110,9 +130,9 @@ class LiveService:
                 # if target is None ->  send all users
                 pass
 
-    async def publish_to_engine(self, websocket: WebSocket, user_id: str, use_adapter: bool = False):
+    async def publish_to_engine(self, websocket: WebSocket, user_id: str, user_name: str):
         # send engine to join 
-        await self.engine.setup_user(user_id, use_adapter)
+        await self.engine.setup_user(user_id, user_name)
         async for message in websocket.iter_bytes():
             # block
             match self.connections[user_id].state:
@@ -120,16 +140,21 @@ class LiveService:
                     break
                 case LiveConnectionState.BLOCK:
                     continue
-            live_message = LiveMessage(src=user_id, data=message)
+            if self.connections[user_id].adapter:
+                adapt_message = await self.connections[user_id].adapter.adapt_in(message)
+                live_message = LiveMessage(src=user_id, data=adapt_message)
+            else:
+                live_message = LiveMessage(src=user_id, data=message)
             await self.engine.on(live_message)
 
     async def subscribe_to_engine(self):
         async with self.engine.subscribe() as engine:
             try:
                 async for event in engine:
-                    if event.target is None: # send to all
-                        await self.send_messages(self.connections.values(), event)
-                    elif event.systemEvent:
+                    # deprecated 10.10
+                    # if event.target is None: # send to all
+                    #     await self.send_messages(self.connections.values(), event)
+                    if event.systemEvent:
                         await self.handle_system_message(event)
                     elif user_connection := self.connections.get(event.target, None):
                         await self.send_personal_message(user_connection, event)
@@ -144,19 +169,10 @@ class LiveService:
         # personal message는 state에 덜 종속적이다. 현재는 pending 상태에서 보낼 수 있다.
         if connection.state == LiveConnectionState.CLOSE:
             return
-        await connection.websocket.send_bytes(message.data)
+        await connection.send_message(message.data)
 
     async def send_messages(self, connections: list[LiveConnection], message: LiveMessage):
         for connection in connections:
+            # 일반적인 메세지는 pending 상태에서 보낼 수 없다.
             if connection.state == LiveConnectionState.ACTIVATE:
-                await connection.websocket.send_bytes(message.data)
-
-
-# live_service = LiveService(LiveEngine())
-
-
-# async def ws(websocket: WebSocket, token: str):
-#     async with live_service.connect(websocket, token) as user_id:
-#         await live_service.publish_to_engine(websocket, user_id)
-
-    #
+                await connection.send_message(message.data)

@@ -83,18 +83,8 @@ class LiveAsyncEngine(LiveEngine):
         self.emit_task: Task = asyncio.create_task(self.emit())
         
     async def on(self, message: LiveMessage):
-        # # not override, change behavior
-        # if message.src in self.adapter_map:
-        #     adapted_message = await self.adapter_map[message.src].adapt(message)
-        #     self._listen_queue.put_nowait(adapted_message)
-        # else:
         self._listen_queue.put_nowait(message)
 
-    async def pre_processing(self, messages: list[LiveMessage]):
-        NotImplementedError()
-    
-    async def post_processing(self, messages: list[LiveMessage]):
-        NotImplementedError()
     
     async def processing(self, live_message: dict[str, list[any]]):
         # await self._emit_queue.put(live_message)
@@ -111,9 +101,7 @@ class LiveAsyncEngine(LiveEngine):
             for _ in range(current_message_count):
                 turn_messages.appendleft(self._listen_queue.get_nowait())
             try:
-                await self.pre_processing(turn_messages)
                 await self.processing(turn_messages)
-                await self.post_processing()
             except Exception as e:
                 print(e)
             elapsed_time = timeit.default_timer() - turn_start_time
