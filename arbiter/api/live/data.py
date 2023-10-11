@@ -2,8 +2,7 @@ import asyncio
 
 from typing import Any
 from fastapi import WebSocket
-from dataclasses import dataclass
-
+from dataclasses import dataclass, field
 from arbiter.api.live.const import LiveConnectionState, LiveSystemEvent
 
 
@@ -13,27 +12,13 @@ class LiveAdapter:
     # def __init__(self, path: str = 's3://arbiter-server/BC/checkpoint_010000/'):
     #     labs.get_model()
 
-    async def adapt(self, message: Any):
+    async def adapt_in(self, message: Any):
         await asyncio.sleep(1)
         return message
 
-
-class MARWILTorchAdapter(LiveAdapter):
-
-    import numpy as np
-
-    def __init__(self, path: str = 's3://arbiter-server/BC/checkpoint_010000/'):
-        from ray.rllib.policy.policy import Policy
-        from ray.rllib.algorithms.marwil.marwil_torch_policy import MARWILTorchPolicy
-        # from ray.train import Checkpoint
-        # check_point = Checkpoint(path)
-        self.trainer: dict[str, MARWILTorchPolicy] = Policy.from_checkpoint(
-            '/Users/jared/github/arbiter-server/arbiter/api/live/checkpoint_010000/')
-
-    async def adapt(self, obs: np.ndarray):
-        prediction: tuple = self.trainer['policy_1'].compute_single_action(obs)
-        action = prediction[0]
-        return [action]
+    async def adapt_out(self, message: Any):
+        await asyncio.sleep(1)
+        return message
 
 
 @dataclass
@@ -42,7 +27,14 @@ class LiveConnection:
     # websocket state is not enough some case
     state: LiveConnectionState = LiveConnectionState.ACTIVATE
     adapter: LiveAdapter = None
+    joined_groups: list[str] = field(default_factory=lambda: [])
 
+    async def send_message(self, message: bytes):
+        if self.adapter:
+            adapt_message = await self.adapter.adapt_out(message)
+            await self.websocket.send_bytes(adapt_message)
+        else:
+            await self.websocket.send_bytes(message)
 
 @dataclass
 class LiveMessage:
