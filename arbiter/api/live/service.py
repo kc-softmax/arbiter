@@ -161,7 +161,8 @@ class LiveService:
                     elif group_connections := self.group_connections.get(event.target, None):
                         await self.send_messages(group_connections, event)
                     else:  # send to all
-                        raise Exception('not implemented')
+                        continue # TODO remove handling
+                        # raise Exception('not implemented')
             except Exception as e:
                 print(e, 'in subscribe_to_engine')
 
