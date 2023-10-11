@@ -1,21 +1,20 @@
 from __future__ import annotations
-import asyncio
-import collections
-import timeit
-import numpy as np
+
 import gymnasium as gym
-from asyncio.tasks import Task
-from typing import Any
-from contextlib import asynccontextmanager
+
 from arbiter.api.live.data import LiveMessage
 from arbiter.api.live.engine import LiveAsyncEngine, Adapter
 from gymnasium.envs.registration import register, registry
-from ray.rllib.policy.policy import Policy
-from ray.rllib.algorithms.marwil.marwil_torch_policy import MARWILTorchPolicy
-# from ray.train import Checkpoint
+
 
 class MARWILTorchAdapter(Adapter):
+    
+    import numpy as np
+    
     def __init__(self, path: str = 's3://arbiter-server/BC/checkpoint_010000/'):
+        from ray.rllib.policy.policy import Policy
+        from ray.rllib.algorithms.marwil.marwil_torch_policy import MARWILTorchPolicy
+        # from ray.train import Checkpoint
         # check_point = Checkpoint(path)
         self.trainer: dict[str, MARWILTorchPolicy] = Policy.from_checkpoint(
             '/Users/jared/github/arbiter-server/arbiter/api/live/checkpoint_010000/')
@@ -27,6 +26,7 @@ class MARWILTorchAdapter(Adapter):
     
     
 class LiveAsyncEnvEngine(LiveAsyncEngine):
+
     """LiveAsyncEnvEngine Summary
 
     Args:
@@ -41,6 +41,9 @@ class LiveAsyncEnvEngine(LiveAsyncEngine):
         
         frame_rate (int): 초당 rendering 수를 지정한다
     """
+    
+    # engine의 상위에서 env를 등록하는 과정을 거친다. 사용자가 호출해서 있다면 정상동작하고 없으면 에러를 낸다.
+    # env를 직접적으로 호출하는 것을 피한다
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(kwargs.get('frame_rate'))
         self.env: gym.Env = gym.make(kwargs.get('env_id'))
@@ -60,7 +63,7 @@ class LiveAsyncEnvEngine(LiveAsyncEngine):
 
     def setup_user(self, user_id: str, user_name: str = None):
         # need add agent to env
-        self.adapter_map[user_id] = MARWILTorchAdapter()
+        # self.adapter_map[user_id] = MARWILTorchAdapter()
         return super().setup_user(user_id, user_name)
     
     def remove_user(self, user_id: str, user_name: str = None):
@@ -68,7 +71,6 @@ class LiveAsyncEnvEngine(LiveAsyncEngine):
         return super().remove_user(user_id, user_name)
 
     async def pre_processing(self, messages: list[LiveMessage]):
-        
         for message in messages:
             user_id = message.src
             # env의 obs에 agent가 add되었는지 체크해야한다(유저가 들어왔을 때 run이 실행되고있는 타이밍이 안맞을 수 있다

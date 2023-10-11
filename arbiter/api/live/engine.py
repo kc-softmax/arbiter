@@ -93,10 +93,10 @@ class LiveAsyncEngine(LiveEngine):
     async def pre_processing(self, messages: list[LiveMessage]):
         NotImplementedError()
     
-    async def post_processing(self, ):
+    async def post_processing(self, messages: list[LiveMessage]):
         NotImplementedError()
     
-    async def processing(self, turn_messages: dict[str, list[any]]):
+    async def processing(self, live_message: dict[str, list[any]]):
         # await self._emit_queue.put(live_message)
         NotImplementedError()
         
@@ -113,7 +113,7 @@ class LiveAsyncEngine(LiveEngine):
             try:
                 await self.pre_processing(turn_messages)
                 await self.processing(turn_messages)
-                await self.post_processing(turn_messages)
+                await self.post_processing()
             except Exception as e:
                 print(e)
             elapsed_time = timeit.default_timer() - turn_start_time
