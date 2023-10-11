@@ -104,6 +104,7 @@ class LiveAsyncEngine(LiveEngine):
                 await self.processing(turn_messages)
             except Exception as e:
                 print(e)
+            turn_messages.clear()
             elapsed_time = timeit.default_timer() - turn_start_time
             waiting_time = time_interval - elapsed_time
         print('emit task end')
