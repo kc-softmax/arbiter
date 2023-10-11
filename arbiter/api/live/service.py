@@ -16,14 +16,11 @@ from arbiter.api.live.engine import LiveEngine
 
 
 # 임시로 만들어본다. db를 조회해서 adapter를 가지고있는지 확인해서 adapter를 붙인다
-# def check_adapter(engine: any, user_id: str):
-#     with Session(engine) as session:
-#         statement = select(adapter_table).where(
-#                         adapter_table.game == "Spider-Boy",
-#                         adapter_table.user_id == user_id
-#                     )
-#         adapter = session.exec(statement).first()
-#     return adapter
+def get_user_info(user_id: str) -> str | None:
+    if user_id == "bot":
+        return "BC"
+    else:
+        return None
 
 
 class LiveService:
@@ -62,17 +59,18 @@ class LiveService:
             #     adapter=MARWILTorchAdapter(adapter) if adapter else None
             # )
             self.connections[user_id] = LiveConnection(websocket)
-            # if user
-            self.add_group('default_user_group', self.connections[user_id])
-            # if bot
-            # self.add_group('default_bot_group', self.connections[user_id])
+            # divide user and bot group using adapter_name
+            if user.adapter:
+                self.add_group('default_bot_group', self.connections[user_id])
+            else:
+                self.add_group('default_user_group', self.connections[user_id])
             
             await self.run_event_handler(LiveConnectionEvent.VALIDATE)
-            yield user_id, user.user_name
+            yield user_id, user.user_name, user.adapter
             # await subscribe_to_engine
         except Exception as e:
             print(e)
-            yield None, None
+            yield None, None, None
         finally:
             # 끝날 때 공통으로 해야할 것
             # 하나의 로직으로 출발해서 순차적으로 종료시켜라

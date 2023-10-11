@@ -17,7 +17,7 @@ class MARWILTorchAdapter(Adapter):
         # from ray.train import Checkpoint
         # check_point = Checkpoint(path)
         self.trainer: dict[str, MARWILTorchPolicy] = Policy.from_checkpoint(
-            '/Users/jared/github/arbiter-server/arbiter/api/live/checkpoint_010000/')
+            '/Users/jumyeonggil/workspace/github-kc-softmax/arbiter-server/arbiter/api/live/checkpoint_010000/')
 
     async def adapt(self, obs: np.ndarray):
         prediction: tuple = self.trainer['policy_1'].compute_single_action(obs)
