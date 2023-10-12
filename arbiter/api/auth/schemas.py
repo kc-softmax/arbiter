@@ -35,3 +35,5 @@ class GamerUserUpdate(GameUserBase):
 class GamerUserLoginByGuest(GameUserBase):
     class Config:
         pick_fields = {"device_id"}
+
+GamerUserLoginByUserName = GamerUserUpdate
