@@ -8,6 +8,8 @@ from contextlib import asynccontextmanager
 from collections import defaultdict
 from fastapi import WebSocket
 from fastapi.websockets import WebSocketState
+from arbiter.api.auth.repository import game_uesr_repository
+from arbiter.api.auth.utils import verify_token
 from arbiter.api.live.const import LiveConnectionEvent, LiveConnectionState, LiveSystemEvent
 from arbiter.api.live.data import LiveConnection, LiveMessage, LiveAdapter
 from arbiter.api.live.engine import LiveEngine
@@ -42,15 +44,18 @@ class LiveService:
     async def connect(self, websocket: WebSocket, token: str) -> Tuple[str, str]:
         await websocket.accept()
         try:
-            # TODO: 예제에서 토큰이 매번 필요해서 임시 주석 처리
-            # token_data = verify_token(token)
-            # user_id = token_data.sub
-            user_id = str(uuid.uuid4())
+            token_data = verify_token(token)
+            user_id = token_data.sub
+            # 임시 user_id
+            # user_id = str(uuid.uuid4())
+            user = await game_uesr_repository.get_by_id(user_id)
+            if user == None:
+                raise Exception("유저를 찾을 수 없습니다.")
 
             # 어댑터를 가지고있는지 확인한다
             # adapter = check_adapter(user_id) str | None이 리턴된다
 
-            user_name = "MG JU HONG"
+            # user_name = "MG JU HONG"
             # setattr(websocket, "user_id", user_id)
             # self.connections[user_id] = LiveConnection(
             #     websocket=websocket,
@@ -63,7 +68,7 @@ class LiveService:
             # self.add_group('default_bot_group', self.connections[user_id])
             
             await self.run_event_handler(LiveConnectionEvent.VALIDATE)
-            yield user_id, user_name
+            yield user_id, user.user_name
             # await subscribe_to_engine
         except Exception as e:
             print(e)
