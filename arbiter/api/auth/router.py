@@ -131,6 +131,32 @@ async def signup_guest():
     )
     return user
 
+@router.post(
+    "/game/login/username",
+    tags=[AuthRouterTag.GAMER],
+    response_model=AuthSchemas.GamerUserSchema
+)
+# Temp 게임 테스터 게이머 가입 및 로그인
+async def login_user_name(data: AuthSchemas.GamerUserLoginByUserName):
+    user = await game_uesr_repository.get_one_by(user_name=data.user_name)
+    if user == None:
+        user = await game_uesr_repository.add(
+            GameUser(
+                user_name=data.user_name,
+                login_type=LoginType.TESTER
+            )
+        )
+        
+    token = AuthSchemas.TokenSchema(
+        access_token=create_token(user.id),
+        refresh_token=create_token(user.id, True)
+    )
+    user.access_token = token.access_token
+    user.refresh_token = token.refresh_token
+    await game_uesr_repository.update(user)
+
+    return user
+
 
 @router.post(
     "/game/login/guest",

@@ -11,13 +11,14 @@ class LoginType(str, Enum):
     APPLE = "apple"
     STEAM = "steam"
     GOOGLE = "google"
+    TESTER = "tester"
 
 
 # auth 도메인 모델들
 class CommonUserBase(BaseSQLModel):
     email: str | None = Field(sa_column=Column(String(128), unique=True))
     password: str | None = Field(sa_column=Column(String(128)))
-    user_name: str | None = Field(sa_column=Column(String(128)))
+    user_name: str | None = Field(sa_column=Column(String(128)), unique=True)
     access_token: str | None = Field(sa_column=Column(String(128)))
     refresh_token: str | None = Field(sa_column=Column(String(128)))
     deprecated: bool = False
