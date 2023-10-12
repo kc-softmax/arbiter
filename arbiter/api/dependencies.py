@@ -12,7 +12,7 @@ class UnitOfWork():
         self.repo_list = repo_list
 
     async def __call__(self, session: AsyncSession = Depends(make_async_session)):
-        async with session.begin() as async_session:
+        async with session as async_session:
             try:
                 self.set_session_in_repository(session)
                 yield

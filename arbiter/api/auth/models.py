@@ -26,6 +26,7 @@ class CommonUserBase(BaseSQLModel):
 class GameUserBase(CommonUserBase, TimestampModel):
     device_id: str | None = Field(sa_column=Column(String(128), unique=True))
     login_type: LoginType = LoginType.GUEST
+    adapter: str | None = Field(sa_column=Column(String(128)))
 
 
 class GameUser(PKModel, GameUserBase, table=True):
