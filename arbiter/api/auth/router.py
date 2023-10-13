@@ -83,9 +83,11 @@ async def signup_email(data: AuthSchemas.GamerUserCreateByEmail, session: AsyncS
     user = await game_uesr_repository.add(
         session,
         GameUser(
+            user_name=data.user_name,
             email=data.email,
             password=get_password_hash(data.password),
             login_type=LoginType.EMAIL,
+            adapter=data.adapter,
         )
     )
     return user
