@@ -2,29 +2,30 @@ from __future__ import annotations
 import asyncio
 import collections
 import timeit
-import gymnasium as gym
+# import gymnasium as gym
 import json
 import base64
-import numpy as np
+# import numpy as np
 
 from asyncio.tasks import Task
 from contextlib import asynccontextmanager
 from arbiter.api.live.data import LiveMessage
-from gymnasium.envs.registration import register, registry
-from ray.rllib.policy.policy import Policy
-from ray.rllib.algorithms.marwil.marwil_torch_policy import MARWILTorchPolicy
-from ray.train import Checkpoint
+# from gymnasium.envs.registration import register, registry
+# from ray.rllib.policy.policy import Policy
+# from ray.rllib.algorithms.marwil.marwil_torch_policy import MARWILTorchPolicy
+# from ray.train import Checkpoint
 
 
 class Adapter:
-    def __init__(self, path: str = 's3://arbiter-server/BC/checkpoint_010000/'):
-        check_point = Checkpoint(path)
-        self.trainer: dict[str, MARWILTorchPolicy] = Policy.from_checkpoint(check_point)
+    pass
+    # def __init__(self, path: str = 's3://arbiter-server/BC/checkpoint_010000/'):
+    #     check_point = Checkpoint(path)
+    #     self.trainer: dict[str, MARWILTorchPolicy] = Policy.from_checkpoint(check_point)
 
-    async def adapt(self, obs: np.ndarray):
-        prediction: tuple = self.trainer['policy_1'].compute_single_action(obs)
-        action = prediction[0]
-        return [action]
+    # async def adapt(self, obs: np.ndarray):
+    #     prediction: tuple = self.trainer['policy_1'].compute_single_action(obs)
+    #     action = prediction[0]
+    #     return [action]
 
 class LiveEngine:
 
