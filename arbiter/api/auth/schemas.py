@@ -24,7 +24,7 @@ class GamerUserSchema(GameUserBase, PKModel):
 
 class GamerUserCreateByEmail(GameUserBase):
     class Config:
-        pick_fields = {"email", "password"}
+        pick_fields = {"user_name", "email", "password", "adapter"}
 
 
 class GamerUserUpdate(GameUserBase):

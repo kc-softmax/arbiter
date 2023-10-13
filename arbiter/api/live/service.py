@@ -15,14 +15,6 @@ from arbiter.api.live.data import LiveConnection, LiveMessage, LiveAdapter
 from arbiter.api.live.engine import LiveEngine
 
 
-# 임시로 만들어본다. db를 조회해서 adapter를 가지고있는지 확인해서 adapter를 붙인다
-def get_user_info(user_id: str) -> str | None:
-    if user_id == "bot":
-        return "BC"
-    else:
-        return None
-
-
 class LiveService:
 
     def __init__(self, engine: LiveEngine):
@@ -49,15 +41,6 @@ class LiveService:
             if user == None:
                 raise Exception("유저를 찾을 수 없습니다.")
 
-            # 어댑터를 가지고있는지 확인한다
-            # adapter = check_adapter(user_id) str | None이 리턴된다
-
-            # user_name = "MG JU HONG"
-            # setattr(websocket, "user_id", user_id)
-            # self.connections[user_id] = LiveConnection(
-            #     websocket=websocket,
-            #     adapter=MARWILTorchAdapter(adapter) if adapter else None
-            # )
             self.connections[user_id] = LiveConnection(websocket)
             # divide user and bot group using adapter_name
             if user.adapter:

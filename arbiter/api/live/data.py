@@ -14,11 +14,9 @@ class LiveAdapter:
     #     labs.get_model()
 
     async def adapt_in(self, message: Any):
-        await asyncio.sleep(1)
         return message
 
     async def adapt_out(self, message: Any):
-        await asyncio.sleep(1)
         return message
 
 
@@ -51,7 +49,3 @@ class LiveUser:
     user_id: str
     message_count: int = 0
 
-class LiveAdapter:
-    async def adapt(self, message: Any):
-        await asyncio.sleep(1)
-        return message
