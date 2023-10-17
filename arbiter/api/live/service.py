@@ -74,8 +74,6 @@ class LiveService:
             print(e)
             yield None, None
         finally:
-            if websocket.client_state != WebSocketState.DISCONNECTED:
-                await websocket.close()
             # 끝날 때 공통으로 해야할 것
             # 하나의 로직으로 출발해서 순차적으로 종료시켜라
             self.remove_group(self.connections[user_id])
