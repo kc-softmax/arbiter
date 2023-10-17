@@ -12,7 +12,6 @@ T = TypeVar('T', bound=BaseSQLModel)
 class BaseCRUDRepository(Generic[T]):
     def __init__(self, model_cls: Type[T]) -> None:
         self._model_cls = model_cls
-        self.session: AsyncSession = None
 
     def _construct_where_stmt(self, **filters) -> SelectOfScalar:
         stmt = select(self._model_cls)
@@ -28,31 +27,31 @@ class BaseCRUDRepository(Generic[T]):
             stmt = stmt.where(and_(*where_clauses))
         return stmt
 
-    async def get_list_by(self, **filters) -> list[T]:
+    async def get_list_by(self, session:AsyncSession, **filters) -> list[T]:
         stmt = self._construct_where_stmt(**filters)
-        return (await self.session.exec(stmt)).all()
+        return (await session.exec(stmt)).all()
 
-    async def get_one_by(self, **filters) -> T | None:
+    async def get_one_by(self, session:AsyncSession,**filters) -> T | None:
         stmt = self._construct_where_stmt(**filters)
-        return (await self.session.exec(stmt)).first()
+        return (await session.exec(stmt)).first()
 
-    async def add(self, record: T) -> T:
-        self.session.add(record)
-        await self.session.flush()
-        await self.session.refresh(record)
+    async def add(self, session:AsyncSession, record: T) -> T:
+        session.add(record)
+        await session.flush()
+        await session.refresh(record)
         return record
 
-    async def update(self, record: T) -> T:
+    async def update(self, session:AsyncSession, record: T) -> T:
         record.updated_at = datetime.utcnow()
-        self.session.add(record)
-        await self.session.flush()
-        await self.session.refresh(record)
+        session.add(record)
+        await session.flush()
+        await session.refresh(record)
         return record
 
-    async def delete(self, id: int) -> None:
+    async def delete(self, session:AsyncSession, id: int) -> None:
         record = await self.get_by_id(id)
-        await self.session.delete(record)
-        await self.session.flush()
+        await session.delete(record)
+        await session.flush()
 
-    async def get_by_id(self, id: int) -> T | None:
-        return await self.get_one_by(id=id)
+    async def get_by_id(self, session:AsyncSession, id: int) -> T | None:
+        return await self.get_one_by(session, id=id)

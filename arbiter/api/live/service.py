@@ -1,7 +1,7 @@
 from __future__ import annotations
 import inspect
 import asyncio
-import uuid
+from sqlmodel.ext.asyncio.session import AsyncSession
 from asyncio.tasks import Task
 from typing import Any, Callable, Coroutine, Tuple
 from contextlib import asynccontextmanager
@@ -41,14 +41,14 @@ class LiveService:
             self.subscribe_to_engine())
 
     @asynccontextmanager
-    async def connect(self, websocket: WebSocket, token: str) -> Tuple[str, str]:
+    async def connect(self, websocket: WebSocket, db_session: AsyncSession, token: str) -> Tuple[str, str]:
         await websocket.accept()
         try:
             token_data = verify_token(token)
             user_id = token_data.sub
             # 임시 user_id
             # user_id = str(uuid.uuid4())
-            user = await game_uesr_repository.get_by_id(user_id)
+            user = await game_uesr_repository.get_by_id(db_session, user_id)
             if user == None:
                 raise Exception("유저를 찾을 수 없습니다.")
 
