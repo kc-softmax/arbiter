@@ -30,7 +30,7 @@ class LiveService:
             self.subscribe_to_engine())
 
     @asynccontextmanager
-    async def connect(self, websocket: WebSocket, db_session: AsyncSession, token: str) -> Tuple[str, str]:
+    async def connect(self, websocket: WebSocket, db_session: AsyncSession, token: str) -> Tuple[str, str, str]:
         await websocket.accept()
         try:
             token_data = verify_token(token)
