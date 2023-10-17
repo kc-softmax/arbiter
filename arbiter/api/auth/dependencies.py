@@ -1,13 +1,16 @@
 from fastapi import Depends
 from fastapi.security import OAuth2PasswordBearer
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from arbiter.api.auth.repository import game_uesr_repository
 from arbiter.api.auth.models import GameUser
 from arbiter.api.auth.exceptions import InvalidToken, NotFoundUser
 from arbiter.api.auth.utils import verify_token
+from arbiter.api.database import make_async_session
 
 
 async def get_current_user(
+        session:AsyncSession = Depends(make_async_session),
         token: str = Depends(OAuth2PasswordBearer(tokenUrl="/auth/login"))
 ) -> GameUser:
     ''' 
@@ -18,7 +21,7 @@ async def get_current_user(
     (저장된 토큰과 헤더에 담겨 온 토큰이 다르다는 것은 이미 deprecated된 토큰으로 요청을 보냈다는 뜻)
     '''
     token_data = verify_token(token)
-    user = await game_uesr_repository.get_by_id(token_data.sub)
+    user = await game_uesr_repository.get_by_id(session, token_data.sub)
     if user is None:
         raise NotFoundUser
     # 저장된 액세스토큰과 같은 토큰인지 확인
