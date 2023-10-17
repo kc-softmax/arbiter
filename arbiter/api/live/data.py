@@ -2,6 +2,7 @@ import asyncio
 
 from typing import Any
 from fastapi import WebSocket
+from fastapi.websockets import WebSocketState
 from dataclasses import dataclass, field
 from arbiter.api.live.const import LiveConnectionState, LiveSystemEvent
 
@@ -30,6 +31,8 @@ class LiveConnection:
     joined_groups: list[str] = field(default_factory=lambda: [])
 
     async def send_message(self, message: bytes):
+        if self.websocket.client_state == WebSocketState.DISCONNECTED:
+            return
         if self.adapter:
             adapt_message = await self.adapter.adapt_out(message)
             await self.websocket.send_bytes(adapt_message)
