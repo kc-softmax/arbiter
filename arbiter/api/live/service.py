@@ -19,10 +19,8 @@ class LiveService:
 
     def __init__(self, engine: LiveEngine):
         self.engine: LiveEngine = engine
-        self.connections: dict[str, LiveConnection] = defaultdict(
-            LiveConnection)
-        self.group_connections: dict[str, list[LiveConnection]] = defaultdict(
-            list[LiveConnection])
+        self.connections: dict[str, LiveConnection] = {}
+        self.group_connections: dict[str, list[LiveConnection]] = defaultdict(list)
         # 소켓 연결, 방 입장/퇴장 등과 관련된 이벤트 핸들러들
         self.connection_evnet_handlers: dict[str, Callable[[
             Any, str], Coroutine | None]] = defaultdict()
