@@ -22,7 +22,7 @@ class LiveService:
         self.connections: dict[str, LiveConnection] = {}
         self.group_connections: dict[str, list[LiveConnection]] = defaultdict(list)
         # 소켓 연결, 방 입장/퇴장 등과 관련된 이벤트 핸들러들
-        self.connection_evnet_handlers: dict[str, Callable[[
+        self.evnet_handlers: dict[str, Callable[[
             Any, str], Coroutine | None]] = defaultdict()
         self.subscribe_to_engine_task: Task = asyncio.create_task(
             self.subscribe_to_engine())
@@ -46,7 +46,7 @@ class LiveService:
             else:
                 self.add_group('default_user_group', self.connections[user_id])
             
-            await self.run_event_handler(LiveConnectionEvent.VALIDATE)
+            await self.run_event_handler(LiveConnectionEvent.VALIDATE, user_id)
             yield user_id, user.user_name, user.adapter
             # await subscribe_to_engine
         except Exception as e:
@@ -74,21 +74,21 @@ class LiveService:
     async def set_adapter(self, user_id: str, adapter: LiveAdapter):
         self.connections[user_id].adapter = adapter
 
-    async def run_event_handler(self, event_type: LiveConnectionEvent, *args):
-        event_handlers = self.connection_evnet_handlers
+    async def run_event_handler(self, event_type: LiveConnectionEvent | LiveSystemEvent, *args):
+        event_handlers = self.evnet_handlers
         handler = event_handlers.get(event_type)
         match event_type:
             case added_event if added_event in event_handlers.keys():
                 if handler:
                     if inspect.iscoroutinefunction(handler):
-                        await handler(self, *args)
+                        await handler(*args)
                     else:
-                        handler(self, *args)
+                        handler(*args)
 
     # decorators
-    def on_connection_event(self, event_type: LiveConnectionEvent):
+    def on_event(self, event_type: LiveConnectionEvent | LiveSystemEvent):
         def callback_wrapper(callback: Callable):
-            self.connection_evnet_handlers[event_type] = callback
+            self.evnet_handlers[event_type] = callback
             return callback
         return callback_wrapper
 
@@ -107,6 +107,9 @@ class LiveService:
                 if connection := self.connections.get(message.target, None):
                     connection.state = LiveConnectionState.CLOSE
                     await connection.websocket.close()
+            case LiveSystemEvent.SAVE_USER_SCORE:
+                await self.run_event_handler(LiveSystemEvent.SAVE_USER_SCORE, message.target, message.data)
+
             case LiveSystemEvent.ERROR:
                 # TODO: error handling
                 # if target is None ->  send all users
