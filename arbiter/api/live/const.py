@@ -11,6 +11,7 @@ class LiveSystemEvent(IntEnum):
     LEAVE_GROUP = 51
     REMOVE_GROUP = 52
     KICK_USER = 53
+    SAVE_USER_SCORE = 54
     ERROR = 99
 
 
