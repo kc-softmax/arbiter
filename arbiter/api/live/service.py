@@ -13,12 +13,13 @@ from arbiter.api.auth.utils import verify_token
 from arbiter.api.live.const import LiveConnectionEvent, LiveConnectionState, LiveSystemEvent
 from arbiter.api.live.data import LiveConnection, LiveMessage, LiveAdapter
 from arbiter.api.live.engine import LiveEngine
+from arbiter.api.database import make_async_session
 
 
 class LiveService:
 
-    def __init__(self, engine: LiveEngine):
-        self.engine: LiveEngine = engine
+    def __init__(self):
+        self.engine:LiveEngine = None
         self.connections: dict[str, LiveConnection] = {}
         self.group_connections: dict[str, list[LiveConnection]] = defaultdict(list)
         # 소켓 연결, 방 입장/퇴장 등과 관련된 이벤트 핸들러들
@@ -26,16 +27,24 @@ class LiveService:
             Any, str], Coroutine | None]] = defaultdict()
         self.subscribe_to_engine_task: Task = asyncio.create_task(
             self.subscribe_to_engine())
+        
+    def start(self, engine: LiveEngine):
+        self.engine = engine
 
     @asynccontextmanager
-    async def connect(self, websocket: WebSocket, db_session: AsyncSession, token: str) -> Tuple[str, str, str]:
+    async def connect(self, websocket: WebSocket, token: str) -> Tuple[str, str, str]:
+        if self.engine == None:
+            raise Exception("엔진이 없습니다.")
+        
         await websocket.accept()
         try:
             token_data = verify_token(token)
             user_id = token_data.sub
             # 임시 user_id
             # user_id = str(uuid.uuid4())
-            user = await game_uesr_repository.get_by_id(db_session, user_id)
+            session = make_async_session()
+            user = await game_uesr_repository.get_by_id(session, user_id)
+            await session.close()
             if user == None:
                 raise Exception("유저를 찾을 수 없습니다.")
 
