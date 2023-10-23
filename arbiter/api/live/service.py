@@ -18,8 +18,8 @@ from arbiter.api.database import make_async_session
 
 class LiveService:
 
-    def __init__(self):
-        self.engine:LiveEngine = None
+    def __init__(self, engine: LiveEngine):
+        self.engine:LiveEngine = engine
         self.connections: dict[str, LiveConnection] = {}
         self.group_connections: dict[str, list[LiveConnection]] = defaultdict(list)
         # 소켓 연결, 방 입장/퇴장 등과 관련된 이벤트 핸들러들
@@ -27,15 +27,9 @@ class LiveService:
             Any, str], Coroutine | None]] = defaultdict()
         self.subscribe_to_engine_task: Task = asyncio.create_task(
             self.subscribe_to_engine())
-        
-    def start(self, engine: LiveEngine):
-        self.engine = engine
-
+                
     @asynccontextmanager
-    async def connect(self, websocket: WebSocket, token: str, session: AsyncSession) -> Tuple[str, str, str]:
-        if self.engine == None:
-            raise Exception("엔진이 없습니다.")
-        
+    async def connect(self, websocket: WebSocket, token: str, session: AsyncSession) -> Tuple[str, str, str]:        
         await websocket.accept()
         try:
             token_data = verify_token(token)
