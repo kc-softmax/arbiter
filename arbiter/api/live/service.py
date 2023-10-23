@@ -116,8 +116,8 @@ class LiveService:
                 if connection := self.connections.get(message.target, None):
                     connection.state = LiveConnectionState.CLOSE
                     await connection.websocket.close()
-            case LiveSystemEvent.SAVE_USER_SCORE:
-                await self.run_event_handler(LiveSystemEvent.SAVE_USER_SCORE, message.target, message.data)
+            case LiveSystemEvent.SAVE_USER_RECORD:
+                await self.run_event_handler(LiveSystemEvent.SAVE_USER_RECORD, message.target, message.data)
 
             case LiveSystemEvent.ERROR:
                 # TODO: error handling
