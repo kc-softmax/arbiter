@@ -32,7 +32,7 @@ class LiveService:
         self.engine = engine
 
     @asynccontextmanager
-    async def connect(self, websocket: WebSocket, token: str) -> Tuple[str, str, str]:
+    async def connect(self, websocket: WebSocket, token: str, session: AsyncSession) -> Tuple[str, str, str]:
         if self.engine == None:
             raise Exception("엔진이 없습니다.")
         
@@ -42,9 +42,7 @@ class LiveService:
             user_id = token_data.sub
             # 임시 user_id
             # user_id = str(uuid.uuid4())
-            session = make_async_session()
             user = await game_uesr_repository.get_by_id(session, user_id)
-            await session.close()
             if user == None:
                 raise Exception("유저를 찾을 수 없습니다.")
 
