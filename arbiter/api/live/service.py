@@ -13,7 +13,7 @@ from arbiter.api.auth.utils import verify_token
 from arbiter.api.live.const import LiveConnectionEvent, LiveConnectionState, LiveSystemEvent
 from arbiter.api.live.data import LiveConnection, LiveMessage, LiveAdapter
 from arbiter.api.live.engine import LiveEngine
-from arbiter.api.database import make_async_session
+from arbiter.api.dependencies import unit_of_work
 
 
 class LiveService:
@@ -30,16 +30,17 @@ class LiveService:
             self.subscribe_to_engine())
 
     @asynccontextmanager
-    async def connect(self, websocket: WebSocket, token: str, session: AsyncSession) -> Tuple[str, str, str]:
+    async def connect(self, websocket: WebSocket, token: str) -> Tuple[str, str, str]:        
         await websocket.accept()
         try:
             token_data = verify_token(token)
             user_id = token_data.sub
             # 임시 user_id
             # user_id = str(uuid.uuid4())
-            user = await game_uesr_repository.get_by_id(session, user_id)
-            if user == None:
-                raise Exception("유저를 찾을 수 없습니다.")
+            async with unit_of_work.transaction() as session:
+                user = await game_uesr_repository.get_by_id(session, int(user_id))
+                if user == None:
+                    raise Exception("유저를 찾을 수 없습니다.")
 
             self.connections[user_id] = LiveConnection(websocket)
             # divide user and bot group using adapter_name

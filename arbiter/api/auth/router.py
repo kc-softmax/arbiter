@@ -40,7 +40,7 @@ async def verify_token(session:AsyncSession = Depends(unit_of_work), token: str 
     except AuthExceptions.InvalidToken:
         return False
 
-    user = await game_uesr_repository.get_by_id(session, token_data.sub)
+    user = await game_uesr_repository.get_by_id(session, int(token_data.sub))
     if user == None or user.access_token != token:
         return False
     return True
@@ -54,7 +54,7 @@ async def verify_token(session:AsyncSession = Depends(unit_of_work), token: str 
 async def refresh_token(data: AuthSchemas.TokenRefreshRequest, session: AsyncSession = Depends(unit_of_work)):
     token_data = verify_token_util(data.refresh_token, True)
     # DB에 저장된 토큰과 같은 토큰인 지 확인
-    user = await game_uesr_repository.get_by_id(session, token_data.sub)
+    user = await game_uesr_repository.get_by_id(session, int(token_data.sub))
     if user == None or data.access_token != user.access_token or data.refresh_token != user.refresh_token:
         raise AuthExceptions.InvalidToken
 

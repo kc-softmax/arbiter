@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     INITIAL_CONSOLE_USER_EMAIL: str = "admin@admin.com"
     INITIAL_CONSOLE_USER_PASSWORD: str = "admin"
     INITIAL_CONSOLE_USERNAME: str = "admin"
-    RDB_CONNECTION_URL: str = "sqlite+aiosqlite:///arbiter.db"
+    RDB_CONNECTION_URL: str = "postgresql+asyncpg://fourbarracks:fourbarracks231019!#@dusty-island.cb8f1s4z1aqb.us-west-1.rds.amazonaws.com:5432/dusty_island"
     TEST_RDB_CONNECTION_URL: str = "sqlite+aiosqlite:///arbiter_test.db"
 
     class Config:
