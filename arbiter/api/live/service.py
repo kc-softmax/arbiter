@@ -19,17 +19,18 @@ from arbiter.api.database import make_async_session
 class LiveService:
 
     def __init__(self, engine: LiveEngine):
-        self.engine:LiveEngine = engine
+        self.engine: LiveEngine = engine
         self.connections: dict[str, LiveConnection] = {}
-        self.group_connections: dict[str, list[LiveConnection]] = defaultdict(list)
+        self.group_connections: dict[str,
+                                     list[LiveConnection]] = defaultdict(list)
         # 소켓 연결, 방 입장/퇴장 등과 관련된 이벤트 핸들러들
         self.evnet_handlers: dict[str, Callable[[
             Any, str], Coroutine | None]] = defaultdict()
         self.subscribe_to_engine_task: Task = asyncio.create_task(
             self.subscribe_to_engine())
-                
+
     @asynccontextmanager
-    async def connect(self, websocket: WebSocket, token: str, session: AsyncSession) -> Tuple[str, str, str]:        
+    async def connect(self, websocket: WebSocket, token: str, session: AsyncSession) -> Tuple[str, str, str]:
         await websocket.accept()
         try:
             token_data = verify_token(token)
@@ -46,9 +47,10 @@ class LiveService:
                 self.add_group('default_bot_group', self.connections[user_id])
             else:
                 self.add_group('default_user_group', self.connections[user_id])
-            
+
             await self.run_event_handler(LiveConnectionEvent.VALIDATE, user_id)
             yield user_id, user.user_name, user.adapter
+
             # await subscribe_to_engine
         except Exception as e:
             print(e)
@@ -59,7 +61,6 @@ class LiveService:
             self.remove_group(self.connections[user_id])
             self.connections.pop(user_id, None)
             await self.engine.remove_user(user_id)
-            print('close, remove user')                    
 
     def add_group(self, group_name: str, connection: LiveConnection):
         if group_name in connection.joined_groups:
@@ -71,7 +72,7 @@ class LiveService:
         for group_name in connection.joined_groups:
             self.group_connections[group_name].remove(connection)
         connection.joined_groups = []
-        
+
     async def set_adapter(self, user_id: str, adapter: LiveAdapter):
         self.connections[user_id].adapter = adapter
 
@@ -110,28 +111,32 @@ class LiveService:
                     await connection.websocket.close()
             case LiveSystemEvent.SAVE_USER_RECORD:
                 await self.run_event_handler(LiveSystemEvent.SAVE_USER_RECORD, message.target, message.data)
-
             case LiveSystemEvent.ERROR:
                 # TODO: error handling
                 # if target is None ->  send all users
                 pass
 
     async def publish_to_engine(self, websocket: WebSocket, user_id: str, user_name: str):
-        # send engine to join 
+        # send engine to join
         await self.engine.setup_user(user_id, user_name)
-        async for message in websocket.iter_bytes():
-            # block
-            match self.connections[user_id].state:
-                case LiveConnectionState.CLOSE:
-                    break
-                case LiveConnectionState.BLOCK:
-                    continue
-            if self.connections[user_id].adapter:
-                adapt_message = await self.connections[user_id].adapter.adapt_in(message)
-                live_message = LiveMessage(src=user_id, data=adapt_message)
-            else:
-                live_message = LiveMessage(src=user_id, data=message)
-            await self.engine.on(live_message)
+        try:
+            async for message in websocket.iter_bytes():
+                # block
+                if user_id not in self.connections:
+                    continue  # TODO remove handling
+                match self.connections[user_id].state:
+                    case LiveConnectionState.CLOSE:
+                        break
+                    case LiveConnectionState.BLOCK:
+                        continue
+                if self.connections[user_id].adapter:
+                    adapt_message = await self.connections[user_id].adapter.adapt_in(message)
+                    live_message = LiveMessage(src=user_id, data=adapt_message)
+                else:
+                    live_message = LiveMessage(src=user_id, data=message)
+                await self.engine.on(live_message)
+        except Exception as e:
+            print(e, 'in publish_to_engine')
 
     async def subscribe_to_engine(self):
         async with self.engine.subscribe() as engine:
@@ -147,7 +152,7 @@ class LiveService:
                     elif group_connections := self.group_connections.get(event.target, None):
                         await self.send_messages(group_connections, event)
                     else:  # send to all
-                        continue # TODO remove handling
+                        continue  # TODO remove handling
                         # raise Exception('not implemented')
             except Exception as e:
                 print(e, 'in subscribe_to_engine')
