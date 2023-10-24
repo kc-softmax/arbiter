@@ -32,10 +32,9 @@ class LiveConnection:
         if self.websocket.client_state == WebSocketState.DISCONNECTED:
             return
         if self.adapter:
-            adapt_message = await self.adapter.adapt_out(message)
-            await self.websocket.send_bytes(adapt_message)
-        else:
-            await self.websocket.send_bytes(message)
+            message = await self.adapter.adapt_out(message)
+        try: await self.websocket.send_bytes(message)
+        except Exception as e: print(e, 'in send_message')
 
 @dataclass
 class LiveMessage:
