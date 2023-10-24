@@ -19,6 +19,7 @@ app.add_middleware(
     allow_origins=[
         "*",
         "192.169.0.69"
+        "192.169.0.66"
     ],
     allow_credentials=True,
     allow_methods=["*"],
