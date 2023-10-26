@@ -109,7 +109,8 @@ class LiveService:
             case LiveSystemEvent.KICK_USER:
                 if connection := self.connections.get(message.target, None):
                     connection.state = LiveConnectionState.CLOSE
-                    await connection.websocket.close()
+                    if connection.websocket.application_state == WebSocketState.CONNECTED:
+                        await connection.websocket.close()
             case LiveSystemEvent.SAVE_USER_RECORD:
                 await self.run_event_handler(LiveSystemEvent.SAVE_USER_RECORD, message.target, message.data)
             case LiveSystemEvent.ERROR:
