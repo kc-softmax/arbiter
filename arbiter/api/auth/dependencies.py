@@ -6,11 +6,11 @@ from arbiter.api.auth.repository import game_uesr_repository
 from arbiter.api.auth.models import GameUser
 from arbiter.api.auth.exceptions import InvalidToken, NotFoundUser
 from arbiter.api.auth.utils import verify_token
-from arbiter.api.database import make_async_session
+from arbiter.api.dependencies import unit_of_work
 
 
 async def get_current_user(
-        session:AsyncSession = Depends(make_async_session),
+        session: AsyncSession = Depends(unit_of_work),
         token: str = Depends(OAuth2PasswordBearer(tokenUrl="/auth/login"))
 ) -> GameUser:
     ''' 
