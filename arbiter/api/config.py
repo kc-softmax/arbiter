@@ -13,9 +13,11 @@ class Settings(BaseSettings):
     INITIAL_CONSOLE_USERNAME: str = "admin"
     RDB_CONNECTION_URL: str = "postgresql+asyncpg://fourbarracks:fourbarracks231019!#@dusty-island.cb8f1s4z1aqb.us-west-1.rds.amazonaws.com:5432/dusty_island"
     TEST_RDB_CONNECTION_URL: str = "sqlite+aiosqlite:///arbiter_test.db"
+    GAME_TESTER_DEVELOPER_TOKEN: str = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZDEiOiI2MzlhYmY4ODhjM2QyYzJjNjI1YmJiODYiLCJpZDIiOiI2NTM3MWI4MTM1NTdjZDQzODgzNWI0ZmIifQ.TXDzTOvbVHvOO-I2AoUEzL07Me5VrRKPfrc3dlLL85s"
+    GAME_TESTER_PLAY_TIME: int = 1000 * 60 * 1
 
     class Config:
-        env_file = f"{path}/.local.env", f"{path}/.prod.env"
+        env_file = f"{path}/.env",
         env_file_encoding = 'utf-8'
 
 

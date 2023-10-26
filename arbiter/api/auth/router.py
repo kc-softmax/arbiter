@@ -18,6 +18,7 @@ from arbiter.api.auth.utils import (
 )
 from arbiter.api.exceptions import BadRequest
 from arbiter.api.dependencies import unit_of_work
+from arbiter.api.game_tester import GameTesterAPI
 
 class AuthRouterTag(str, Enum):
     TOKEN = "Token"
@@ -143,13 +144,21 @@ async def signup_guest(
     response_model=AuthSchemas.GamerUserSchema
 )
 # Temp 게임 테스터 게이머 가입 및 로그인
-async def login_user_name(data: AuthSchemas.GamerUserLoginByUserName, session: AsyncSession = Depends(unit_of_work)):
+async def login_user_name(data: AuthSchemas.GamerUserLoginByUserName, session: AsyncSession = Depends(unit_of_work)):    
     user = await game_uesr_repository.get_one_by(session, user_name=data.user_name)
     if user == None:
+        player_token = None
+        if not data.user_name.startswith("so_"):
+            result = await GameTesterAPI().auth(data.user_name)
+            if result is None or result["code"] != -1:
+                raise AuthExceptions.BadRequest
+            player_token = result["playerToken"]
+            
         user = await game_uesr_repository.add(
             session,
             GameUser(
                 user_name=data.user_name,
+                player_token=player_token,
                 login_type=LoginType.TESTER
             )
         )
