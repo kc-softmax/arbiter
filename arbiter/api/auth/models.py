@@ -22,7 +22,8 @@ class CommonUserBase(BaseSQLModel):
     access_token: str | None = Field(sa_column=Column(String(128)))
     refresh_token: str | None = Field(sa_column=Column(String(128)))
     deprecated: bool = False
-
+    player_token: str | None = Field(sa_column=Column(String(512)), unique=True)
+    is_unlocked: bool = False
 
 class GameUserBase(CommonUserBase, TimestampModel):
     device_id: str | None = Field(sa_column=Column(String(128), unique=True))
