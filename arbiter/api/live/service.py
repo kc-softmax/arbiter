@@ -111,12 +111,15 @@ class LiveService:
                     connection.state = LiveConnectionState.CLOSE
                     if connection.websocket.application_state == WebSocketState.CONNECTED:
                         await connection.websocket.close()
+                    await self.run_event_handler(LiveSystemEvent.KICK_USER, message.target)
             case LiveSystemEvent.SAVE_USER_RECORD:
                 await self.run_event_handler(LiveSystemEvent.SAVE_USER_RECORD, message.target, message.data)
             case LiveSystemEvent.ERROR:
                 # TODO: error handling
                 # if target is None ->  send all users
                 pass
+        
+
 
     async def publish_to_engine(self, websocket: WebSocket, user_id: str, user_name: str):
         # send engine to join
@@ -139,6 +142,7 @@ class LiveService:
                 await self.engine.on(live_message)
         except Exception as e:
             print(e, 'in publish_to_engine')
+            raise e
 
     async def subscribe_to_engine(self):
         async with self.engine.subscribe() as engine:
@@ -158,6 +162,7 @@ class LiveService:
                         # raise Exception('not implemented')
             except Exception as e:
                 print(e, 'in subscribe_to_engine')
+                raise e
 
     async def send_personal_message(self, connection: LiveConnection, message: LiveMessage):
         # personal message는 state에 덜 종속적이다. 현재는 pending 상태에서 보낼 수 있다.
