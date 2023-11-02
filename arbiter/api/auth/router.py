@@ -148,17 +148,20 @@ async def login_user_name(data: AuthSchemas.GamerUserLoginByUserName, session: A
     user = await game_uesr_repository.get_one_by(session, user_name=data.user_name)
     if user == None:
         player_token = None
+        player_name = None
         if not data.user_name.startswith("so_"):
             result = await GameTesterAPI().auth(data.user_name)
             if result is None or result["code"] != -1:
                 raise AuthExceptions.BadRequest
             player_token = result["playerToken"]
+            player_name = result["playerName"]
             
         user = await game_uesr_repository.add(
             session,
             GameUser(
                 user_name=data.user_name,
                 player_token=player_token,
+                player_name = player_name,
                 login_type=LoginType.TESTER
             )
         )
