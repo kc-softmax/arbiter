@@ -5,6 +5,9 @@ description = ""
 authors = ["kc-softmax"]
 readme = "README.md"
 
+[tool.poetry.scripts]
+arbiter = "arbiter.command.main:app"
+
 [tool.poetry.dependencies]
 python = "<4.0,>=3.10"
 fastapi = "^0.97.0"
@@ -21,6 +24,7 @@ pytest = "^7.4.0"
 jinja2 = "^3.1.2"
 asyncpg = "^0.28.0"
 httpx = "^0.25.0"
+typer = {extras = ["all"], version = "^0.9.0"}
 
 
 [build-system]
