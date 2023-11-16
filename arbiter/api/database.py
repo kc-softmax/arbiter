@@ -11,8 +11,6 @@ from arbiter.api.config import settings
 # connect_args = {"check_same_thread": False}
 
 db_url = settings.RDB_CONNECTION_URL
-if "pytest" in sys.modules:
-    db_url = settings.TEST_RDB_CONNECTION_URL
 
 async_engine = create_async_engine(
     db_url,
