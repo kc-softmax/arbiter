@@ -1,6 +1,6 @@
 import os
 
-PROJECT_NAME  = "arbiter_server"
+PROJECT_NAME  = "arbiter-server"
 
 MAIN_FILE = "main.py"
 LIVE_SERVICE_FILE = "live_service.py"
@@ -78,8 +78,7 @@ def create_project_structure(project_path='.'):
         ".": [MAIN_FILE, 
               LIVE_SERVICE_FILE, 
               REPOSITORY_FILE, 
-              MODEL_FILE, 
-              CONFIG_FILE]  # Files in the root of the project
+              MODEL_FILE]  # Files in the root of the project
     }
 
 
@@ -97,3 +96,11 @@ def create_project_structure(project_path='.'):
                 f.write(CONTENTS[file].strip() if CONTENTS[file] else "")
 
     print(f"Project created at {project_path}")
+
+def create_default_config_file(config_file_path):
+    """
+    Creates a default arbiter.setting.ini file with predefined settings.
+    """
+    # Create the config file with default content
+    with open(os.path.join(config_file_path, CONFIG_FILE), 'w') as file:
+        file.write(CONFIG_CONTENTS.strip())  
