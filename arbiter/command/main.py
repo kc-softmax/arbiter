@@ -6,7 +6,8 @@ from typing import Optional
 from typing_extensions import Annotated
 from arbiter.command.template import (CONFIG_FILE, 
                                       PROJECT_NAME,
-                                      create_project_structure)
+                                      create_project_structure, 
+                                      create_default_config_file)
 
 def read_config():
     """
@@ -30,11 +31,13 @@ def init(
     """    
     project_path = os.path.join(base_path, PROJECT_NAME)
     create_project_structure(project_path)
+    create_default_config_file(".")
+    
     typer.echo(f"Project created successfully.")
 
 @app.command()
 def start(
-    app_path: Annotated[Optional[str], typer.Argument(..., help="The path to the FastAPI app, e.g., 'myapp.main:app'")] = "main:app",
+    app_path: Annotated[Optional[str], typer.Argument(..., help="The path to the FastAPI app, e.g., 'myapp.main:app'")] = f"{PROJECT_NAME}.main:app",
     host: str = typer.Option(None, "--host", "-h", help="The host of the Arbiter FastAPI app."),
     port: int = typer.Option(None, "--port", "-p", help="The port of the Arbiter FastAPI app."),
     reload: bool = typer.Option(False, "--reload", help="Enable auto-reload for code changes.")
