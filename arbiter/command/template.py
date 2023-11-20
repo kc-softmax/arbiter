@@ -1,19 +1,47 @@
 import os
 
-PROJECT_NAME  = "arbiter-server"
+PROJECT_NAME  = "arbiter_server"
 
 MAIN_FILE = "main.py"
-LIVE_SERVICE_FILE = "live_service.py"
 REPOSITORY_FILE = "repository.py"
 MODEL_FILE = "model.py"
+ENGINE_FILE = "engine.py"
 CONFIG_FILE = "arbiter.setting.ini"
 
+ENGINE_CONTENTS = """
+from arbiter.api.live.engine import LiveAsyncEngine
+
+class MyLiveEngine(LiveAsyncEngine):
+    # Writing your code
+    pass
+"""
+
 MAIN_CONTENTS = """
+from fastapi import Query,WebSocket
+
+# from arbiter.api.dependencies import unit_of_work # Use this when you need to work with databases.
+from arbiter.api.live.service import LiveService
 from arbiter.api.main import app
+
+from .engine import MyLiveEngine
+
+live_service = LiveService(MyLiveEngine())
+
+# Can add the handler for LiveConnectionEvent
+# @live_service.on_event(LiveConnectionEvent.VALIDATE)
+# pass
+
+# If you need, set the custom router
+# router = APIRouter(
+#    prefix="/my_service",
+#)
+
+@app.websocket("/ws")
+async def connect_live_service(websocket: WebSocket, token: str = Query()):
+    async with live_service.connect(websocket, token) as [user_id, user_name]:
+        await live_service.publish_to_engine(websocket, user_id, user_name)
 """
-LIVE_SERVICE_CONTENTS = """
-live service
-"""
+
 REPOSITORY_CONTENTS = """
 # Define your custom repository.
 # If you've created a custom table, 
@@ -28,6 +56,7 @@ REPOSITORY_CONTENTS = """
 #         super().__init__(MyCustomModel)
 
 """
+
 MODEL_CONTENTS = """
 # Define your custom table.
 
@@ -41,6 +70,7 @@ MODEL_CONTENTS = """
 # class MyCustomModel(MyCustomModelBase, PKModel, table=True):
 #     __tablename__ = "my_custom" # Table name used by the DB
 """
+
 CONFIG_CONTENTS = """
 [project]
 app_env = local
@@ -61,7 +91,7 @@ playtime_minute = 30
 
 CONTENTS = {
     MAIN_FILE: MAIN_CONTENTS,
-    LIVE_SERVICE_FILE: LIVE_SERVICE_CONTENTS,
+    ENGINE_FILE: ENGINE_CONTENTS,
     REPOSITORY_FILE: REPOSITORY_CONTENTS,
     MODEL_FILE: MODEL_CONTENTS,
     CONFIG_FILE: CONFIG_CONTENTS
@@ -75,8 +105,8 @@ def create_project_structure(project_path='.'):
     """
     # Define the structure
     project_structure = {
-        ".": [MAIN_FILE, 
-              LIVE_SERVICE_FILE, 
+        ".": [MAIN_FILE,
+              ENGINE_FILE, 
               REPOSITORY_FILE, 
               MODEL_FILE]  # Files in the root of the project
     }
