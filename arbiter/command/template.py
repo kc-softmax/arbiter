@@ -17,29 +17,27 @@ class MyLiveEngine(LiveAsyncEngine):
 """
 
 MAIN_CONTENTS = """
-from fastapi import Query,WebSocket
-
-# from arbiter.api.dependencies import unit_of_work # Use this when you need to work with databases.
+from arbiter.api import arbiterApp
 from arbiter.api.live.service import LiveService
-from arbiter.api.main import app
-
 from .engine import MyLiveEngine
 
 live_service = LiveService(MyLiveEngine())
 
+
 # Can add the handler for LiveConnectionEvent
+# from arbiter.api.live.const import LiveConnectionEvent
 # @live_service.on_event(LiveConnectionEvent.VALIDATE)
-# pass
+# def on_validate(user_id):
+#   pass
 
-# If you need, set the custom router
-# router = APIRouter(
-#    prefix="/my_service",
-#)
+arbiterApp.add_live_service('/ws', live_service)
 
-@app.websocket("/ws")
-async def connect_live_service(websocket: WebSocket, token: str = Query()):
-    async with live_service.connect(websocket, token) as [user_id, user_name]:
-        await live_service.publish_to_engine(websocket, user_id, user_name)
+# Can add the your route.
+# @arbiterApp.post('/my_route')
+# def post_my_route(
+#   user: GameUser = Depends(get_current_user),
+#   session: AsyncSession = Depends(unit_of_work)):
+#   pass
 """
 
 REPOSITORY_CONTENTS = """
@@ -80,6 +78,10 @@ refresh_token_key = refresh
 [fastapi]
 host = 0.0.0.0
 port = 9991
+allow_credentials = true,
+allow_origins = "*"
+allow_methods = "*"
+allow_headers = "*"
 
 [database]
 url = postgresql+asyncpg://arbiter:arbiter@localhost:5432/arbiter
