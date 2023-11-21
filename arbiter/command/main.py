@@ -37,7 +37,7 @@ def init(
 
 @app.command()
 def start(
-    app_path: Annotated[Optional[str], typer.Argument(..., help="The path to the FastAPI app, e.g., 'myapp.main:app'")] = f"{PROJECT_NAME}.main:app",
+    app_path: Annotated[Optional[str], typer.Argument(..., help="The path to the FastAPI app, e.g., 'myapp.main:app'")] = f"{PROJECT_NAME}.main:arbiterApp",
     host: str = typer.Option(None, "--host", "-h", help="The host of the Arbiter FastAPI app."),
     port: int = typer.Option(None, "--port", "-p", help="The port of the Arbiter FastAPI app."),
     reload: bool = typer.Option(False, "--reload", help="Enable auto-reload for code changes.")
