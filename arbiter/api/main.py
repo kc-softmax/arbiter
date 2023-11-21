@@ -3,11 +3,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
 
 from arbiter.api.exceptions import BadRequest
 from arbiter.api.database import create_db_and_tables, async_engine
-from arbiter.api.logging import log_middleware
 from arbiter.api.auth.router import router as auth_router
 from arbiter.api.match.match_maker import match_maker
 
@@ -35,7 +33,6 @@ async def validation_exception_handler(request, exc):
 @app.on_event("startup")
 async def on_startup():
     await create_db_and_tables()
-
 
 # 가비지 pool 쌓이는 것을 방지
 @app.on_event("shutdown")
