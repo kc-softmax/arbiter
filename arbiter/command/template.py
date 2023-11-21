@@ -78,10 +78,10 @@ refresh_token_key = refresh
 [fastapi]
 host = 0.0.0.0
 port = 9991
-allow_credentials = true,
-allow_origins = "*"
-allow_methods = "*"
-allow_headers = "*"
+allow_credentials = true
+allow_origins = *
+allow_methods = *
+allow_headers = *
 
 [database]
 url = postgresql+asyncpg://arbiter:arbiter@localhost:5432/arbiter

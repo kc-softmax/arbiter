@@ -4,9 +4,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from arbiter.api.auth.router import router as auth_router
+from arbiter.api.live.service import LiveService
 from arbiter.api.database import create_db_and_tables, async_engine
 from arbiter.api.exceptions import BadRequest
-from arbiter.api.live.service import LiveService
+from arbiter.api.config import settings
 
 class ArbiterApp(FastAPI):
     def __init__(self) -> None:
@@ -22,13 +23,12 @@ class ArbiterApp(FastAPI):
             )
         self.add_middleware(
             CORSMiddleware,
-            allow_origins=[
-                "*",
-            ],
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
+            allow_origins=settings.ALLOW_ORIGINS,
+            allow_credentials=settings.ALLOW_ORIGINS,
+            allow_methods=settings.ALLOW_METHODS,
+            allow_headers=settings.ALLOW_HEADERS,
         )
+        # app.add_middleware(BaseHTTPMiddleware, dispatch=log_middleware)
         self.include_router(auth_router)
 
     async def on_startup(self):
