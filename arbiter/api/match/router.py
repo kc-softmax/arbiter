@@ -30,8 +30,7 @@ router = APIRouter(
 )
 async def matchmaking(token: str = Query(), session: AsyncSession = Depends(unit_of_work)):
     # user 검사 한번 더
-    token_data = verify_token(token)
-    user_id = token_data.sub
+    _ = verify_token(token)
     # 게임방의 available 상태와 유저의 join에 따라 max_players미만인 게임만 탐색한다
     # 게임방 상태는 체크할 필요가 없어도 될 것 같다(max_players가 넘어가면 조회되지 않음)
     # 첫 번째 게임방을 접속시킨다
@@ -51,14 +50,8 @@ async def matchmaking(token: str = Query(), session: AsyncSession = Depends(unit
         record = await game_rooms_repository.add(session,
             GameRooms(
                 game_id=str(game_id),
-                max_players=4,
+                max_player=4,
             )
         )
-    await game_access_repository.add(
-        session,
-        GameAccess(
-            user_id=user_id,
-            game_rooms_id=record.id,
-        )
-    )
+    # user 추가는 game server engine에서 접속했을 때 한다
     return record.id
