@@ -35,7 +35,7 @@ router = APIRouter(
     tags=[AuthRouterTag.TOKEN],
     response_model=bool
 )
-async def verify_token(session:AsyncSession = Depends(unit_of_work), token: str = Depends(OAuth2PasswordBearer(tokenUrl=""))):
+async def verify_token(session: AsyncSession = Depends(unit_of_work), token: str = Depends(OAuth2PasswordBearer(tokenUrl=""))):
     try:
         token_data = verify_token_util(token)
     except AuthExceptions.InvalidToken:
