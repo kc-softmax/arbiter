@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Generic, Type, TypeVar
-from sqlmodel import select, and_
+from sqlmodel import select, and_, func
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel.sql.expression import SelectOfScalar
 
@@ -27,11 +27,11 @@ class BaseCRUDRepository(Generic[T]):
             stmt = stmt.where(and_(*where_clauses))
         return stmt
 
-    async def get_list_by(self, session:AsyncSession, **filters) -> list[T]:
+    async def get_list_by(self, session: AsyncSession, **filters) -> list[T]:
         stmt = self._construct_where_stmt(**filters)
         return (await session.exec(stmt)).all()
 
-    async def get_one_by(self, session:AsyncSession,**filters) -> T | None:
+    async def get_one_by(self, session: AsyncSession, **filters) -> T | None:
         stmt = self._construct_where_stmt(**filters)
         return (await session.exec(stmt)).first()
 
@@ -41,17 +41,17 @@ class BaseCRUDRepository(Generic[T]):
         await session.refresh(record)
         return record
 
-    async def update(self, session:AsyncSession, record: T) -> T:
+    async def update(self, session: AsyncSession, record: T) -> T:
         record.updated_at = datetime.utcnow()
         session.add(record)
         await session.flush()
         await session.refresh(record)
         return record
 
-    async def delete(self, session:AsyncSession, id: int) -> None:
+    async def delete(self, session: AsyncSession, id: int) -> None:
         record = await self.get_by_id(id)
         await session.delete(record)
         await session.flush()
 
-    async def get_by_id(self, session:AsyncSession, id: int) -> T | None:
+    async def get_by_id(self, session: AsyncSession, id: int) -> T | None:
         return await self.get_one_by(session, id=id)
