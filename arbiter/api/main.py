@@ -7,9 +7,10 @@ from fastapi.responses import JSONResponse
 from arbiter.api.exceptions import BadRequest
 from arbiter.api.database import create_db_and_tables, async_engine
 from arbiter.api.auth.router import router as auth_router
-from arbiter.api.match.match_maker import match_maker
+from arbiter.api.match.router import router as match_router
+# from arbiter.api.match.match_maker import match_maker
 
-asyncio.create_task(match_maker.run())
+# asyncio.create_task(match_maker.run())
 
 app = FastAPI()
 app.add_middleware(
@@ -23,6 +24,7 @@ app.add_middleware(
 )
 # app.add_middleware(BaseHTTPMiddleware, dispatch=log_middleware)
 app.include_router(auth_router)
+app.include_router(match_router)
 
 
 @app.exception_handler(RequestValidationError)
