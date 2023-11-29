@@ -25,7 +25,7 @@ router = APIRouter(
 
 @router.post(
     path="/game",
-    tags=MatchRouterTag.ROOM,
+    tags=[MatchRouterTag.ROOM],
     response_model=int,
     dependencies=[Depends(get_current_user)]
 )
