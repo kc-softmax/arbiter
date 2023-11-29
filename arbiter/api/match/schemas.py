@@ -1,10 +1,8 @@
 from pydantic import BaseModel
 
-from arbiter.api.auth.models import GameUserBase, PKModel
-
 
 class MatchGameSchema(BaseModel):
-    pass
+    token: str
 
 
 class MatchGameDataSchema(BaseModel):
