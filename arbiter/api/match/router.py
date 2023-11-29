@@ -9,6 +9,7 @@ from arbiter.api.match.models import GameRooms, GameAccess
 from arbiter.api.match.repository import game_rooms_repository, game_access_repository
 from arbiter.api.dependencies import unit_of_work
 from arbiter.api.auth.utils import verify_token
+from arbiter.api.match.schemas import MatchGameSchema
 
 
 repositories = [game_rooms_repository, game_access_repository]
@@ -28,9 +29,9 @@ router = APIRouter(
     tags=MatchRouterTag.ROOM,
     response_model=int
 )
-async def matchmaking(token: str = Query(), session: AsyncSession = Depends(unit_of_work)):
+async def matchmaking(data: MatchGameSchema, session: AsyncSession = Depends(unit_of_work)):
     # user 검사 한번 더
-    _ = verify_token(token)
+    _ = verify_token(data.token)
     # 게임방의 available 상태와 유저의 join에 따라 max_players미만인 게임만 탐색한다
     # 게임방 상태는 체크할 필요가 없어도 될 것 같다(max_players가 넘어가면 조회되지 않음)
     # 첫 번째 게임방을 접속시킨다
@@ -54,4 +55,5 @@ async def matchmaking(token: str = Query(), session: AsyncSession = Depends(unit
             )
         )
     # user 추가는 game server engine에서 접속했을 때 한다
+    print(record.id)
     return record.id
