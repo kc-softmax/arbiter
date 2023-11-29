@@ -2,14 +2,13 @@ import uuid
 
 from enum import Enum
 from fastapi.routing import APIRouter
-from fastapi import Depends, Query
+from fastapi import Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from arbiter.api.match.models import GameRooms, GameAccess
 from arbiter.api.match.repository import game_rooms_repository, game_access_repository
 from arbiter.api.dependencies import unit_of_work
-from arbiter.api.auth.utils import verify_token
-from arbiter.api.match.schemas import MatchGameSchema
+from arbiter.api.auth.dependencies import get_current_user
 
 
 repositories = [game_rooms_repository, game_access_repository]
@@ -27,11 +26,10 @@ router = APIRouter(
 @router.post(
     path="/game",
     tags=MatchRouterTag.ROOM,
-    response_model=int
+    response_model=int,
+    dependencies=[Depends(get_current_user)]
 )
-async def matchmaking(data: MatchGameSchema, session: AsyncSession = Depends(unit_of_work)):
-    # user 검사 한번 더
-    _ = verify_token(data.token)
+async def matchmaking(session: AsyncSession = Depends(unit_of_work)):
     # 게임방의 available 상태와 유저의 join에 따라 max_players미만인 게임만 탐색한다
     # 게임방 상태는 체크할 필요가 없어도 될 것 같다(max_players가 넘어가면 조회되지 않음)
     # 첫 번째 게임방을 접속시킨다
