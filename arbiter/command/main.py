@@ -4,10 +4,10 @@ import subprocess
 import configparser
 from typing import Optional
 from typing_extensions import Annotated
-from arbiter.command.template import (CONFIG_FILE, 
-                                      PROJECT_NAME,
-                                      create_project_structure, 
-                                      create_default_config_file)
+from mako.template import Template
+
+PROJECT_NAME  = "arbiter_server"
+CONFIG_FILE = "arbiter.setting.ini"
 
 def read_config():
     """
@@ -29,10 +29,7 @@ def init(
     """
     Creates a basic project structure with predefined files and directories.
     """    
-    project_path = os.path.join(base_path, PROJECT_NAME)
-    create_project_structure(project_path)
-    create_default_config_file(".")
-    
+    _create_project_structure(base_path)
     typer.echo(f"Project created successfully.")
 
 @app.command()
@@ -72,6 +69,48 @@ def start(
 
     # Use subprocess to execute the command
     subprocess.run(uvicorn_command, shell=True)
+
+
+def _create_project_structure(project_path='.'):
+    """
+    Creates a basic project structure with predefined files and directories.
+
+    :param project_path: Base path where the project will be created
+    """
+    project_structure = {
+        PROJECT_NAME: ["engine.py", "main.py", "model.py", "repository.py"],
+        f"{PROJECT_NAME}/migrations": ["env.py", "README", "script.py.mako"],
+        f"{PROJECT_NAME}/migrations/versions": [],
+        ".": [CONFIG_FILE],
+    }
+    template_root_path = f'{os.path.abspath(os.path.dirname(__file__))}/templates'
+    for directory, files in project_structure.items():
+        dir_path = os.path.join(project_path, directory)
+        os.makedirs(dir_path, exist_ok=True)
+
+        for file in files:
+            file_path = os.path.join(dir_path, file)
+            
+            if dir_path.find("migrations") != -1:
+                template_path = f'{template_root_path}/alembic'
+            elif dir_path.find(PROJECT_NAME) != -1:
+                template_path = f'{template_root_path}/arbiter'
+            else:
+                template_path = f'{template_root_path}'
+
+            if str(file).find('.mako') != -1:
+                template_file = os.path.join(template_path, file)
+                with open(template_file, 'r') as tf:
+                    with open(file_path, "w") as of:
+                        of.write(tf.read())
+            else:
+                template_file = os.path.join(template_path, f'{file}.mako')
+                with open(template_file, 'r') as tf:
+                    template = Template(tf.read())
+                    with open(file_path, "w") as of:
+                        of.write(template.render())
+
+    
 
 if __name__ == "__main__":
     app()
