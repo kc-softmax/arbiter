@@ -1,6 +1,6 @@
 from pydantic import BaseSettings
 
-from arbiter.command.main import read_config
+from arbiter.cli.main import read_config
 
 def toList(comma_list_str: str):
     return [item.strip() for item in comma_list_str.split(',')]
