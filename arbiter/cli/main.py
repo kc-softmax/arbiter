@@ -1,26 +1,16 @@
 import os
 import typer
 import subprocess
-import configparser
 from typing import Optional
 from typing_extensions import Annotated
 from mako.template import Template
 
-PROJECT_NAME  = "arbiter_server"
-CONFIG_FILE = "arbiter.setting.ini"
-
-def read_config():
-    """
-    Reads configuration from an INI file.
-    """
-    file_path = os.path.join(CONFIG_FILE)
-    if os.path.exists(file_path):
-        config = configparser.ConfigParser()
-        config.read(file_path)
-        return config
-    return None
+from arbiter.cli import PROJECT_NAME, CONFIG_FILE
+from arbiter.cli.commands.database import app as database_app
+from arbiter.cli.utils import read_config
 
 app = typer.Typer()
+app.add_typer(database_app, name="db" ,help="Execute commands for database creation and migration.")
 
 @app.command()
 def init(
@@ -42,7 +32,7 @@ def start(
     """
     Read the config file.
     """
-    config = read_config()
+    config = read_config(CONFIG_FILE)
     if (config is None):
         typer.echo("No config file path found. Please run 'init' first.")
         return
@@ -108,7 +98,10 @@ def _create_project_structure(project_path='.'):
                 with open(template_file, 'r') as tf:
                     template = Template(tf.read())
                     with open(file_path, "w") as of:
-                        of.write(template.render())
+                        if template_file.find(CONFIG_FILE) != -1 or template_file.find("env.py") != 1:
+                            of.write(template.render(project_name=PROJECT_NAME))
+                        else:
+                            of.write(template.render())
 
     
 

@@ -25,7 +25,7 @@ playtime_minute = 30
 
 [alembic]
 # path to migration scripts
-script_location = migrations
+script_location = ${project_name}/migrations
 
 # template used to generate migration file names; The default value is %%(rev)s_%%(slug)s
 # Uncomment the line below if you want the files to be prepended with date and time

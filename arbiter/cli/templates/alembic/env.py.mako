@@ -18,8 +18,8 @@ if config.config_file_name is not None:
 
 # add your model's MetaData object here
 # for 'autogenerate' support
-# from .model import BaseSQLModel
-# target_metadata = BaseSQLModel.Base.metadata
+from ${project_name}.model import BaseSQLModel
+target_metadata = BaseSQLModel.metadata
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
