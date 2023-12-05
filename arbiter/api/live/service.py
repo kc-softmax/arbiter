@@ -1,7 +1,8 @@
 from __future__ import annotations
 import inspect
 import asyncio
-from sqlmodel.ext.asyncio.session import AsyncSession
+import uuid
+
 from asyncio.tasks import Task
 from typing import Any, Callable, Coroutine, Tuple
 from contextlib import asynccontextmanager
@@ -13,16 +14,31 @@ from arbiter.api.auth.utils import verify_token
 from arbiter.api.live.const import LiveConnectionEvent, LiveConnectionState, LiveSystemEvent
 from arbiter.api.live.data import LiveConnection, LiveMessage, LiveAdapter
 from arbiter.api.live.engine import LiveEngine
-from arbiter.api.dependencies import unit_of_work
+from arbiter.api.live.room import LiveRoom
+from arbiter.api.match.repository import game_access_repository, game_rooms_repository
+from arbiter.api.match.models import GameAccess, UserState, GameRooms
+from arbiter.api.auth.dependencies import unit_of_work
 
 
 class LiveService:
 
+    # def __init__(self, engine: LiveEngine):
+    #     self.engine: LiveEngine = engine
+    #     self.connections: dict[str, LiveConnection] = {}
+    #     self.group_connections: dict[str,
+    #         list[LiveConnection]] = defaultdict(list)
+    #     # 소켓 연결, 방 입장/퇴장 등과 관련된 이벤트 핸들러들
+    #     self.evnet_handlers: dict[str, Callable[[
+    #         Any, str], Coroutine | None]] = defaultdict()
+    #     self.subscribe_to_engine_task: Task = asyncio.create_task(
+    #         self.subscribe_to_engine())
+
     def __init__(self, engine: LiveEngine):
-        self.engine: LiveEngine = engine
+        self.engine = engine
+        self.live_rooms: dict[str, LiveRoom] = {}
         self.connections: dict[str, LiveConnection] = {}
         self.group_connections: dict[str,
-                                     list[LiveConnection]] = defaultdict(list)
+            list[LiveConnection]] = defaultdict(list)
         # 소켓 연결, 방 입장/퇴장 등과 관련된 이벤트 핸들러들
         self.evnet_handlers: dict[str, Callable[[
             Any, str], Coroutine | None]] = defaultdict()
@@ -30,7 +46,7 @@ class LiveService:
             self.subscribe_to_engine())
 
     @asynccontextmanager
-    async def connect(self, websocket: WebSocket, token: str) -> Tuple[str, str, str]:        
+    async def connect(self, websocket: WebSocket, token: str, room_id: str) -> Tuple[str, str, str]:        
         await websocket.accept()
         try:
             token_data = verify_token(token)
@@ -44,17 +60,17 @@ class LiveService:
                 if user.access_token != token:
                     raise Exception("유효하지 않은 토큰입니다.")
 
+            access_user = await self.enter_room(room_id, user_id)
             self.connections[user_id] = LiveConnection(websocket)
             # divide user and bot group using adapter_name
             if user.adapter:
-                self.add_group('default_bot_group', self.connections[user_id])
+                self.add_group('default_bot_group', room_id, self.connections[user_id])
             else:
                 self.add_group('default_user_group', self.connections[user_id])
+                self.add_group(room_id, self.connections[user_id])
 
             await self.run_event_handler(LiveConnectionEvent.VALIDATE, user_id)
             yield user_id, user.user_name, user.adapter
-
-            # await subscribe_to_engine
         except Exception as e:
             print(e)
             yield None, None, None
@@ -63,7 +79,8 @@ class LiveService:
             # 하나의 로직으로 출발해서 순차적으로 종료시켜라
             self.remove_group(self.connections[user_id])
             self.connections.pop(user_id, None)
-            await self.engine.remove_user(user_id)
+            await self.live_rooms[room_id].remove_user(user_id)
+            await self.leave_room(access_user)
 
     def add_group(self, group_name: str, connection: LiveConnection):
         if group_name in connection.joined_groups:
@@ -97,6 +114,41 @@ class LiveService:
             return callback
         return callback_wrapper
 
+    async def get_or_create_room(self, room_id: str, live_room: LiveRoom):
+        # client보낸 room_id는 정확하지 않다고 가정하여 서버에서 정확하게 처리
+        if room_id not in self.live_rooms:
+            game_id = uuid.uuid4()
+            async with unit_of_work.transaction() as session:
+                record = await game_rooms_repository.add(session,
+                    GameRooms(
+                        game_id=str(game_id),
+                        max_player=2,
+                    )
+                )
+            room_id = str(record.id)
+            live_room.set_room_id(room_id)
+            self.live_rooms[room_id] = live_room
+        return room_id
+
+    async def enter_room(self, room_id: str, user_id: str) -> GameAccess:
+        async with unit_of_work.transaction() as session:
+            user = await game_access_repository.add(
+                session,
+                GameAccess(
+                    user_id=user_id,
+                    game_rooms_id=room_id
+                )
+            )
+            return user
+
+    async def leave_room(self, user: GameAccess):
+        async with unit_of_work.transaction() as session:
+            user.user_state = UserState.LEFT
+            await game_access_repository.update(
+                session,
+                user
+            )
+
     async def handle_system_message(self, message: LiveMessage):
         match LiveSystemEvent(message.systemEvent):
             case LiveSystemEvent.JOIN_GROUP:
@@ -120,12 +172,10 @@ class LiveService:
                 # TODO: error handling
                 # if target is None ->  send all users
                 pass
-        
 
-
-    async def publish_to_engine(self, websocket: WebSocket, user_id: str, user_name: str):
+    async def publish_to_engine(self, websocket: WebSocket, room_id: str, user_id: str, user_name: str):
         # send engine to join
-        await self.engine.setup_user(user_id, user_name)
+        await self.live_rooms[room_id].setup_user(user_id, user_name)
         try:
             async for message in websocket.iter_bytes():
                 # block
@@ -138,10 +188,10 @@ class LiveService:
                         continue
                 if self.connections[user_id].adapter:
                     adapt_message = await self.connections[user_id].adapter.adapt_in(message)
-                    live_message = LiveMessage(src=user_id, data=adapt_message)
+                    live_message = LiveMessage(src=user_id, room_id=room_id, data=adapt_message)
                 else:
-                    live_message = LiveMessage(src=user_id, data=message)
-                await self.engine.on(live_message)
+                    live_message = LiveMessage(src=user_id, room_id=room_id, data=message)
+                await self.live_rooms[room_id].on(live_message)
         except Exception as e:
             print(e, 'in publish_to_engine')
             raise e
@@ -153,11 +203,14 @@ class LiveService:
                     # deprecated 10.10
                     # if event.target is None: # send to all
                     #     await self.send_messages(self.connections.values(), event)
+                    # print(self.group_connections, event.target, event.room_id)
                     if event.systemEvent:
                         await self.handle_system_message(event)
                     elif user_connection := self.connections.get(event.target, None):
                         await self.send_personal_message(user_connection, event)
                     elif group_connections := self.group_connections.get(event.target, None):
+                        await self.send_messages(group_connections, event)
+                    elif group_connections := self.group_connections.get(event.room_id, None):
                         await self.send_messages(group_connections, event)
                     else:  # send to all
                         continue  # TODO remove handling

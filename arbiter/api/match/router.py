@@ -26,7 +26,7 @@ router = APIRouter(
 @router.post(
     path="/game",
     tags=[MatchRouterTag.ROOM],
-    response_model=int,
+    response_model=int | None,
     dependencies=[Depends(get_current_user)]
 )
 async def matchmaking(session: AsyncSession = Depends(unit_of_work)):
@@ -38,20 +38,8 @@ async def matchmaking(session: AsyncSession = Depends(unit_of_work)):
     # schema의 관계는 game_access가 game_rooms 테이블의 id(pk)를 외래키로 사용
     # client에서는 wss://gametester.fourbarracks.io/di/ws?token=&game_id= 로 붙여서 호출
     # gmae-server-engine에서는 game_id에 따라 live_service를 새로 실행하거나 실행된 live_service를 리턴
+    room_id = None
     available_game_ids = await game_rooms_repository.get_join_list_by(session, GameAccess)
     if available_game_ids:
-        record = await game_rooms_repository.get_by_id(
-            session,
-            available_game_ids.pop(0)
-        )
-    else:
-        game_id = uuid.uuid4()
-        record = await game_rooms_repository.add(session,
-            GameRooms(
-                game_id=str(game_id),
-                max_player=4,
-            )
-        )
-    # user 추가는 game server engine에서 접속했을 때 한다
-    print(record.id)
-    return record.id
+        room_id = available_game_ids.pop(0)
+    return room_id
