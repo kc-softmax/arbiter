@@ -22,14 +22,3 @@ def make_async_session():
         expire_on_commit=False
     )
     return async_session()
-
-async def init_database():
-    async with async_engine.begin() as conn:
-        await conn.run_sync(BaseSQLModel.metadata.create_all, checkfirst=False)
-
-# def version_schema(script_location: str):
-#     """Applies alembic versioning to schema."""
-#     alembic_cfg = AlembicConfig()
-#     alembic_cfg.set
-#     alembic_cfg.set_main_option("script_location", script_location)
-#     alembic_command.stamp(alembic_cfg, "head")

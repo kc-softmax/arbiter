@@ -12,7 +12,7 @@ def read_config(config_file: str):
     """
     file_path = os.path.join(config_file)
     if os.path.exists(file_path):
-        config = configparser.ConfigParser()
+        config = configparser.ConfigParser(interpolation=configparser.ExtendedInterpolation())
         config.read(file_path)
         return config
     return None

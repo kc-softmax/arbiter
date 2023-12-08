@@ -1,8 +1,9 @@
-<%!
-    db_url = "postgresql+asyncpg://arbiter:arbiter@localhost:5432/arbiter"
-%>
-[common]
-db_url = ${db_url}
+[database]
+name = arbiter
+port = 5432
+hostname = localhost
+credentials = arbiter:arbiter
+<%text>sqlalchemy.url = postgresql+asyncpg://${credentials}@${hostname}:${port}/${name}</%text>
 
 [project]
 app_env = local
@@ -81,7 +82,7 @@ version_path_separator = os  # Use os.pathsep. Default configuration used for ne
 # are written from script.py.mako
 # output_encoding = utf-8
 
-sqlalchemy.url = ${db_url}
+# sqlalchemy.url
 
 
 [post_write_hooks]
