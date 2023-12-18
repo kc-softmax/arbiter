@@ -147,15 +147,19 @@ async def signup_guest(
 async def login_user_name(data: AuthSchemas.GamerUserLoginByUserName, session: AsyncSession = Depends(unit_of_work)):    
     user = await game_uesr_repository.get_one_by(session, user_name=data.user_name)
     if user == None:
+        """
+        저장된 user가 없으면 새로 생성
+        """
         player_token = None
         player_name = None
-        if not data.user_name.startswith("so_"):
-            result = await GameTesterAPI().auth(data.user_name)
-            if result is None or result["code"] != -1:
-                raise AuthExceptions.BadRequest
+
+        # 게임 테스터 회원인지 확인
+        result = await GameTesterAPI().auth(data.user_name)
+        # 게임 테스터 회원이라면 정보를 가져옴
+        if result is not None and result["code"] == -1:
             player_token = result["playerToken"]
             player_name = result["playerName"]
-            
+                        
         user = await game_uesr_repository.add(
             session,
             GameUser(
