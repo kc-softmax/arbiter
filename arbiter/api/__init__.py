@@ -40,7 +40,7 @@ class ArbiterApp(FastAPI):
     def add_live_service(self, path:str, 
                          service: LiveService):
         async def connect(websocket: WebSocket, token: str = Query()):
-            async with service.connect(websocket, token) as [user_id, user_name]:
+            async with service.connect(websocket, token) as [user_id, user_name, _]:
                 await service.publish_to_engine(websocket, user_id, user_name)
         self.add_api_websocket_route(path, connect)
 
