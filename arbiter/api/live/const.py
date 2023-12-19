@@ -12,6 +12,7 @@ class LiveSystemEvent(IntEnum):
     REMOVE_GROUP = 52
     KICK_USER = 53
     SAVE_USER_RECORD = 54
+    CREATE_ROOM = 55
     ERROR = 99
 
 

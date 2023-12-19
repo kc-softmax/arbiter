@@ -22,17 +22,6 @@ from arbiter.api.auth.dependencies import unit_of_work
 
 class LiveService:
 
-    # def __init__(self, engine: LiveEngine):
-    #     self.engine: LiveEngine = engine
-    #     self.connections: dict[str, LiveConnection] = {}
-    #     self.group_connections: dict[str,
-    #         list[LiveConnection]] = defaultdict(list)
-    #     # 소켓 연결, 방 입장/퇴장 등과 관련된 이벤트 핸들러들
-    #     self.evnet_handlers: dict[str, Callable[[
-    #         Any, str], Coroutine | None]] = defaultdict()
-    #     self.subscribe_to_engine_task: Task = asyncio.create_task(
-    #         self.subscribe_to_engine())
-
     def __init__(self, engine: LiveEngine):
         self.engine = engine
         self.live_rooms: dict[str, LiveRoom] = {}
@@ -40,13 +29,13 @@ class LiveService:
         self.group_connections: dict[str,
             list[LiveConnection]] = defaultdict(list)
         # 소켓 연결, 방 입장/퇴장 등과 관련된 이벤트 핸들러들
-        self.evnet_handlers: dict[str, Callable[[
+        self.event_handlers: dict[str, Callable[[
             Any, str], Coroutine | None]] = defaultdict()
         self.subscribe_to_engine_task: Task = asyncio.create_task(
             self.subscribe_to_engine())
 
     @asynccontextmanager
-    async def connect(self, websocket: WebSocket, token: str, room_id: str) -> Tuple[str, str, str]:        
+    async def connect(self, websocket: WebSocket, token: str, room_id: str) -> Tuple[str, str, str, str]:
         await websocket.accept()
         try:
             token_data = verify_token(token)
@@ -58,20 +47,27 @@ class LiveService:
                 if user == None:
                     raise Exception("유저를 찾을 수 없습니다.")
 
+            # 매치메이커에서 리턴받은 room_id를 다시 확인할 필요가 있을까?
+            room_id = await self.get_room(room_id)
+            if not room_id:
+                # 이용 가능한 방이 없어서 방을 생성한다(CREATE_ROOM 이벤트 호출)
+                room_id = await self.run_event_handler(LiveSystemEvent.CREATE_ROOM)
             access_user = await self.enter_room(room_id, user_id)
             self.connections[user_id] = LiveConnection(websocket)
             # divide user and bot group using adapter_name
             if user.adapter:
                 self.add_group('default_bot_group', room_id, self.connections[user_id])
             else:
+                # 모든 유저에게 데이터가 전송된다
                 self.add_group('default_user_group', self.connections[user_id])
+                # room_id에 속한 유저에게 데이터가 전송된다
                 self.add_group(room_id, self.connections[user_id])
 
             await self.run_event_handler(LiveConnectionEvent.VALIDATE, user_id)
-            yield user_id, user.user_name, user.adapter
+            yield user_id, user.user_name, user.adapter, room_id
         except Exception as e:
             print(e)
-            yield None, None, None
+            yield None, None, None, None
         finally:
             # 끝날 때 공통으로 해야할 것
             # 하나의 로직으로 출발해서 순차적으로 종료시켜라
@@ -95,7 +91,7 @@ class LiveService:
         self.connections[user_id].adapter = adapter
 
     async def run_event_handler(self, event_type: LiveConnectionEvent | LiveSystemEvent, *args):
-        event_handlers = self.evnet_handlers
+        event_handlers = self.event_handlers
         handler = event_handlers.get(event_type)
         match event_type:
             case added_event if added_event in event_handlers.keys():
@@ -108,25 +104,16 @@ class LiveService:
     # decorators
     def on_event(self, event_type: LiveConnectionEvent | LiveSystemEvent):
         def callback_wrapper(callback: Callable):
-            self.evnet_handlers[event_type] = callback
+            self.event_handlers[event_type] = callback
             return callback
         return callback_wrapper
 
-    async def get_or_create_room(self, room_id: str, live_room: LiveRoom):
+    async def get_room(self, room_id: str):
         # client보낸 room_id는 정확하지 않다고 가정하여 서버에서 정확하게 처리
-        if room_id not in self.live_rooms:
-            game_id = uuid.uuid4()
-            async with unit_of_work.transaction() as session:
-                record = await game_rooms_repository.add(session,
-                    GameRooms(
-                        game_id=str(game_id),
-                        max_player=2,
-                    )
-                )
+        async with unit_of_work.transaction() as session:
+            record = await game_rooms_repository.get_by_id(session, room_id)
             room_id = str(record.id)
-            live_room.set_room_id(room_id)
-            self.live_rooms[room_id] = live_room
-        return room_id
+            return room_id
 
     async def enter_room(self, room_id: str, user_id: str) -> GameAccess:
         async with unit_of_work.transaction() as session:
@@ -166,6 +153,8 @@ class LiveService:
                     await self.run_event_handler(LiveSystemEvent.KICK_USER, message.target)
             case LiveSystemEvent.SAVE_USER_RECORD:
                 await self.run_event_handler(LiveSystemEvent.SAVE_USER_RECORD, message.target, message.data)
+            case LiveSystemEvent.GET_OR_CREATE_ROOM:
+                await self.run_event_handler(LiveSystemEvent.GET_OR_CREATE_ROOM, message.room_id)
             case LiveSystemEvent.ERROR:
                 # TODO: error handling
                 # if target is None ->  send all users
