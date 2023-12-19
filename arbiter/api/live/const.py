@@ -13,6 +13,7 @@ class LiveSystemEvent(IntEnum):
     KICK_USER = 53
     SAVE_USER_RECORD = 54
     CREATE_ROOM = 55
+    RELEASE_ROOM = 56
     ERROR = 99
 
 

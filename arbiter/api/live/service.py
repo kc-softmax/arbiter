@@ -153,8 +153,8 @@ class LiveService:
                     await self.run_event_handler(LiveSystemEvent.KICK_USER, message.target)
             case LiveSystemEvent.SAVE_USER_RECORD:
                 await self.run_event_handler(LiveSystemEvent.SAVE_USER_RECORD, message.target, message.data)
-            case LiveSystemEvent.GET_OR_CREATE_ROOM:
-                await self.run_event_handler(LiveSystemEvent.GET_OR_CREATE_ROOM, message.room_id)
+            case LiveSystemEvent.RELEASE_ROOM:
+                await self.run_event_handler(LiveSystemEvent.RELEASE_ROOM, message.room_id)
             case LiveSystemEvent.ERROR:
                 # TODO: error handling
                 # if target is None ->  send all users
