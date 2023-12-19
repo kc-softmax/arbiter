@@ -4,7 +4,7 @@ import collections
 
 from asyncio import Task
 from arbiter.api.live.data import LiveMessage
-from arbiter.api.live.engine import Adapter, LiveEngine
+from arbiter.api.live.engine import LiveEngine
 
 
 # create room schema
@@ -43,7 +43,7 @@ class LiveRoom:
             turn_start_time = timeit.default_timer()
             current_message_count = self._listen_queue.qsize()
             for _ in range(current_message_count):
-                 turn_messages.appendleft(self._listen_queue.get_nowait())
+                turn_messages.appendleft(self._listen_queue.get_nowait())
             try:
                 await self.processing(turn_messages)
             except Exception as e:

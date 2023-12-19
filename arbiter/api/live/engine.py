@@ -79,7 +79,7 @@ class LiveAsyncEngine(LiveEngine):
             turn_start_time = timeit.default_timer()
             current_message_count = self._listen_queue.qsize()
             for _ in range(current_message_count):
-                 turn_messages.appendleft(self._listen_queue.get_nowait())
+                turn_messages.appendleft(self._listen_queue.get_nowait())
             try:
                 await self.processing(turn_messages)
             except Exception as e:
