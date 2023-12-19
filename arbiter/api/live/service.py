@@ -192,7 +192,6 @@ class LiveService:
                     # deprecated 10.10
                     # if event.target is None: # send to all
                     #     await self.send_messages(self.connections.values(), event)
-                    # print(self.group_connections, event.target, event.room_id)
                     if event.systemEvent:
                         await self.handle_system_message(event)
                     elif user_connection := self.connections.get(event.target, None):
