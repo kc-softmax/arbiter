@@ -42,6 +42,7 @@ class ArbiterApp(FastAPI):
         async def connect(websocket: WebSocket, token: str = Query(), room_id: str = Query()):
             async with service.connect(websocket, token, room_id) as [user_id, user_name, _]:
                 await service.publish_to_engine(websocket, room_id, user_id, user_name)
+
         self.add_api_websocket_route(path, connect)
 
 arbiterApp = ArbiterApp()
