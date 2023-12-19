@@ -16,7 +16,7 @@ from arbiter.api.live.data import LiveConnection, LiveMessage, LiveAdapter
 from arbiter.api.live.engine import LiveEngine
 from arbiter.api.live.room import LiveRoom
 from arbiter.api.match.repository import game_access_repository, game_rooms_repository
-from arbiter.api.match.models import GameAccess, UserState, GameRooms
+from arbiter.api.match.models import GameAccess, UserState
 from arbiter.api.auth.dependencies import unit_of_work
 
 
@@ -50,7 +50,7 @@ class LiveService:
                     raise Exception("유효하지 않은 토큰입니다.")
 
             # 매치메이커에서 리턴받은 room_id를 다시 확인할 필요가 있을까?
-            room_id = await self.get_room(room_id)
+            # room_id = await self.get_room(room_id)
             if not room_id:
                 # 이용 가능한 방이 없어서 방을 생성한다(CREATE_ROOM 이벤트 호출)
                 room_id = await self.run_event_handler(LiveSystemEvent.CREATE_ROOM)
@@ -58,7 +58,7 @@ class LiveService:
             self.connections[user_id] = LiveConnection(websocket)
             # divide user and bot group using adapter_name
             if user.adapter:
-                self.add_group('default_bot_group', room_id, self.connections[user_id])
+                self.add_group('default_bot_group', self.connections[user_id])
             else:
                 # 모든 유저에게 데이터가 전송된다
                 self.add_group('default_user_group', self.connections[user_id])
@@ -116,6 +116,9 @@ class LiveService:
             record = await game_rooms_repository.get_by_id(session, room_id)
             room_id = str(record.id)
             return room_id
+
+    def add_room(self, room_id: str, live_room: LiveRoom):
+        self.live_rooms[room_id] = live_room
 
     async def enter_room(self, room_id: str, user_id: str) -> GameAccess:
         async with unit_of_work.transaction() as session:
