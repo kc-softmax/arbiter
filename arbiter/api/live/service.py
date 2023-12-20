@@ -41,6 +41,8 @@ class LiveService:
                 user = await game_uesr_repository.get_by_id(session, int(user_id))
                 if user == None:
                     raise Exception("유저를 찾을 수 없습니다.")
+                if user.access_token == token:
+                    raise Exception("유효하지 않은 토큰입니다.")
 
             self.connections[user_id] = LiveConnection(websocket)
             # divide user and bot group using adapter_name
