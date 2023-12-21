@@ -4,13 +4,11 @@ import collections
 
 from asyncio import Task
 from arbiter.api.live.data import LiveMessage
-from arbiter.api.live.engine import LiveEngine
 
 
 # create room schema
 class LiveRoom:
-    def __init__(self, engine: LiveEngine, frame_rate: int = 30):
-        self.engine = engine
+    def __init__(self, frame_rate: int = 30):
         self.frame_rate = frame_rate
         self.terminate = False
         self._listen_queue: asyncio.Queue = asyncio.Queue()
@@ -25,14 +23,20 @@ class LiveRoom:
     async def remove_user(self, user_id: str, user_name: str = None):
         pass
 
-    def publish_to_engine(self, live_message: LiveMessage):
-        self.engine._emit_queue.put_nowait(live_message)
+    def publish_to_service(self, emit_queue: asyncio.Queue, live_message: LiveMessage):
+        # live service의 queue
+        live_message.room_id = self.room_id
+        emit_queue.put_nowait(live_message)
 
     async def on(self, message: LiveMessage):
         self._listen_queue.put_nowait(message)
 
     async def processing(self, live_message: list[LiveMessage]):
         NotImplementedError()
+
+    async def done_emit(self):
+        self.terminate = True
+        self.emit_task.cancel()
 
     async def emit(self):
         time_interval = 1 / self.frame_rate

@@ -4,6 +4,7 @@ import asyncio
 import uuid
 
 from asyncio.tasks import Task
+from typing import AsyncIterator
 from typing import Any, Callable, Coroutine, Tuple
 from contextlib import asynccontextmanager
 from collections import defaultdict
@@ -16,14 +17,13 @@ from arbiter.api.live.data import LiveConnection, LiveMessage, LiveAdapter
 from arbiter.api.live.engine import LiveEngine
 from arbiter.api.live.room import LiveRoom
 from arbiter.api.match.repository import game_access_repository, game_rooms_repository
-from arbiter.api.match.models import GameAccess, UserState
+from arbiter.api.match.models import GameAccess, UserState, GameRooms
 from arbiter.api.auth.dependencies import unit_of_work
 
 
 class LiveService:
 
-    def __init__(self, engine: LiveEngine):
-        self.engine = engine
+    def __init__(self):
         self.live_rooms: dict[str, LiveRoom] = {}
         self.connections: dict[str, LiveConnection] = {}
         self.group_connections: dict[str,
@@ -31,8 +31,30 @@ class LiveService:
         # 소켓 연결, 방 입장/퇴장 등과 관련된 이벤트 핸들러들
         self.event_handlers: dict[str, Callable[[
             Any, str], Coroutine | None]] = defaultdict()
+        self._emit_queue: asyncio.Queue = asyncio.Queue()
         self.subscribe_to_engine_task: Task = asyncio.create_task(
-            self.subscribe_to_engine())
+            self.subscribe_to_service())
+
+    @asynccontextmanager
+    async def subscribe(self) -> AsyncIterator[LiveEngine]:
+        try:
+            yield self
+        finally:
+            # finally check before release engine
+            pass
+
+    async def __aiter__(self) -> AsyncIterator[LiveMessage]:
+        try:
+            while True:
+                yield await self.get()
+        except Exception:
+            pass
+
+    async def get(self) -> LiveMessage:  # TOO
+        item = await self._emit_queue.get()
+        if item is None:
+            raise Exception()
+        return item
 
     @asynccontextmanager
     async def connect(self, websocket: WebSocket, token: str, room_id: str) -> Tuple[str, str, str, str]:
@@ -110,14 +132,19 @@ class LiveService:
             return callback
         return callback_wrapper
 
-    async def get_room(self, room_id: str):
-        # client보낸 room_id는 정확하지 않다고 가정하여 서버에서 정확하게 처리
+    async def create_room(self) -> str:
         async with unit_of_work.transaction() as session:
-            record = await game_rooms_repository.get_by_id(session, room_id)
-            room_id = str(record.id)
-            return room_id
+            record = await game_rooms_repository.add(
+                session,
+                GameRooms(
+                    game_id=uuid.uuid4().hex,
+                    max_player=32
+                )
+            )
+            return record.game_id
 
     def add_room(self, room_id: str, live_room: LiveRoom):
+        live_room.set_room_id(room_id)
         self.live_rooms[room_id] = live_room
 
     async def enter_room(self, room_id: str, user_id: str) -> GameAccess:
@@ -188,10 +215,10 @@ class LiveService:
             print(e, 'in publish_to_engine')
             raise e
 
-    async def subscribe_to_engine(self):
-        async with self.engine.subscribe() as engine:
+    async def subscribe_to_service(self):
+        async with self.subscribe() as service:
             try:
-                async for event in engine:
+                async for event in service:
                     # deprecated 10.10
                     # if event.target is None: # send to all
                     #     await self.send_messages(self.connections.values(), event)
