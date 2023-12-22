@@ -16,16 +16,18 @@ class Adapter:
 
 class LiveEngine:
 
-    def __init__(self):
-        self.adapter_map: dict[str, Adapter] = collections.defaultdict()
-        self._emit_queue: asyncio.Queue = asyncio.Queue()
+    adapter_map: dict[str, Adapter] = collections.defaultdict()
+    _emit_queue: asyncio.Queue = asyncio.Queue()
+    # def __init__(self):
+    #     self.adapter_map: dict[str, Adapter] = collections.defaultdict()
+    #     self._emit_queue: asyncio.Queue = asyncio.Queue()
 
     async def setup_user(self, user_id: str, user_name: str = None):
         pass
-        
+
     async def remove_user(self, user_id: str, user_name: str = None):
         pass
-        
+
     async def on(self, message: LiveMessage):
         # apply adapter ?
         if message.src in self.adapter_map:
@@ -60,7 +62,7 @@ class LiveAsyncEngine(LiveEngine):
     def __init__(self, frame_rate: int = 30):
         super().__init__()
         self.frame_rate = frame_rate
-        self.terminate = False        
+        self.terminate = False
         self._listen_queue: asyncio.Queue = asyncio.Queue()
         self.emit_task: Task = asyncio.create_task(self.emit())
 

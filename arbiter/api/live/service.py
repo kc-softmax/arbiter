@@ -4,7 +4,6 @@ import asyncio
 import uuid
 
 from asyncio.tasks import Task
-from typing import AsyncIterator
 from typing import Any, Callable, Coroutine, Tuple
 from contextlib import asynccontextmanager
 from collections import defaultdict
@@ -16,14 +15,15 @@ from arbiter.api.live.const import LiveConnectionEvent, LiveConnectionState, Liv
 from arbiter.api.live.data import LiveConnection, LiveMessage, LiveAdapter
 from arbiter.api.live.engine import LiveEngine
 from arbiter.api.live.room import LiveRoom
-from arbiter.api.match.repository import game_access_repository, game_rooms_repository
-from arbiter.api.match.models import GameAccess, UserState, GameRooms
 from arbiter.api.auth.dependencies import unit_of_work
+from arbiter.api.match.models import GameRooms
+from arbiter.api.match.repository import game_rooms_repository
 
 
 class LiveService:
 
-    def __init__(self):
+    def __init__(self, engine: LiveEngine):
+        self.engine = engine
         self.live_rooms: dict[str, LiveRoom] = {}
         self.connections: dict[str, LiveConnection] = {}
         self.group_connections: dict[str,
@@ -33,31 +33,10 @@ class LiveService:
             Any, str], Coroutine | None]] = defaultdict()
         self._emit_queue: asyncio.Queue = asyncio.Queue()
         self.subscribe_to_engine_task: Task = asyncio.create_task(
-            self.subscribe_to_service())
+            self.subscribe_to_engine())
 
     @asynccontextmanager
-    async def subscribe(self) -> AsyncIterator[LiveEngine]:
-        try:
-            yield self
-        finally:
-            # finally check before release engine
-            pass
-
-    async def __aiter__(self) -> AsyncIterator[LiveMessage]:
-        try:
-            while True:
-                yield await self.get()
-        except Exception:
-            pass
-
-    async def get(self) -> LiveMessage:  # TOO
-        item = await self._emit_queue.get()
-        if item is None:
-            raise Exception()
-        return item
-
-    @asynccontextmanager
-    async def connect(self, websocket: WebSocket, token: str, room_id: str) -> Tuple[str, str, str, str]:
+    async def connect(self, websocket: WebSocket, token: str, room_id: str) -> Tuple[str, str, str]:
         await websocket.accept()
         try:
             token_data = verify_token(token)
@@ -88,7 +67,7 @@ class LiveService:
                 self.add_group(room_id, self.connections[user_id])
 
             await self.run_event_handler(LiveConnectionEvent.VALIDATE, user_id)
-            yield user_id, user.user_name, user.adapter, room_id
+            yield user_id, user.user_name, user.adapter
         except Exception as e:
             print(e)
             yield None, None, None, None
@@ -97,8 +76,6 @@ class LiveService:
             # 하나의 로직으로 출발해서 순차적으로 종료시켜라
             self.remove_group(self.connections[user_id])
             self.connections.pop(user_id, None)
-            await self.live_rooms[room_id].remove_user(user_id)
-            await self.leave_room(access_user)
 
     def add_group(self, group_name: str, connection: LiveConnection):
         if group_name in connection.joined_groups:
@@ -132,39 +109,20 @@ class LiveService:
             return callback
         return callback_wrapper
 
-    async def create_room(self) -> str:
+    def add_room(self, room_id: str, live_room: LiveRoom):
+        live_room.set_room_id(room_id)
+        self.live_rooms[room_id] = live_room
+
+    async def create_room(self, max_player: int = 16) -> str:
         async with unit_of_work.transaction() as session:
             record = await game_rooms_repository.add(
                 session,
                 GameRooms(
                     game_id=uuid.uuid4().hex,
-                    max_player=32
+                    max_player=max_player
                 )
             )
-            return record.game_id
-
-    def add_room(self, room_id: str, live_room: LiveRoom):
-        live_room.set_room_id(room_id)
-        self.live_rooms[room_id] = live_room
-
-    async def enter_room(self, room_id: str, user_id: str) -> GameAccess:
-        async with unit_of_work.transaction() as session:
-            user = await game_access_repository.add(
-                session,
-                GameAccess(
-                    user_id=user_id,
-                    game_rooms_id=room_id
-                )
-            )
-            return user
-
-    async def leave_room(self, user: GameAccess):
-        async with unit_of_work.transaction() as session:
-            user.user_state = UserState.LEFT
-            await game_access_repository.update(
-                session,
-                user
-            )
+            return str(record.id)
 
     async def handle_system_message(self, message: LiveMessage):
         match LiveSystemEvent(message.systemEvent):
@@ -185,8 +143,6 @@ class LiveService:
                     await self.run_event_handler(LiveSystemEvent.KICK_USER, message.target)
             case LiveSystemEvent.SAVE_USER_RECORD:
                 await self.run_event_handler(LiveSystemEvent.SAVE_USER_RECORD, message.target, message.data)
-            case LiveSystemEvent.RELEASE_ROOM:
-                await self.run_event_handler(LiveSystemEvent.RELEASE_ROOM, message.room_id)
             case LiveSystemEvent.ERROR:
                 # TODO: error handling
                 # if target is None ->  send all users
@@ -207,16 +163,16 @@ class LiveService:
                         continue
                 if self.connections[user_id].adapter:
                     adapt_message = await self.connections[user_id].adapter.adapt_in(message)
-                    live_message = LiveMessage(src=user_id, room_id=room_id, data=adapt_message)
+                    live_message = LiveMessage(src=user_id, data=adapt_message)
                 else:
-                    live_message = LiveMessage(src=user_id, room_id=room_id, data=message)
+                    live_message = LiveMessage(src=user_id, data=message)
                 await self.live_rooms[room_id].on(live_message)
         except Exception as e:
             print(e, 'in publish_to_engine')
             raise e
 
-    async def subscribe_to_service(self):
-        async with self.subscribe() as service:
+    async def subscribe_to_engine(self):
+        async with self.engine.subscribe() as service:
             try:
                 async for event in service:
                     # deprecated 10.10
@@ -227,8 +183,6 @@ class LiveService:
                     elif user_connection := self.connections.get(event.target, None):
                         await self.send_personal_message(user_connection, event)
                     elif group_connections := self.group_connections.get(event.target, None):
-                        await self.send_messages(group_connections, event)
-                    elif group_connections := self.group_connections.get(event.room_id, None):
                         await self.send_messages(group_connections, event)
                     else:  # send to all
                         continue  # TODO remove handling
