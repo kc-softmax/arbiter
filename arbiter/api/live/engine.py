@@ -22,6 +22,7 @@ class LiveEngine:
     adapter_map: dict[str, Adapter] = collections.defaultdict()
     _emit_queue: asyncio.Queue = asyncio.Queue()
     live_rooms: dict[str, LiveRoom] = {}
+
     # 기존 코드
     # def __init__(self):
     #     self.adapter_map: dict[str, Adapter] = collections.defaultdict()
@@ -51,7 +52,7 @@ class LiveEngine:
                 session,
                 GameAccess(
                     user_id=user_id,
-                    game_rooms_id=room_id
+                    game_rooms_id=int(room_id)
                 )
             )
             return record

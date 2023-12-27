@@ -14,7 +14,6 @@ from arbiter.api.auth.utils import verify_token
 from arbiter.api.live.const import LiveConnectionEvent, LiveConnectionState, LiveSystemEvent
 from arbiter.api.live.data import LiveConnection, LiveMessage, LiveAdapter
 from arbiter.api.live.engine import LiveEngine
-from arbiter.api.live.room import LiveRoom
 from arbiter.api.auth.dependencies import unit_of_work
 from arbiter.api.match.models import GameRooms
 from arbiter.api.match.repository import game_rooms_repository
@@ -24,14 +23,12 @@ class LiveService:
 
     def __init__(self, engine: LiveEngine):
         self.engine = engine
-        self.live_rooms: dict[str, LiveRoom] = {}
         self.connections: dict[str, LiveConnection] = {}
         self.group_connections: dict[str,
             list[LiveConnection]] = defaultdict(list)
         # 소켓 연결, 방 입장/퇴장 등과 관련된 이벤트 핸들러들
         self.event_handlers: dict[str, Callable[[
             Any, str], Coroutine | None]] = defaultdict()
-        self._emit_queue: asyncio.Queue = asyncio.Queue()
         self.subscribe_to_engine_task: Task = asyncio.create_task(
             self.subscribe_to_engine())
 
@@ -50,12 +47,6 @@ class LiveService:
                 if user.access_token != token:
                     raise Exception("유효하지 않은 토큰입니다.")
 
-            # 매치메이커에서 리턴받은 room_id를 다시 확인할 필요가 있을까?
-            # room_id = await self.get_room(room_id)
-            if not room_id:
-                # 이용 가능한 방이 없어서 방을 생성한다(CREATE_ROOM 이벤트 호출)
-                room_id = await self.run_event_handler(LiveSystemEvent.CREATE_ROOM)
-            access_user = await self.enter_room(room_id, user_id)
             self.connections[user_id] = LiveConnection(websocket)
             # room에 들어왔을 때 DB에 추가
             user_access = await self.engine.enter_room(room_id, user_id)
@@ -113,10 +104,6 @@ class LiveService:
             return callback
         return callback_wrapper
 
-    def add_room(self, room_id: str, live_room: LiveRoom):
-        live_room.set_room_id(room_id)
-        self.live_rooms[room_id] = live_room
-
     async def create_room(self, max_player: int = 16) -> str:
         async with unit_of_work.transaction() as session:
             record = await game_rooms_repository.add(
@@ -152,9 +139,9 @@ class LiveService:
                 # if target is None ->  send all users
                 pass
 
-    async def publish_to_engine(self, websocket: WebSocket, room_id: str, user_id: str, user_name: str):
+    async def publish_to_room(self, websocket: WebSocket, room_id: str, user_id: str, user_name: str):
         # send engine to join
-        await self.live_rooms[room_id].setup_user(user_id, user_name)
+        await self.engine.setup_room_user(room_id, user_id, user_name)
         try:
             async for message in websocket.iter_bytes():
                 # block
@@ -170,15 +157,15 @@ class LiveService:
                     live_message = LiveMessage(src=user_id, data=adapt_message)
                 else:
                     live_message = LiveMessage(src=user_id, data=message)
-                await self.live_rooms[room_id].on(live_message)
+                await self.engine.on_room(room_id, live_message)
         except Exception as e:
             print(e, 'in publish_to_engine')
             raise e
 
     async def subscribe_to_engine(self):
-        async with self.engine.subscribe() as service:
+        async with self.engine.subscribe() as engine:
             try:
-                async for event in service:
+                async for event in engine:
                     # deprecated 10.10
                     # if event.target is None: # send to all
                     #     await self.send_messages(self.connections.values(), event)

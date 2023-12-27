@@ -41,7 +41,6 @@ class LiveMessage:
     data: bytes = None
     src: str = None
     target: str = None
-    room_id: str = None
     systemEvent: LiveSystemEvent = None
 
 @dataclass
