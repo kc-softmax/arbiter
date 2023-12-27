@@ -57,6 +57,8 @@ class LiveService:
                 room_id = await self.run_event_handler(LiveSystemEvent.CREATE_ROOM)
             access_user = await self.enter_room(room_id, user_id)
             self.connections[user_id] = LiveConnection(websocket)
+            # room에 들어왔을 때 DB에 추가
+            user_access = await self.engine.enter_room(room_id, user_id)
             # divide user and bot group using adapter_name
             if user.adapter:
                 self.add_group('default_bot_group', self.connections[user_id])
@@ -76,6 +78,8 @@ class LiveService:
             # 하나의 로직으로 출발해서 순차적으로 종료시켜라
             self.remove_group(self.connections[user_id])
             self.connections.pop(user_id, None)
+            # room에서 나갔을 때 DB에 추가
+            await self.engine.leave_room(user_access)
 
     def add_group(self, group_name: str, connection: LiveConnection):
         if group_name in connection.joined_groups:
