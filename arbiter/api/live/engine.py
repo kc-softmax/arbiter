@@ -7,9 +7,6 @@ from typing import AsyncIterator
 from asyncio.tasks import Task
 from contextlib import asynccontextmanager
 from arbiter.api.live.data import LiveMessage
-from arbiter.api.auth.dependencies import unit_of_work
-from arbiter.api.match.models import UserState, GameAccess
-from arbiter.api.match.repository import game_access_repository
 
 
 class Adapter:
@@ -19,63 +16,23 @@ class Adapter:
 
 class LiveEngine:
 
-    adapter_map: dict[str, Adapter] = collections.defaultdict()
-    _emit_queue: asyncio.Queue = asyncio.Queue()
-    live_rooms: dict[str, LiveRoom] = {}
+    def __init__(self):
+        self.adapter_map: dict[str, Adapter] = collections.defaultdict()
+        self._emit_queue: asyncio.Queue = asyncio.Queue()
 
-    # 기존 코드
-    # def __init__(self):
-    #     self.adapter_map: dict[str, Adapter] = collections.defaultdict()
-    #     self._emit_queue: asyncio.Queue = asyncio.Queue()
-
-    # async def setup_user(self, user_id: str, user_name: str = None):
-    #     pass
-
-    # async def remove_user(self, user_id: str, user_name: str = None):
-    #     pass
-
-    # async def on(self, message: LiveMessage):
-    #     # apply adapter ?
-    #     if message.src in self.adapter_map:
-    #         adapted_message = await self.adapter_map[message.src].adapt(message)
-    #         self._emit_queue.put_nowait(adapted_message)
-    #     else:
-    #         self._emit_queue.put_nowait(message)
-
-    # 변경 코드
-    def __init__(self, room_id: str, live_room: LiveRoom):
-        self.live_rooms[room_id] = live_room
-
-    async def enter_room(self, room_id: str, user_id: str) -> GameAccess:
-        async with unit_of_work.transaction() as session:
-            record = await game_access_repository.add(
-                session,
-                GameAccess(
-                    user_id=user_id,
-                    game_rooms_id=int(room_id)
-                )
-            )
-            return record
-
-    async def leave_room(self, user: GameAccess):
-        async with unit_of_work.transaction() as session:
-            user.user_state = UserState.LEFT
-            await game_access_repository.update(
-                session,
-                user
-            )
-
-    def release_room(self, room_id: str):
-        self.live_rooms[room_id].done_emit()
-
-    async def setup_room_user(self, room_id: str, user_id: str, user_name: str = None):
-        await self.live_rooms[room_id].setup_user(user_id, user_name)
+    async def setup_user(self, user_id: str, user_name: str = None):
+        pass
 
     async def remove_user(self, user_id: str, user_name: str = None):
         pass
 
-    async def on_room(self, room_id: str, message: LiveMessage):
-        self.live_rooms[room_id].on(message)
+    async def on(self, message: LiveMessage):
+        # apply adapter ?
+        if message.src in self.adapter_map:
+            adapted_message = await self.adapter_map[message.src].adapt(message)
+            self._emit_queue.put_nowait(adapted_message)
+        else:
+            self._emit_queue.put_nowait(message)
 
     @asynccontextmanager
     async def subscribe(self) -> AsyncIterator[LiveEngine]:
@@ -97,6 +54,7 @@ class LiveEngine:
         if item is None:
             raise Exception()
         return item
+
 
 class LiveAsyncEngine(LiveEngine):
 
@@ -134,9 +92,34 @@ class LiveAsyncEngine(LiveEngine):
         await self._emit_queue.put_nowait(None)
 
 
-class LiveRoom(LiveEngine):
+class AsyncService:
+
+    _emit_queue: asyncio.Queue = asyncio.Queue()
+
+    @asynccontextmanager
+    async def subscribe(self) -> AsyncIterator[AsyncService]:
+        try:
+            yield self
+        finally:
+            # finally check before release engine
+            pass
+
+    async def __aiter__(self) -> AsyncIterator[LiveMessage]:
+        try:
+            while True:
+                yield await self.get()
+        except Exception:
+            pass
+
+    async def get(self) -> LiveMessage:
+        item = await self._emit_queue.get()
+        if item is None:
+            raise Exception()
+        return item
+
+
+class LiveRoom(AsyncService):
     def __init__(self, room_id: str, frame_rate: int = 30):
-        super().__init__(room_id, self)
         self.room_id = room_id
         self.frame_rate = frame_rate
         self.terminate = False
@@ -154,7 +137,7 @@ class LiveRoom(LiveEngine):
         live_message.target = self.room_id
         self._emit_queue.put_nowait(live_message)
 
-    def on(self, live_message: LiveMessage):
+    async def on(self, live_message: LiveMessage):
         self._listen_queue.put_nowait(live_message)
 
     async def processing(self, live_message: list[LiveMessage]):
