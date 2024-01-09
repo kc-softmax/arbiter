@@ -19,7 +19,7 @@ if config.config_file_name is not None:
 # add your model's MetaData object here
 # for 'autogenerate' support
 import ${project_name}.model as db_models
-target_metadata = db_models.BaseSQLModel.metadata
+target_metadata = db_models.PKModel.metadata
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:

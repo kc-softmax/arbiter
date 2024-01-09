@@ -1,4 +1,3 @@
-import subprocess
 import typer
 from typing import Optional
 from alembic.config import Config as AlembicConfig
@@ -17,9 +16,9 @@ def _get_alembic_config():
 app = AsyncTyper()
     
 @app.command()
-def migrate(
+def revision(
     message: Optional[str] = typer.Option(None, "--message", "-m", help="String message to apply to the revision"),
-    autogenerate: Optional[bool] = typer.Option(False, "--autogenerate", help="Whether or not to autogenerate the script from the database"),
+    autogenerate: Optional[bool] = typer.Option(False, "--auto", help="Whether or not to autogenerate the script from the database"),
     sql: Optional[bool] = typer.Option(False, "--sql", help="Whether to dump the script out as a SQL string; when specified, the script is dumped to stdout."),
     head: Optional[str] = typer.Option("head", "--head", help="Head revision to build the new revision upon as a parent"),
     splice: Optional[bool] = typer.Option(False, "--splice", help="Whether or not the new revision should be made into a new head of its own; is required when the given ``head`` is not itself a head."),

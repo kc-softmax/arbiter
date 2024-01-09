@@ -1,5 +1,6 @@
 # DO NOT DELETE THIE LINE
-from arbiter.api.models import BaseSQLModel
+# USE IT FOR CREATE CUSTOM DATABASE TABLE
+from arbiter.api.models import PKModel, BaseSQLModel
 
 # Define your custom table.
 # Example
