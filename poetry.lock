@@ -1022,6 +1022,23 @@ pymysql = ["pymysql", "pymysql (<1)"]
 sqlcipher = ["sqlcipher3-binary"]
 
 [[package]]
+name = "sqlalchemy-json"
+version = "0.7.0"
+description = "JSON type with nested change tracking for SQLAlchemy"
+optional = false
+python-versions = ">= 3.6"
+files = [
+    {file = "sqlalchemy-json-0.7.0.tar.gz", hash = "sha256:620d0b26f648f21a8fa9127df66f55f83a5ab4ae010e5397a5c6989a08238561"},
+    {file = "sqlalchemy_json-0.7.0-py3-none-any.whl", hash = "sha256:27881d662ca18363a4ac28175cc47ea2a6f2bef997ae1159c151026b741818e6"},
+]
+
+[package.dependencies]
+sqlalchemy = ">=0.7"
+
+[package.extras]
+dev = ["pytest"]
+
+[[package]]
 name = "sqlalchemy2-stubs"
 version = "0.0.2a35"
 description = "Typing Stubs for SQLAlchemy 1.4"
@@ -1299,4 +1316,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "<4.0,>=3.10"
-content-hash = "6162289c240501721b99f6e4c36cf8c7d48f99fe748def74d29608e09242a09f"
+content-hash = "a247ea9c12a58ad2da9c5c483500c87e1620c25582ae8da4f53e04e44ba924ff"
