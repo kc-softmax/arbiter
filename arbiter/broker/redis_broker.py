@@ -1,63 +1,11 @@
-from typing import AsyncGenerator, Tuple, TypeVar, Generic, Protocol
-import redis.asyncio as aioredis
+from __future__ import annotations
+from typing import AsyncGenerator, Tuple
 import asyncio
+import redis.asyncio as aioredis
 
-from redis.asyncio.client import Redis
+from arbiter.broker.base import MessageBrokerInterface, MessageConsumerInterface, MessageProducerInterface
 
-# 추상화 모음
-T = TypeVar('T')
-
-# 메시지 브로커 클라이언트 인터페이스
-class MessageBrokerInterface(Protocol, Generic[T]):
-    client: T
-    producer: "MessageProducerInterface"
-    consumer: "MessageConsumerInterface"
-
-    def __init__(self, client: T) -> None:
-        super().__init__()
-        self.client =  client
-
-    async def connect(self):
-        raise NotImplementedError
-
-    async def disconnect(self):
-        raise NotImplementedError
-    
-    async def generate(self) -> Tuple["MessageBrokerInterface", "MessageProducerInterface", "MessageConsumerInterface"]:
-        raise NotImplementedError
-    
-    async def __aenter__(self) -> Tuple["MessageBrokerInterface", "MessageProducerInterface", "MessageConsumerInterface"]:
-        await self.connect()
-        await self.generate()
-        await self.consumer.__aenter__()
-        return self, self.producer, self.consumer
-
-    async def __aexit__(self, exc_type, exc_value, traceback):
-        await self.consumer.__aexit__()
-        await self.disconnect()
-
-# Producer 인터페이스
-class MessageProducerInterface(Generic[T]):
-    def __init__(self, client: T):
-        self.client = client
-
-    async def send(self, topic: str, message: str):
-        raise NotImplementedError
-
-# Consumer 인터페이스
-class MessageConsumerInterface(Generic[T]):
-    def __init__(self, client: T):
-        self.client = client
-
-    async def subscribe(self, topic: str):
-        raise NotImplementedError
-
-    async def listen(self) -> AsyncGenerator[str, None]:
-        raise NotImplementedError
-    
-##############################################
-# 레디스 클라이언트 설정 및 생성
-# TODO like make_async_session?
+# TODO like make_async_session??
 async_redis_connection_pool = aioredis.ConnectionPool(host="localhost")
 
 class RedisBroker(MessageBrokerInterface[aioredis.Redis]):
@@ -68,7 +16,7 @@ class RedisBroker(MessageBrokerInterface[aioredis.Redis]):
         self.client = aioredis.Redis(connection_pool=async_redis_connection_pool)
 
     async def disconnect(self):
-        await self.client.aclose()
+        await self.client.close()
     
     async def generate(self) -> Tuple[MessageBrokerInterface, MessageProducerInterface, MessageConsumerInterface]:
         self.producer = RedisMessageProducer(self.client)
@@ -80,7 +28,7 @@ class RedisMessageProducer(MessageProducerInterface[aioredis.Redis]):
         await self.client.publish(topic, message)
     
 class RedisMessageConsumer(MessageConsumerInterface[aioredis.Redis]):
-    def __init__(self, client: Redis):
+    def __init__(self, client: aioredis.Redis):
         super().__init__(client)
         self.pubsub = None
 
@@ -97,30 +45,31 @@ class RedisMessageConsumer(MessageConsumerInterface[aioredis.Redis]):
     async def __aenter__(self):
         return self
 
-    async def __aexit__(self):
+    async def __aexit__(self, exc_type, exc_value, traceback):
         if self.pubsub:
             await self.pubsub.unsubscribe()
-            await self.pubsub.aclose()
+            await self.pubsub.close()
 
+
+# asyncio task로 넣을 때
 # async def reader(consumer: MessageConsumerInterface):
 #     while True:
 #         async for message in consumer.listen():
 #             if message is not None:
 #                 print(f"(Reader) Message Received: {message}")
 #                 break
-
+            
 async def main():
     async with RedisBroker() as (broker, producer, consumer):
             await consumer.subscribe('test_channel')
             
             await producer.send('test_channel', 'Hello, Redis!')
-            
             # await asyncio.create_task(consumer.listen())
-
             async for message in consumer.listen():
                 print(f"Received message: {message}")
                 break
-    # TODO move to shutdown
+    # # TODO move to shutdown
     await async_redis_connection_pool.disconnect()
         
 asyncio.run(main())
+
