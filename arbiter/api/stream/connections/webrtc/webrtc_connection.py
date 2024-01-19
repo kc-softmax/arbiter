@@ -31,7 +31,8 @@ class ArbiterWebRTC(ArbiterConnection):
         websocket: WebSocket,
         game_user: GameUser,
     ):
-        super().__init__(websocket, game_user)
+        self.websocket: WebSocket = websocket
+        self.game_user: GameUser = game_user
         self.data_channel: RTCDataChannel = None
 
     async def run(self, callback: Callable[[StreamMessage], Coroutine]):
