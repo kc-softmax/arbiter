@@ -15,7 +15,7 @@ class AbstractService(ABC):
         consumer: MessageConsumerInterface,
         frame_rate: int = 30,  # TODO hz? some
     ):
-        self.service_id = uuid.uuid4()
+        # self.service_id = uuid.uuid4()
         self.frame_rate = frame_rate
         self.producer = producer
         self.consumer = consumer
