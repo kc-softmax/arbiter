@@ -12,7 +12,11 @@ class ArbiterWebsocket(ArbiterConnection):
 
     async def run(self, callback: Callable[[StreamMessage], Coroutine]):
         async for message in self.websocket.iter_bytes():
-            callback(StreamMessage(message, self.game_user))
+            await callback(
+                StreamMessage(
+                    self.game_user.id,
+                    message[0],
+                ))
 
     async def send_message(self, bytes: bytes):
         await self.websocket.send_bytes(bytes)
