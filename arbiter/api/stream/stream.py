@@ -12,7 +12,7 @@ from arbiter.api.auth.repository import game_uesr_repository
 from arbiter.api.auth.utils import verify_token
 from arbiter.api.stream.const import StreamSystemEvent
 from arbiter.api.stream.data import StreamMessage
-from arbiter.api.stream.connections import ArbiterWebsocket, ArbiterWebRTC
+from arbiter.api.stream.connections import ArbiterConnection, ArbiterWebsocket, ArbiterWebRTC
 from arbiter.api.dependencies import unit_of_work
 from arbiter.broker.base import MessageConsumerInterface, MessageProducerInterface
 
@@ -22,6 +22,7 @@ class ArbiterStream:
     def __init__(self):
         # 소켓 연결, 방 입장/퇴장 등과 관련된 이벤트 핸들러들
         # self.config = config
+        self.producer: MessageProducerInterface = None
         self.evnet_handlers: dict[
             str, Callable[[Any, str], Coroutine | None]] = defaultdict()
 
@@ -32,12 +33,12 @@ class ArbiterStream:
         producer: MessageProducerInterface,
         consumer: MessageConsumerInterface,
         token: str
-    ) -> Tuple[str, str]:
+    ) -> Tuple[ArbiterConnection, str, str]:
         await websocket.accept()
         try:
+            self.producer = producer
             token_data = verify_token(token)
             user_id = token_data.sub
-
             async with unit_of_work.transaction() as session:
                 user = await game_uesr_repository.get_by_id(session, int(user_id))
                 if user == None:
@@ -45,28 +46,42 @@ class ArbiterStream:
                 if user.access_token != token:
                     raise Exception("유효하지 않은 토큰입니다.")
 
-            await consumer.subscribe(user_id)
-            consumer_task = asyncio.create_task(
-                self.consume(consumer))
             connection = ArbiterWebsocket(websocket, user)
+            await consumer.subscribe(user.id)
+            await self.produce(StreamMessage(
+                user.id,
+                user.user_name,
+                event_type=StreamSystemEvent.SUBSCRIBE
+            ))
+            consumer_task = asyncio.create_task(
+                self.consume(consumer, connection))
             await self.run_event_handler(StreamSystemEvent.VALIDATE, user_id)
-            yield user_id, user.user_name
-            await connection.run(self.produce)
+            yield connection, user_id, user.user_name
             # await until connection close
         except Exception as e:
-            yield None, None
+            yield None, None, None
         finally:
+            await self.produce(StreamMessage(
+                user.id,
+                0,
+                event_type=StreamSystemEvent.UNSUBSCRIBE
+            ))
             consumer_task.cancel()
             await connection.close()
 
-    async def consume(self, consumer: MessageConsumerInterface):
+    async def consume(
+        self,
+        consumer: MessageConsumerInterface,
+        connection: ArbiterConnection
+    ):
         async for message in consumer.listen():
-            print(f"message: {message}")
-            break
+            await connection.send_message(message)
 
-    def produce(self, message: StreamMessage):
-        # message send broker
-        print(message)
+    async def produce(self, message: StreamMessage):
+        # message send broker how to define target?
+        print('produce in stream: ', message)
+        await self.producer.send('di', message.encode_pickle())
+        # print('produce in stream: ', message)
 
         # async with broker.subscribe() as messages:
         #     async for message in messages:

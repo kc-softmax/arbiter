@@ -8,25 +8,29 @@ from arbiter.broker.base import MessageBrokerInterface, MessageConsumerInterface
 # TODO like make_async_session??
 async_redis_connection_pool = aioredis.ConnectionPool(host="localhost")
 
+
 class RedisBroker(MessageBrokerInterface[aioredis.Redis]):
     def __init__(self):
         self.client: aioredis.Redis = None
 
     async def connect(self):
-        self.client = aioredis.Redis(connection_pool=async_redis_connection_pool)
+        self.client = aioredis.Redis(
+            connection_pool=async_redis_connection_pool)
 
     async def disconnect(self):
         await self.client.close()
-    
+
     async def generate(self) -> Tuple[MessageBrokerInterface, MessageProducerInterface, MessageConsumerInterface]:
         self.producer = RedisMessageProducer(self.client)
         self.consumer = RedisMessageConsumer(self.client)
         return self, self.producer, self.consumer
 
+
 class RedisMessageProducer(MessageProducerInterface[aioredis.Redis]):
     async def send(self, topic: str, message: str):
         await self.client.publish(topic, message)
-    
+
+
 class RedisMessageConsumer(MessageConsumerInterface[aioredis.Redis]):
     def __init__(self, client: aioredis.Redis):
         super().__init__(client)
@@ -38,7 +42,7 @@ class RedisMessageConsumer(MessageConsumerInterface[aioredis.Redis]):
 
     async def listen(self) -> AsyncGenerator[str, None]:
         async for message in self.pubsub.listen():
-            print(f"(Reader) Message Received: {message}")
+            # print(f"(Reader) Message Received: {message}")
             if message['type'] == 'message':
                 yield message['data']
 
@@ -58,18 +62,17 @@ class RedisMessageConsumer(MessageConsumerInterface[aioredis.Redis]):
 #             if message is not None:
 #                 print(f"(Reader) Message Received: {message}")
 #                 break
-            
+
 async def main():
     async with RedisBroker() as (broker, producer, consumer):
-            await consumer.subscribe('test_channel')
-            
-            await producer.send('test_channel', 'Hello, Redis!')
-            # await asyncio.create_task(consumer.listen())
-            async for message in consumer.listen():
-                print(f"Received message: {message}")
-                break
+        await consumer.subscribe('test_channel')
+
+        await producer.send('test_channel', 'Hello, Redis!')
+        # await asyncio.create_task(consumer.listen())
+        async for message in consumer.listen():
+            print(f"Received message: {message}")
+            break
     # # TODO move to shutdown
     await async_redis_connection_pool.disconnect()
-        
-asyncio.run(main())
 
+# asyncio.run(main())
