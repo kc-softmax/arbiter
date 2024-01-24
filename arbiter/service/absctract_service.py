@@ -71,12 +71,18 @@ class AbstractService(ABC):
             await self.update_message(message)
             self.unused_time = 0
 
+    def consume_task_done_callback(self, task:asyncio.Task[None]):
+        exception = task.exception()
+        if exception:
+            print(f"[Service Exception] {exception}")
+
     async def producing(self, topic: str, data: bytes):
         # print('produce in service: ', topic, len(data))
         await self.producer.send(topic, data)
 
     async def __aenter__(self):
         self.consuming_task = asyncio.create_task(self.consume())
+        self.consuming_task.add_done_callback(self.consume_task_done_callback)
         return self
 
     async def __aexit__(self, exc_type, exc_value, traceback):
