@@ -1,24 +1,26 @@
 from __future__ import annotations
-from typing import AsyncGenerator, Tuple, TypeVar, Generic, Protocol
+from abc import ABC, abstractmethod
+from typing import Any, AsyncGenerator, Tuple, TypeVar, Generic
 
 T = TypeVar('T')
 
 # 메시지 브로커 클라이언트 인터페이스
-class MessageBrokerInterface(Protocol, Generic[T]):
-    client: T
-    producer: MessageProducerInterface
-    consumer: MessageConsumerInterface
-
+class MessageBrokerInterface(ABC, Generic[T]):
     def __init__(self, client: T) -> None:
         super().__init__()
         self.client =  client
+        self.producer = None
+        self.consumer = None
 
+    @abstractmethod
     async def connect(self):
         raise NotImplementedError
-
+    
+    @abstractmethod
     async def disconnect(self):
         raise NotImplementedError
     
+    @abstractmethod
     async def generate(self) -> Tuple[MessageBrokerInterface, MessageProducerInterface, MessageConsumerInterface]:
         raise NotImplementedError
     
@@ -35,11 +37,12 @@ class MessageBrokerInterface(Protocol, Generic[T]):
         await self.disconnect()
 
 # Producer 인터페이스
-class MessageProducerInterface(Generic[T]):
+class MessageProducerInterface(ABC, Generic[T]):
     def __init__(self, client: T):
         self.client = client
 
-    async def send(self, topic: str, message: str):
+    @abstractmethod
+    async def send(self, topic: str, message: Any):
         raise NotImplementedError
     
     async def __aenter__(self):
@@ -49,14 +52,16 @@ class MessageProducerInterface(Generic[T]):
         pass
 
 # Consumer 인터페이스
-class MessageConsumerInterface(Generic[T]):
+class MessageConsumerInterface(ABC, Generic[T]):
     def __init__(self, client: T):
         self.client = client
 
+    @abstractmethod
     async def subscribe(self, topic: str):
         raise NotImplementedError
 
-    async def listen(self) -> AsyncGenerator[str, None]:
+    @abstractmethod
+    def listen(self) -> AsyncGenerator[Any, None]:
         raise NotImplementedError
     
     async def __aenter__(self):
