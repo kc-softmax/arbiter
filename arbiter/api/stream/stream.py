@@ -6,8 +6,6 @@ from fastapi import Query, WebSocket
 from fastapi.websockets import WebSocketState
 from arbiter.api.auth.repository import game_uesr_repository
 from arbiter.api.auth.utils import verify_token
-from arbiter.api.stream.const import StreamSystemEvent
-from arbiter.api.stream.data import StreamMessage
 from arbiter.api.dependencies import unit_of_work
 from arbiter.broker.base import MessageConsumerInterface, MessageProducerInterface
 from arbiter.broker.redis_broker import RedisBroker
@@ -143,6 +141,8 @@ StreamSystemCallback = Callable[[StreamMeta], Awaitable[None]]
 ServiceMessageReceiveCallback = Callable[[StreamMeta, ServiceMessage], Awaitable[None]]
 # 유저 메시지 콜백 타입
 UserMessageReceiveCallback = Callable[[StreamMeta, bytes], Awaitable[None]]
+# 에러 콜백 타입
+BackgroundErrorCallback = Callable[[Exception, None], Awaitable[None]]
 
 class ArbiterStream2:
     def __init__(self, path:str) -> None:
@@ -152,6 +152,7 @@ class ArbiterStream2:
         self.close_callback: StreamSystemCallback = None
         self.service_receive_callback: ServiceMessageReceiveCallback = None
         self.user_receive_callback: UserMessageReceiveCallback = None
+        self.background_error_callback: BackgroundErrorCallback | None = None
     
     async def _consume(self, 
                        websocket: WebSocket, 
@@ -159,16 +160,24 @@ class ArbiterStream2:
                        consumer: MessageConsumerInterface):
         async for message in consumer.listen():
             await websocket.send_bytes(message)
-            # TODO 멈춤
-            # await self.service_receive_callback(
-            #     StreamMeta(
-            #         websocket=websocket,
-            #         topic=self.topic,
-            #         producer=producer,
-            #         consumer=consumer
-            #     ),
-            #     ServiceMessage()
-            # )
+            await self.service_receive_callback(
+                StreamMeta(
+                    websocket=websocket,
+                    topic=self.topic,
+                    producer=producer,
+                    consumer=consumer
+                ),
+                ServiceMessage(
+                    message=message
+                )
+            )
+
+    async def _monitor_background_task(self, task: asyncio.Task):
+        try:
+            await task
+        except Exception as e:
+            if self.background_error_callback:
+                await self.background_error_callback(e)
 
     async def _websocket_endpoint(self, websocket: WebSocket, token:str= Query()):
         async with RedisBroker() as (broker, producer, consumer):                              
@@ -194,6 +203,9 @@ class ArbiterStream2:
                         producer=producer,
                         consumer=consumer
                     ))
+                monitor_task = asyncio.create_task(
+                    self._monitor_background_task(consume_task)
+                )
 
                 stream_meta = StreamMeta(
                     websocket=websocket,
@@ -212,13 +224,17 @@ class ArbiterStream2:
                         stream_meta,
                         websocket_message
                     )
+            except Exception as e:
+                print(f"[Stream Error] {e}")
             finally:
+                # 연결 종료 콜백 실행
+                await self.close_callback(stream_meta)
                 if consume_task is not None:
                     consume_task.cancel()
+                if monitor_task is not None:
+                    monitor_task.cancel()
                 if (websocket.state is WebSocketState.CONNECTED):
                     await websocket.close()
-                # 연결 종료 콜백 실행
-                    await self.close_callback(stream_meta)
 
     def start(self):
         @arbiterApp.websocket(self.path)
@@ -239,4 +255,8 @@ class ArbiterStream2:
     
     def on_user_message_receive(self, callback: UserMessageReceiveCallback) -> UserMessageReceiveCallback:
         self.user_receive_callback= callback
+        return callback
+
+    def on_background_error(self, callback: BackgroundErrorCallback) -> BackgroundErrorCallback:
+        self.background_error_callback= callback
         return callback
