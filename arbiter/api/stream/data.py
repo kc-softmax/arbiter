@@ -1,9 +1,7 @@
 from __future__ import annotations
 import json
 import pickle
-import dataclasses
 from dataclasses import dataclass
-from arbiter.api.auth.models import GameUser
 from arbiter.api.stream.const import StreamSystemEvent
 
 

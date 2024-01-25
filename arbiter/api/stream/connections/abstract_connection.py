@@ -12,13 +12,11 @@ class ArbiterConnection(ABC):
     def __init__(
         self,
         websocket: WebSocket,
-        game_user: GameUser,
     ):
         self.websocket: WebSocket = websocket
-        self.game_user: GameUser = game_user
 
     @abstractmethod
-    async def run(self, callback: Callable[[StreamMessage], Coroutine]):
+    async def run(self):
         """
         Frameworks expecting callback functions of specific signatures 
         might be type hinted using Callable[[Arg1Type, Arg2Type], ReturnType].
