@@ -1,11 +1,8 @@
-import uuid
 import timeit
 import asyncio
-import collections
 from abc import ABC, abstractmethod
 from arbiter.api.stream.data import StreamMessage, StreamSystemEvent
 from arbiter.broker.base import MessageConsumerInterface, MessageProducerInterface
-
 
 class AbstractService(ABC):
 
