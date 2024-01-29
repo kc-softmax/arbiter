@@ -1,14 +1,11 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import Any, AsyncGenerator, Tuple, TypeVar, Generic
-
-T = TypeVar('T')
+from typing import Any, AsyncGenerator, Tuple
 
 # 메시지 브로커 클라이언트 인터페이스
-class MessageBrokerInterface(ABC, Generic[T]):
-    def __init__(self, client: T) -> None:
+class MessageBrokerInterface(ABC):
+    def __init__(self) -> None:
         super().__init__()
-        self.client =  client
         self.producer = None
         self.consumer = None
 
@@ -37,9 +34,7 @@ class MessageBrokerInterface(ABC, Generic[T]):
         await self.disconnect()
 
 # Producer 인터페이스
-class MessageProducerInterface(ABC, Generic[T]):
-    def __init__(self, client: T):
-        self.client = client
+class MessageProducerInterface(ABC):
 
     @abstractmethod
     async def send(self, topic: str, message: Any):
@@ -52,9 +47,7 @@ class MessageProducerInterface(ABC, Generic[T]):
         pass
 
 # Consumer 인터페이스
-class MessageConsumerInterface(ABC, Generic[T]):
-    def __init__(self, client: T):
-        self.client = client
+class MessageConsumerInterface(ABC):
 
     @abstractmethod
     async def subscribe(self, topic: str):
