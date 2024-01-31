@@ -95,28 +95,40 @@ class ArbiterStream:
                     self._monitor_background_task(consume_task)
                 )
 
-                stream_meta = StreamMeta(
+                # 연결 완료 콜백 실행
+                await self.start_callback(
+                    StreamMeta(
                     connection=self.connection,
                     topic=self.topic,
                     producer=producer,
-                    consumer=consumer
+                    consumer=consumer,
+                    )
                 )
-
-                # 연결 완료 콜백 실행
-                await self.start_callback(stream_meta)
 
                 # 유저 메시지 대기
                 async for websocket_message in self.connection.run():
                     # 유저 메시지를 받으면 유저 메시지 콜백 실행
                     await self.user_receive_callback(
-                        stream_meta,
+                        StreamMeta(
+                            connection=self.connection,
+                            topic=self.topic,
+                            producer=producer,
+                            consumer=consumer,
+                        ),
                         websocket_message
                     )
             except Exception as e:
                 print(f"[Stream Error] {e}")
             finally:
                 # 연결 종료 콜백 실행
-                await self.close_callback(stream_meta)
+                await self.close_callback(                   
+                    StreamMeta(
+                        connection=self.connection,
+                        topic=self.topic,
+                        producer=producer,
+                        consumer=consumer,
+                    ),
+                )
                 if consume_task is not None:
                     consume_task.cancel()
                 if monitor_task is not None:
