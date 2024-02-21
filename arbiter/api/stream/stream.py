@@ -29,6 +29,8 @@ class ServiceMessage:
 StreamSystemCallback = Callable[[StreamMeta, str | None], Awaitable[None]]
 # 브로커 메시지 콜백 타입
 ServiceMessageReceiveCallback = Callable[[StreamMeta, ServiceMessage, str | None], Awaitable[None]]
+# 브로커 메시지 인터셉트 콜백
+ServiceMessageInterceptCallback = Callable[[StreamMeta, ServiceMessage, str | None], Awaitable[None]]
 # 유저 메시지 콜백 타입
 UserMessageReceiveCallback = Callable[[StreamMeta, bytes, str | None], Awaitable[None]]
 # 에러 콜백 타입
@@ -41,7 +43,7 @@ class ArbiterStream:
         self.connected_service_ids: dict = {}
         self.socket_connect_callback: StreamSystemCallback = None
         self.socket_close_callback: StreamSystemCallback = None
-        self.service_connect_callback: StreamSystemCallback = None
+        self.service_intercept_callback: ServiceMessageInterceptCallback = None
         self.service_receive_callback: ServiceMessageReceiveCallback = None
         self.user_receive_callback: UserMessageReceiveCallback = None
         self.background_error_callback: BackgroundErrorCallback | None = None
@@ -51,22 +53,26 @@ class ArbiterStream:
                        connection: ArbiterConnection,
                        producer: MessageProducerInterface,
                        consumer: MessageConsumerInterface):
-        connected_service_id = self.connected_service_ids.get(user_id)
         async for message in consumer.listen():
-            if connected_service_id is None:
-                connected_service_id = message
-                self.connected_service_ids[user_id] = message
-                # 연결 완료 콜백 실행
-                await self.service_connect_callback(
+            connected_service_id = self.connected_service_ids.get(user_id)
+            is_continue = False
+            if self.service_intercept_callback:
+                is_continue = await self.service_intercept_callback(
                     StreamMeta(
-                        connection=connection,
-                        topic=user_id,
-                        producer=producer,
-                        consumer=consumer,
-                    ),
-                    connected_service_id,
+                            connection=connection,
+                            topic=user_id,
+                            producer=producer,
+                            consumer=consumer,
+                        ),
+                        ServiceMessage(
+                            message=message
+                        ),
+                        connected_service_id,
                 )
             else:
+                is_continue = True
+
+            if is_continue and connected_service_id is not None:            
                 await connection.send_message(message)
                 await self.service_receive_callback(
                     StreamMeta(
@@ -172,14 +178,14 @@ class ArbiterStream:
         self.socket_close_callback = callback
         return callback
 
-    def on_service_connect(self, callback: StreamSystemCallback) -> StreamSystemCallback:
-        self.service_connect_callback = callback
-        return callback
-
     def on_service_message_receive(self, callback: ServiceMessageReceiveCallback) -> ServiceMessageReceiveCallback:
         self.service_receive_callback = callback
         return callback
 
+    def on_service_message_intercept(self, callback: ServiceMessageInterceptCallback) -> ServiceMessageInterceptCallback:
+        self.service_intercept_callback = callback
+        return callback
+    
     def on_user_message_receive(self, callback: UserMessageReceiveCallback) -> UserMessageReceiveCallback:
         self.user_receive_callback = callback
         return callback
