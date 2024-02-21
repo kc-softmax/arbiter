@@ -23,11 +23,11 @@ class StreamMeta:
 class ServiceMessage:
     message: any
 
-StreamSystemCallback = Callable[[StreamMeta], Awaitable[None]]
+StreamSystemCallback = Callable[[StreamMeta, str | None], Awaitable[None]]
 # 브로커 메시지 콜백 타입
 ServiceMessageReceiveCallback = Callable[[StreamMeta, ServiceMessage], Awaitable[None]]
 # 유저 메시지 콜백 타입
-UserMessageReceiveCallback = Callable[[StreamMeta, bytes], Awaitable[None]]
+UserMessageReceiveCallback = Callable[[StreamMeta, bytes, str | None], Awaitable[None]]
 # 에러 콜백 타입
 BackgroundErrorCallback = Callable[[Exception, None], Awaitable[None]]
 
@@ -35,6 +35,9 @@ class ArbiterStream:
     def __init__(self, path: str) -> None:
         self.path: str = path
         self.topic: str = None
+        # TODO 스트림은 여러 서비스와 연결될 수 있다.
+        # 그것에 대응할 수 있는 방법으로 변경해야 한다.
+        self.conected_service_id: str = None
         self.connection: ArbiterConnection = None
         self.start_callback: StreamSystemCallback = None
         self.close_callback: StreamSystemCallback = None
@@ -46,18 +49,31 @@ class ArbiterStream:
                        producer: MessageProducerInterface, 
                        consumer: MessageConsumerInterface):
         async for message in consumer.listen():
-            await self.connection.send_message(message)
-            await self.service_receive_callback(
-                StreamMeta(
+            if self.conected_service_id is None:
+                self.conected_service_id = message
+                # 연결 완료 콜백 실행
+                await self.start_callback(
+                    StreamMeta(
                     connection=self.connection,
                     topic=self.topic,
                     producer=producer,
-                    consumer=consumer
-                ),
-                ServiceMessage(
-                    message=message
+                    consumer=consumer,
+                    ),
+                    self.conected_service_id,
                 )
-            )
+            else:
+                await self.connection.send_message(message)
+                await self.service_receive_callback(
+                    StreamMeta(
+                        connection=self.connection,
+                        topic=self.topic,
+                        producer=producer,
+                        consumer=consumer
+                    ),
+                    ServiceMessage(
+                        message=message
+                    )
+                )
 
     async def _monitor_background_task(self, task: asyncio.Task):
         try:
@@ -95,16 +111,13 @@ class ArbiterStream:
                     self._monitor_background_task(consume_task)
                 )
 
-                # 연결 완료 콜백 실행
-                await self.start_callback(
-                    StreamMeta(
-                    connection=self.connection,
-                    topic=self.topic,
-                    producer=producer,
-                    consumer=consumer,
-                    )
-                )
-
+                import json
+                await producer.send('matchmaker', json.dumps({
+                    "from": self.topic,
+                    "service_id": None,
+                    "event": "request",
+                    }).encode())
+                
                 # 유저 메시지 대기
                 async for websocket_message in self.connection.run():
                     # 유저 메시지를 받으면 유저 메시지 콜백 실행
@@ -115,7 +128,8 @@ class ArbiterStream:
                             producer=producer,
                             consumer=consumer,
                         ),
-                        websocket_message
+                        websocket_message,
+                        self.conected_service_id,
                     )
             except Exception as e:
                 print(f"[Stream Error] {e}")
@@ -128,6 +142,7 @@ class ArbiterStream:
                         producer=producer,
                         consumer=consumer,
                     ),
+                    self.conected_service_id,
                 )
                 if consume_task is not None:
                     consume_task.cancel()
