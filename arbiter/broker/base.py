@@ -54,6 +54,10 @@ class MessageConsumerInterface(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    async def unsubscribe(self, topic: str):
+        raise NotImplementedError
+    
+    @abstractmethod
     def listen(self) -> AsyncGenerator[Any, None]:
         raise NotImplementedError
     

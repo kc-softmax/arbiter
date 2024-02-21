@@ -1,8 +1,10 @@
+from asyncio import exceptions
 import timeit
 import asyncio
 from abc import ABC, abstractmethod
 from arbiter.api.stream.data import StreamMessage, StreamSystemEvent
 from arbiter.broker.base import MessageConsumerInterface, MessageProducerInterface
+
 
 class AbstractService(ABC):
 
@@ -12,7 +14,6 @@ class AbstractService(ABC):
         consumer: MessageConsumerInterface,
         frame_rate: int = 30,  # TODO hz? some
     ):
-        # self.service_id = uuid.uuid4()
         self.frame_rate = frame_rate
         self.producer = producer
         self.consumer = consumer
@@ -37,7 +38,7 @@ class AbstractService(ABC):
         pass
 
     @abstractmethod
-    async def processing(self):
+    async def processing(self) -> bool:
         pass
 
     async def start(self):
@@ -46,7 +47,9 @@ class AbstractService(ABC):
         while True:
             waiting_time > 0 and await asyncio.sleep(waiting_time)
             turn_start_time = timeit.default_timer()
-            await self.processing()
+            is_continue = await self.processing()
+            if is_continue is False:
+                return
             elapsed_time = timeit.default_timer() - turn_start_time
             waiting_time = time_interval - elapsed_time
             self.unused_time += waiting_time
@@ -55,23 +58,26 @@ class AbstractService(ABC):
         await self.consumer.subscribe(self.service_id)
         async for message in self.consumer.listen():
             message = StreamMessage.decode_pickle(message)
-            print('consume in service: ', message)
+            print(f'consume in service #{self.service_id}: ', message)
             match message.event_type:
                 case StreamSystemEvent.SUBSCRIBE:
+                    print(f'subscribe in service #{self.service_id}:', message.user_id)
                     await self.subscribe(message.user_id, message.data)
                     continue
                 case StreamSystemEvent.UNSUBSCRIBE:
-                    print('unsubscribe', message.user_id)
+                    print(f'unsubscribe in service #{self.service_id}:', message.user_id)
                     await self.unsubscribe(message.user_id)
                     continue
 
             await self.update_message(message)
             self.unused_time = 0
 
-    def consume_task_done_callback(self, task:asyncio.Task[None]):
-        exception = task.exception()
-        if exception:
-            print(f"[Service Exception] {exception}")
+    def consume_task_done_callback(self, task: asyncio.Task[None]):
+        try:
+            exception = task.exception()
+            print(f"[{self.service_id}] {exception}")
+        except exceptions.CancelledError:
+            pass
 
     async def producing(self, topic: str, data: bytes):
         # print('produce in service: ', topic, len(data))
@@ -85,4 +91,6 @@ class AbstractService(ABC):
     async def __aexit__(self, exc_type, exc_value, traceback):
         await self.stop()
         self.consuming_task.cancel()
-        await self.consuming_task
+        await self.consumer.unsubscribe(self.service_id)
+        # await self.consuming_task
+        print(f"[{self.service_id}] DONE!!")

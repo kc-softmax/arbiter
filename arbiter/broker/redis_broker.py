@@ -41,6 +41,10 @@ class RedisMessageConsumer(MessageConsumerInterface):
         self.pubsub = self.client.pubsub()
         await self.pubsub.subscribe(topic)
 
+    async def unsubscribe(self, topic: str):
+        if self.pubsub is not None:
+            await self.pubsub.unsubscribe(topic)
+
     async def listen(self) -> AsyncGenerator[str, None]:
         async for message in self.pubsub.listen():
             # print(f"(Reader) Message Received: {message}")
