@@ -11,6 +11,7 @@ from arbiter.broker.base import MessageConsumerInterface, MessageProducerInterfa
 from arbiter.broker.redis_broker import RedisBroker
 from arbiter.api import arbiterApp
 
+
 @dataclass(kw_only=True)
 class StreamMeta:
     connection: ArbiterConnection
@@ -18,61 +19,66 @@ class StreamMeta:
     producer: MessageProducerInterface
     consumer: MessageConsumerInterface
 
+
 # temp
 @dataclass(kw_only=True)
 class ServiceMessage:
     message: any
 
+
 StreamSystemCallback = Callable[[StreamMeta, str | None], Awaitable[None]]
 # 브로커 메시지 콜백 타입
-ServiceMessageReceiveCallback = Callable[[StreamMeta, ServiceMessage], Awaitable[None]]
+ServiceMessageReceiveCallback = Callable[[StreamMeta, ServiceMessage, str | None], Awaitable[None]]
 # 유저 메시지 콜백 타입
 UserMessageReceiveCallback = Callable[[StreamMeta, bytes, str | None], Awaitable[None]]
 # 에러 콜백 타입
 BackgroundErrorCallback = Callable[[Exception, None], Awaitable[None]]
 
+
 class ArbiterStream:
     def __init__(self, path: str) -> None:
         self.path: str = path
-        self.topic: str = None
-        # TODO 스트림은 여러 서비스와 연결될 수 있다.
-        # 그것에 대응할 수 있는 방법으로 변경해야 한다.
-        self.conected_service_id: str = None
-        self.connection: ArbiterConnection = None
-        self.start_callback: StreamSystemCallback = None
-        self.close_callback: StreamSystemCallback = None
+        self.connected_service_ids: dict = {}
+        self.socket_connect_callback: StreamSystemCallback = None
+        self.socket_close_callback: StreamSystemCallback = None
+        self.service_connect_callback: StreamSystemCallback = None
         self.service_receive_callback: ServiceMessageReceiveCallback = None
         self.user_receive_callback: UserMessageReceiveCallback = None
         self.background_error_callback: BackgroundErrorCallback | None = None
-    
-    async def _consume(self, 
-                       producer: MessageProducerInterface, 
+
+    async def _consume(self,
+                       user_id: str,
+                       connection: ArbiterConnection,
+                       producer: MessageProducerInterface,
                        consumer: MessageConsumerInterface):
+        connected_service_id = self.connected_service_ids.get(user_id)
         async for message in consumer.listen():
-            if self.conected_service_id is None:
-                self.conected_service_id = message
+            if connected_service_id is None:
+                connected_service_id = message
+                self.connected_service_ids[user_id] = message
                 # 연결 완료 콜백 실행
-                await self.start_callback(
+                await self.service_connect_callback(
                     StreamMeta(
-                    connection=self.connection,
-                    topic=self.topic,
-                    producer=producer,
-                    consumer=consumer,
+                        connection=connection,
+                        topic=user_id,
+                        producer=producer,
+                        consumer=consumer,
                     ),
-                    self.conected_service_id,
+                    connected_service_id,
                 )
             else:
-                await self.connection.send_message(message)
+                await connection.send_message(message)
                 await self.service_receive_callback(
                     StreamMeta(
-                        connection=self.connection,
-                        topic=self.topic,
+                        connection=connection,
+                        topic=user_id,
                         producer=producer,
                         consumer=consumer
                     ),
                     ServiceMessage(
                         message=message
-                    )
+                    ),
+                    connected_service_id,
                 )
 
     async def _monitor_background_task(self, task: asyncio.Task):
@@ -80,13 +86,11 @@ class ArbiterStream:
             await task
         except Exception as e:
             if self.background_error_callback:
-                await self.background_error_callback(e)
+                self.background_error_callback(e)
 
-    async def _websocket_endpoint(self, token:str= Query()):
-        assert self.connection is not None
-
+    async def _websocket_endpoint(self, token: str, connection: ArbiterConnection):
         async with RedisBroker() as (broker, producer, consumer):
-            await self.connection.websocket.accept()   
+            await connection.websocket.accept()
             try:
                 token_data = verify_token(token)
                 user_id = token_data.sub
@@ -97,82 +101,89 @@ class ArbiterStream:
                         raise Exception("유저를 찾을 수 없습니다.")
                     if user.access_token != token:
                         raise Exception("유효하지 않은 토큰입니다.")
-                
-                # 자신 토픽 id 등록
-                self.topic = user_id
-                # 자신 토픽 id 구독
-                await consumer.subscribe(self.topic)
+
+                await consumer.subscribe(user_id)
+
                 consume_task = asyncio.create_task(
                     self._consume(
+                        user_id,
+                        connection,
                         producer=producer,
-                        consumer=consumer
+                        consumer=consumer,
                     ))
                 monitor_task = asyncio.create_task(
                     self._monitor_background_task(consume_task)
                 )
 
-                import json
-                await producer.send('matchmaker', json.dumps({
-                    "from": self.topic,
-                    "service_id": None,
-                    "event": "request",
-                    }).encode())
-                
+                # 소켓 연결 완료 콜백 실행
+                await self.socket_connect_callback(
+                    StreamMeta(
+                        connection=connection,
+                        topic=user_id,
+                        producer=producer,
+                        consumer=consumer,
+                    ),
+                    None,
+                )
+
                 # 유저 메시지 대기
-                async for websocket_message in self.connection.run():
+                async for websocket_message in connection.run():
                     # 유저 메시지를 받으면 유저 메시지 콜백 실행
                     await self.user_receive_callback(
                         StreamMeta(
-                            connection=self.connection,
-                            topic=self.topic,
+                            connection=connection,
+                            topic=user_id,
                             producer=producer,
                             consumer=consumer,
                         ),
                         websocket_message,
-                        self.conected_service_id,
+                        self.connected_service_ids.get(user_id),
                     )
             except Exception as e:
                 print(f"[Stream Error] {e}")
             finally:
+                service_id = self.connected_service_ids.pop(user_id)
                 # 연결 종료 콜백 실행
-                await self.close_callback(                   
+                await self.socket_close_callback(
                     StreamMeta(
-                        connection=self.connection,
-                        topic=self.topic,
+                        connection=connection,
+                        topic=user_id,
                         producer=producer,
                         consumer=consumer,
                     ),
-                    self.conected_service_id,
+                    service_id,
                 )
                 if consume_task is not None:
                     consume_task.cancel()
                 if monitor_task is not None:
                     monitor_task.cancel()
-                self.connection.close()
+                await connection.close()
 
     def start(self):
         @arbiterApp.websocket(self.path)
-        async def add_stream(websocket: WebSocket, token:str= Query()):
-            # 지금은 websocket connection 단일
-            self.connection = ArbiterWebsocket(websocket)
-            await self._websocket_endpoint(token)
+        async def add_stream(websocket: WebSocket, token: str = Query()):
+            await self._websocket_endpoint(token, ArbiterWebsocket(websocket))
 
-    def on_start(self, callback: StreamSystemCallback) -> StreamSystemCallback:
-        self.start_callback = callback
+    def on_socket_connect(self, callback: StreamSystemCallback) -> StreamSystemCallback:
+        self.socket_connect_callback = callback
         return callback
 
-    def on_close(self, callback: StreamSystemCallback) -> StreamSystemCallback:
-        self.close_callback = callback
+    def on_socket_close(self, callback: StreamSystemCallback) -> StreamSystemCallback:
+        self.socket_close_callback = callback
         return callback
-    
+
+    def on_service_connect(self, callback: StreamSystemCallback) -> StreamSystemCallback:
+        self.service_connect_callback = callback
+        return callback
+
     def on_service_message_receive(self, callback: ServiceMessageReceiveCallback) -> ServiceMessageReceiveCallback:
         self.service_receive_callback = callback
         return callback
-    
+
     def on_user_message_receive(self, callback: UserMessageReceiveCallback) -> UserMessageReceiveCallback:
-        self.user_receive_callback= callback
+        self.user_receive_callback = callback
         return callback
 
     def on_background_error(self, callback: BackgroundErrorCallback) -> BackgroundErrorCallback:
-        self.background_error_callback= callback
+        self.background_error_callback = callback
         return callback
