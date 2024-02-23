@@ -1,8 +1,8 @@
 from __future__ import annotations
 from typing import AsyncGenerator, Tuple
+from arbiter.broker.base import MessageBrokerInterface, MessageConsumerInterface, MessageProducerInterface
 import redis.asyncio as aioredis
 
-from arbiter.broker.base import MessageBrokerInterface, MessageConsumerInterface, MessageProducerInterface
 
 class RedisBroker(MessageBrokerInterface):
     def __init__(self):

@@ -75,7 +75,7 @@ class AbstractService(ABC):
     def consume_task_done_callback(self, task: asyncio.Task[None]):
         try:
             exception = task.exception()
-            print(f"[{self.service_id}] {exception}")
+            print(f"[{self.service_id}] Exception: {exception}")
         except exceptions.CancelledError:
             pass
 
@@ -90,7 +90,8 @@ class AbstractService(ABC):
 
     async def __aexit__(self, exc_type, exc_value, traceback):
         await self.stop()
-        self.consuming_task.cancel()
         await self.consumer.unsubscribe(self.service_id)
         # await self.consuming_task
+        if not self.consuming_task.done():
+            self.consuming_task.cancel()
         print(f"[{self.service_id}] DONE!!")
