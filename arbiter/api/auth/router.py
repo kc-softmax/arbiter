@@ -144,7 +144,10 @@ async def signup_guest(
     response_model=AuthSchemas.GamerUserSchema
 )
 # Temp 게임 테스터 게이머 가입 및 로그인
-async def login_user_name(data: AuthSchemas.GamerUserLoginByUserName, session: AsyncSession = Depends(unit_of_work)):    
+async def login_user_name(data: AuthSchemas.GamerUserLoginByUserName, session: AsyncSession = Depends(unit_of_work)): 
+    if data.user_name is None or not data.user_name.strip():
+        raise AuthExceptions.BadRequest
+    
     user = await game_uesr_repository.get_one_by(session, user_name=data.user_name)
     if user == None:
         """
