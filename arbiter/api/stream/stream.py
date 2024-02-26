@@ -3,6 +3,7 @@ import asyncio
 from dataclasses import dataclass
 from typing import Awaitable, Callable
 from fastapi import Query, WebSocket
+from fastapi.datastructures import QueryParams
 from arbiter.api.auth.repository import game_uesr_repository
 from arbiter.api.auth.utils import verify_token
 from arbiter.api.dependencies import unit_of_work
@@ -11,6 +12,13 @@ from arbiter.broker.base import MessageConsumerInterface, MessageProducerInterfa
 from arbiter.broker.redis_broker import RedisBroker
 from arbiter.api import arbiterApp
 
+
+def extra_query_params(query_params: QueryParams) -> dict:
+    extraParams = {}
+    for k in query_params.keys():
+        if k != 'token':
+            extraParams[k] = query_params[k]
+    return extraParams
 
 @dataclass(kw_only=True)
 class StreamMeta:
@@ -26,7 +34,7 @@ class ServiceMessage:
     message: any
 
 
-StreamSystemCallback = Callable[[StreamMeta, str | None], Awaitable[None]]
+StreamSystemCallback = Callable[[StreamMeta, str | None, dict | None], Awaitable[None]]
 # 브로커 메시지 콜백 타입
 ServiceMessageReceiveCallback = Callable[[StreamMeta, ServiceMessage, str | None], Awaitable[None]]
 # 브로커 메시지 인터셉트 콜백
@@ -59,20 +67,20 @@ class ArbiterStream:
             if self.service_intercept_callback:
                 is_continue = await self.service_intercept_callback(
                     StreamMeta(
-                            connection=connection,
-                            topic=user_id,
-                            producer=producer,
-                            consumer=consumer,
-                        ),
-                        ServiceMessage(
-                            message=message
-                        ),
-                        connected_service_id,
+                        connection=connection,
+                        topic=user_id,
+                        producer=producer,
+                        consumer=consumer,
+                    ),
+                    ServiceMessage(
+                        message=message
+                    ),
+                    connected_service_id,
                 )
             else:
                 is_continue = True
 
-            if is_continue and connected_service_id is not None:            
+            if is_continue and connected_service_id is not None:
                 await connection.send_message(message)
                 await self.service_receive_callback(
                     StreamMeta(
@@ -94,7 +102,7 @@ class ArbiterStream:
             if self.background_error_callback:
                 self.background_error_callback(e)
 
-    async def _websocket_endpoint(self, token: str, connection: ArbiterConnection):
+    async def _websocket_endpoint(self, token: str, extra: dict, connection: ArbiterConnection):
         async with RedisBroker() as (broker, producer, consumer):
             await connection.websocket.accept()
             try:
@@ -107,7 +115,7 @@ class ArbiterStream:
                         raise Exception("유저를 찾을 수 없습니다.")
                     if user.access_token != token:
                         raise Exception("유효하지 않은 토큰입니다.")
-
+                    
                 await consumer.subscribe(user_id)
 
                 consume_task = asyncio.create_task(
@@ -130,6 +138,7 @@ class ArbiterStream:
                         consumer=consumer,
                     ),
                     None,
+                    extra,
                 )
 
                 # 유저 메시지 대기
@@ -168,7 +177,7 @@ class ArbiterStream:
     def start(self):
         @arbiterApp.websocket(self.path)
         async def add_stream(websocket: WebSocket, token: str = Query()):
-            await self._websocket_endpoint(token, ArbiterWebsocket(websocket))
+            await self._websocket_endpoint(token, extra_query_params(websocket.query_params), ArbiterWebsocket(websocket))
 
     def on_socket_connect(self, callback: StreamSystemCallback) -> StreamSystemCallback:
         self.socket_connect_callback = callback
@@ -185,7 +194,7 @@ class ArbiterStream:
     def on_service_message_intercept(self, callback: ServiceMessageInterceptCallback) -> ServiceMessageInterceptCallback:
         self.service_intercept_callback = callback
         return callback
-    
+
     def on_user_message_receive(self, callback: UserMessageReceiveCallback) -> UserMessageReceiveCallback:
         self.user_receive_callback = callback
         return callback
@@ -193,3 +202,4 @@ class ArbiterStream:
     def on_background_error(self, callback: BackgroundErrorCallback) -> BackgroundErrorCallback:
         self.background_error_callback = callback
         return callback
+
