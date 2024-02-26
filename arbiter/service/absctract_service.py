@@ -26,7 +26,7 @@ class AbstractService(ABC):
         pass
 
     @abstractmethod
-    async def subscribe(self, user_id: int, user_name: str):
+    async def subscribe(self, user_id: int, data: bytes):
         pass
 
     @abstractmethod
