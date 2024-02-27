@@ -157,17 +157,18 @@ class ArbiterStream:
             except Exception as e:
                 print(f"[Stream Error] {e}")
             finally:
-                service_id = self.connected_service_ids.pop(user_id)
-                # 연결 종료 콜백 실행
-                await self.socket_close_callback(
-                    StreamMeta(
-                        connection=connection,
-                        topic=user_id,
-                        producer=producer,
-                        consumer=consumer,
-                    ),
-                    service_id,
-                )
+                if self.connected_service_ids.get(user_id):
+                    service_id = self.connected_service_ids.pop(user_id)
+                    # 연결 종료 콜백 실행
+                    await self.socket_close_callback(
+                        StreamMeta(
+                            connection=connection,
+                            topic=user_id,
+                            producer=producer,
+                            consumer=consumer,
+                        ),
+                        service_id,
+                    )
                 if consume_task is not None:
                     consume_task.cancel()
                 if monitor_task is not None:

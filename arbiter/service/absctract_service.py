@@ -58,7 +58,7 @@ class AbstractService(ABC):
         await self.consumer.subscribe(self.service_id)
         async for message in self.consumer.listen():
             message = StreamMessage.decode_pickle(message)
-            print(f'consume in service #{self.service_id}: ', message)
+            # print(f'consume in service #{self.service_id}: ', message)
             match message.event_type:
                 case StreamSystemEvent.SUBSCRIBE:
                     print(f'subscribe in service #{self.service_id}:', message.user_id)
