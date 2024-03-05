@@ -4,7 +4,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from arbiter.api.auth.router import router as auth_router
-from arbiter.api.database import async_engine
+from arbiter.api.database import async_engine, create_db_and_tables
 from arbiter.api.exceptions import BadRequest
 from arbiter.api.config import settings
 
@@ -12,6 +12,7 @@ from arbiter.api.config import settings
 class ArbiterApp(FastAPI):
     def __init__(self) -> None:
         super().__init__()
+        self.add_event_handler("startup", self.on_startup)
         self.add_event_handler("shutdown", self.on_shutdown)
         self.add_exception_handler(
             RequestValidationError,
@@ -29,6 +30,9 @@ class ArbiterApp(FastAPI):
         )
         # app.add_middleware(BaseHTTPMiddleware, dispatch=log_middleware)
         self.include_router(auth_router)
+
+    async def on_startup(self):
+        await create_db_and_tables()
 
     async def on_shutdown(self):
         await async_engine.dispose()
