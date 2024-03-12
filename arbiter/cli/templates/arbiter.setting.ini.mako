@@ -5,6 +5,9 @@ hostname = localhost
 credentials = arbiter:arbiter
 <%text>sqlalchemy.url = postgresql+asyncpg://${credentials}@${hostname}:${port}/${name}</%text>
 
+[cache]
+redis.url = localhost
+
 [project]
 app_env = local
 access_token_key = access

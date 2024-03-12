@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import AsyncGenerator, Tuple
 from arbiter.broker.base import MessageBrokerInterface, MessageConsumerInterface, MessageProducerInterface
+from arbiter.api.config import settings
 import redis.asyncio as aioredis
 
 
@@ -10,7 +11,7 @@ class RedisBroker(MessageBrokerInterface):
         self.client: aioredis.Redis = None
 
     async def connect(self):
-        async_redis_connection_pool = aioredis.ConnectionPool(host="localhost")
+        async_redis_connection_pool = aioredis.ConnectionPool(host=settings.CACHE_CONNECTION_URL)
         self.client = aioredis.Redis.from_pool(async_redis_connection_pool)
 
     async def disconnect(self):
