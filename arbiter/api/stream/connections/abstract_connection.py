@@ -30,3 +30,7 @@ class ArbiterConnection(ABC):
     @abstractmethod
     async def close(self):
         pass
+
+    @abstractmethod
+    async def error(self, reason: str | None):
+        pass

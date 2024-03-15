@@ -15,3 +15,7 @@ class ArbiterWebsocket(ArbiterConnection):
     async def close(self):
         if (self.websocket.client_state is WebSocketState.CONNECTED):
             await self.websocket.close()
+
+    async def error(self, reason: str | None):
+        if (self.websocket.client_state is WebSocketState.CONNECTED):
+            await self.websocket.close(reason=reason)
