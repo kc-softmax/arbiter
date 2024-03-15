@@ -20,6 +20,7 @@ def extra_query_params(query_params: QueryParams) -> dict:
             extraParams[k] = query_params[k]
     return extraParams
 
+
 @dataclass(kw_only=True)
 class StreamMeta:
     connection: ArbiterConnection
@@ -115,7 +116,12 @@ class ArbiterStream:
                         raise Exception("유저를 찾을 수 없습니다.")
                     if user.access_token != token:
                         raise Exception("유효하지 않은 토큰입니다.")
-                    
+
+                # 이미 게임에 접속된 id인지 체크
+                if self.connected_service_ids.get(user_id) is not None:
+                    await connection.error("You're already in the game.")
+                    return
+
                 await consumer.subscribe(user_id)
 
                 consume_task = asyncio.create_task(
@@ -154,9 +160,7 @@ class ArbiterStream:
                         websocket_message,
                         self.connected_service_ids.get(user_id),
                     )
-            except Exception as e:
-                print(f"[Stream Error] {e}")
-            finally:
+                # 연결이 끝난 후
                 if self.connected_service_ids.get(user_id):
                     service_id = self.connected_service_ids.pop(user_id)
                     # 연결 종료 콜백 실행
@@ -169,6 +173,21 @@ class ArbiterStream:
                         ),
                         service_id,
                     )
+            except Exception as e:
+                print(f"[Stream Error] {e}")
+                if self.connected_service_ids.get(user_id):
+                    service_id = self.connected_service_ids.pop(user_id)
+                    # 연결 종료 콜백 실행
+                    await self.socket_close_callback(
+                        StreamMeta(
+                            connection=connection,
+                            topic=user_id,
+                            producer=producer,
+                            consumer=consumer,
+                        ),
+                        service_id,
+                    )
+            finally:
                 if consume_task is not None:
                     consume_task.cancel()
                 if monitor_task is not None:
@@ -203,4 +222,3 @@ class ArbiterStream:
     def on_background_error(self, callback: BackgroundErrorCallback) -> BackgroundErrorCallback:
         self.background_error_callback = callback
         return callback
-
