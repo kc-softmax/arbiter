@@ -61,11 +61,13 @@ class AbstractService(ABC):
             # print(f'consume in service #{self.service_id}: ', message)
             match message.event_type:
                 case StreamSystemEvent.SUBSCRIBE:
-                    print(f'subscribe in service #{self.service_id}:', message.user_id)
+                    print(
+                        f'subscribe in service #{self.service_id}:', message.user_id)
                     await self.subscribe(message.user_id, message.data)
                     continue
                 case StreamSystemEvent.UNSUBSCRIBE:
-                    print(f'unsubscribe in service #{self.service_id}:', message.user_id)
+                    print(
+                        f'unsubscribe in service #{self.service_id}:', message.user_id)
                     await self.unsubscribe(message.user_id)
                     continue
 

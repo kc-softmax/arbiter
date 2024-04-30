@@ -11,7 +11,8 @@ from arbiter.api.dependencies import unit_of_work
 
 async def get_current_user(
         session: AsyncSession = Depends(unit_of_work),
-        token: str = Depends(OAuth2PasswordBearer(tokenUrl="/auth/login"))
+        token: str = Depends(OAuth2PasswordBearer(
+            tokenUrl="/auth/game/login/email"))
 ) -> GameUser:
     ''' 
     # jwt 토큰을 디코딩하여 현재 auth 정보를 불러온다.

@@ -35,13 +35,17 @@ class ServiceMessage:
     message: any
 
 
-StreamSystemCallback = Callable[[StreamMeta, str | None, dict | None], Awaitable[None]]
+StreamSystemCallback = Callable[[StreamMeta,
+                                 str | None, dict | None], Awaitable[None]]
 # 브로커 메시지 콜백 타입
-ServiceMessageReceiveCallback = Callable[[StreamMeta, ServiceMessage, str | None], Awaitable[None]]
+ServiceMessageReceiveCallback = Callable[[
+    StreamMeta, ServiceMessage, str | None], Awaitable[None]]
 # 브로커 메시지 인터셉트 콜백
-ServiceMessageInterceptCallback = Callable[[StreamMeta, ServiceMessage, str | None], Awaitable[None]]
+ServiceMessageInterceptCallback = Callable[[
+    StreamMeta, ServiceMessage, str | None], Awaitable[None]]
 # 유저 메시지 콜백 타입
-UserMessageReceiveCallback = Callable[[StreamMeta, bytes, str | None], Awaitable[None]]
+UserMessageReceiveCallback = Callable[[
+    StreamMeta, bytes, str | None], Awaitable[None]]
 # 에러 콜백 타입
 BackgroundErrorCallback = Callable[[Exception, None], Awaitable[None]]
 
@@ -49,7 +53,6 @@ BackgroundErrorCallback = Callable[[Exception, None], Awaitable[None]]
 class ArbiterStream:
     def __init__(self, path: str) -> None:
         self.path: str = path
-        self.connected_service_ids: dict = {}
         self.socket_connect_callback: StreamSystemCallback = None
         self.socket_close_callback: StreamSystemCallback = None
         self.service_intercept_callback: ServiceMessageInterceptCallback = None
@@ -63,38 +66,19 @@ class ArbiterStream:
                        producer: MessageProducerInterface,
                        consumer: MessageConsumerInterface):
         async for message in consumer.listen():
-            connected_service_id = self.connected_service_ids.get(user_id)
-            is_continue = False
-            if self.service_intercept_callback:
-                is_continue = await self.service_intercept_callback(
-                    StreamMeta(
-                        connection=connection,
-                        topic=user_id,
-                        producer=producer,
-                        consumer=consumer,
-                    ),
-                    ServiceMessage(
-                        message=message
-                    ),
-                    connected_service_id,
-                )
-            else:
-                is_continue = True
-
-            if is_continue and connected_service_id is not None:
-                await connection.send_message(message)
-                await self.service_receive_callback(
-                    StreamMeta(
-                        connection=connection,
-                        topic=user_id,
-                        producer=producer,
-                        consumer=consumer
-                    ),
-                    ServiceMessage(
-                        message=message
-                    ),
-                    connected_service_id,
-                )
+            await connection.send_message(message)
+            # await self.service_receive_callback(
+            #     StreamMeta(
+            #         connection=connection,
+            #         topic=user_id,
+            #         producer=producer,
+            #         consumer=consumer
+            #     ),
+            #     ServiceMessage(
+            #         message=message
+            #     ),
+            #     user_id,
+            # )
 
     async def _monitor_background_task(self, task: asyncio.Task):
         try:
@@ -117,10 +101,10 @@ class ArbiterStream:
                     if user.access_token != token:
                         raise Exception("유효하지 않은 토큰입니다.")
 
-                # 이미 게임에 접속된 id인지 체크
-                if self.connected_service_ids.get(user_id) is not None:
-                    await connection.error("You're already in the game.")
-                    return
+                # # 이미 게임에 접속된 id인지 체크
+                # if self.connected_service_ids.get(user_id) is not None:
+                #     await connection.error("You're already in the game.")
+                #     return
 
                 await consumer.subscribe(user_id)
 
@@ -158,35 +142,30 @@ class ArbiterStream:
                             consumer=consumer,
                         ),
                         websocket_message,
-                        self.connected_service_ids.get(user_id),
+                        user_id
                     )
-                # 연결이 끝난 후
-                if self.connected_service_ids.get(user_id):
-                    service_id = self.connected_service_ids.pop(user_id)
-                    # 연결 종료 콜백 실행
-                    await self.socket_close_callback(
-                        StreamMeta(
-                            connection=connection,
-                            topic=user_id,
-                            producer=producer,
-                            consumer=consumer,
-                        ),
-                        service_id,
-                    )
+                # 연결 종료 콜백 실행
+                await self.socket_close_callback(
+                    StreamMeta(
+                        connection=connection,
+                        topic=user_id,
+                        producer=producer,
+                        consumer=consumer,
+                    ),
+                    user_id,
+                )
             except Exception as e:
                 print(f"[Stream Error] {e}")
-                if self.connected_service_ids.get(user_id):
-                    service_id = self.connected_service_ids.pop(user_id)
-                    # 연결 종료 콜백 실행
-                    await self.socket_close_callback(
-                        StreamMeta(
-                            connection=connection,
-                            topic=user_id,
-                            producer=producer,
-                            consumer=consumer,
-                        ),
-                        service_id,
-                    )
+                # 연결 종료 콜백 실행
+                await self.socket_close_callback(
+                    StreamMeta(
+                        connection=connection,
+                        topic=user_id,
+                        producer=producer,
+                        consumer=consumer,
+                    ),
+                    user_id,
+                )
             finally:
                 if consume_task is not None:
                     consume_task.cancel()
