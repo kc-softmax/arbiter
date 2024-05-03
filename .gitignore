@@ -244,3 +244,7 @@ pip-selfcheck.json
 # bert model
 arbiter/reference/chat/models/*
 arbiter/api/live/chat/models
+
+# resource related in terraform
+.terraform*
+terraform*
