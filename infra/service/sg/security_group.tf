@@ -2,7 +2,7 @@ data "http" "myip" {
   url = "https://ipv4.icanhazip.com"
 }
 
-resource "aws_security_group" "example-ec2-sg" {
+resource "aws_security_group" "example_ec2_sg" {
   vpc_id      = var.example_vpc_id
   description = "example-sg"
 
@@ -26,10 +26,10 @@ resource "aws_security_group" "example-ec2-sg" {
   ingress {
     cidr_blocks = ["0.0.0.0/0"]
     description = "http"
-    from_port   = "80"
+    from_port   = "9991"
     protocol    = "tcp"
     self        = "false"
-    to_port     = "80"
+    to_port     = "9991"
   }
 
   ingress {
@@ -58,7 +58,7 @@ resource "aws_security_group" "example-ec2-sg" {
   }
 }
 
-resource "aws_security_group" "example-redis-sg" {
+resource "aws_security_group" "example_redis_sg" {
   vpc_id      = var.example_vpc_id
   description = "example-redis-sg"
 
@@ -87,7 +87,7 @@ resource "aws_security_group" "example-redis-sg" {
   }
 }
 
-resource "aws_security_group" "example-rds-sg" {
+resource "aws_security_group" "example_rds_sg" {
   vpc_id      = var.example_vpc_id
   description = "example-rds-sg"
 

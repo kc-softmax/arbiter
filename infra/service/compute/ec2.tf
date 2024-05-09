@@ -77,19 +77,19 @@
 #   depends_on = [ var.example-cluster ]
 # }
 
-resource "aws_launch_configuration" "example-lc" {
+resource "aws_launch_configuration" "example_lc" {
   name                        = "example-lc"
-  image_id                    = "ami-050a4617492ff5822"
-  instance_type               = "t3.small"
+  image_id                    = var.image_id
+  instance_type               = var.instance_type
   iam_instance_profile        = "ecsInstanceRole"
   associate_public_ip_address = true
-  key_name                    = "kc-softmax-ap-norheast-2-211220"
+  key_name                    = var.key_name
   ebs_block_device {
     device_name = "/dev/sda1"
     volume_type = "gp2"
     volume_size = 20
   }
-  security_groups = [var.example-sg-id]
+  security_groups = [var.example_sg_id]
   user_data       = <<-EOF
     #!/bin/bash
     # Amazon Linux 2 AMI
@@ -104,29 +104,29 @@ resource "aws_launch_configuration" "example-lc" {
     service docker start
 
     # (선택사항) 위와 같이 띄워놓은 ECS 클러스터가 있다면 아래 파일 추가
-    echo "ECS_CLUSTER=${var.example-cluster.name}" | tee -a /etc/ecs/ecs.config
+    echo "ECS_CLUSTER=${var.example_cluster.name}" | tee -a /etc/ecs/ecs.config
 
     service ecs stop
     # service ecs start
     systemctl enable --now --no-block ecs
   EOF
 
-  depends_on = [var.example-cluster]
+  depends_on = [var.example_cluster]
 }
 
-resource "aws_autoscaling_group" "example-ag" {
+resource "aws_autoscaling_group" "example_ag" {
   # 초기 크기
   desired_capacity     = 1
   min_size             = 1
   max_size             = 1
-  launch_configuration = aws_launch_configuration.example-lc.name
+  launch_configuration = aws_launch_configuration.example_lc.name
   # availability_zones = [ "ap-northeast-2a", "ap-northeast-2b", "ap-northeast-2c" ]
-  vpc_zone_identifier = [var.example-public-subnet1-id, var.example-public-subnet1-id]
-  target_group_arns   = [var.example-tg.arn]
+  vpc_zone_identifier = [var.example_public_subnet1_id, var.example_public_subnet1_id]
+  target_group_arns   = [var.example_tg.arn]
   instance_maintenance_policy {
     min_healthy_percentage = 60
     max_healthy_percentage = 100
   }
 
-  depends_on = [var.example-tg]
+  depends_on = [var.example_tg]
 }

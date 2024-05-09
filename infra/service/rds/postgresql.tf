@@ -1,25 +1,25 @@
-resource "aws_rds_cluster" "example-postgresql" {
+resource "aws_rds_cluster" "example_postgresql" {
     cluster_identifier = "example-postgresql"
-    engine = "aurora-postgresql"
+    engine = data.aws_rds_engine_version.example_engine_version.engine
     # engine_mode = "default"
-    engine_version = data.aws_rds_engine_version.example-engine-version.version
+    engine_version = data.aws_rds_engine_version.example_engine_version.version
     availability_zones = ["ap-northeast-2a", "ap-northeast-2b", "ap-northeast-2c"]
     database_name = "example"
     master_username = "foo"
     master_password = "bar"
-    vpc_security_group_ids = [var.example-rds-sg]
-    db_subnet_group_name = aws_db_subnet_group.example-subnet-group.name
+    vpc_security_group_ids = [var.example_rds_sg]
+    db_subnet_group_name = aws_db_subnet_group.example_subnet_group.name
 }
 
-data "aws_rds_engine_version" "example-engine-version" {
-    engine      = "aurora-postgresql"
-    version     = "15.4"
+data "aws_rds_engine_version" "example_engine_version" {
+    engine      = var.engine
+    version     = var.engine_version
     include_all = true
 }
 
-resource "aws_db_subnet_group" "example-subnet-group" {
+resource "aws_db_subnet_group" "example_subnet_group" {
     name = "example-subnet-group"
-    subnet_ids = [var.example-public-subnet1-id, var.example-public-subnet2-id]
+    subnet_ids = [var.example_public_subnet1_id, var.example_public_subnet2_id]
     tags = {
         Name = "example-subnet-group"
     }

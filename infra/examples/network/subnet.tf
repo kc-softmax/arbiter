@@ -1,7 +1,7 @@
 # 서브넷은 HA(High Availablity)를 위해 2개씩 생성한다
 resource "aws_subnet" "tutorial-public-subnet1" {
   assign_ipv6_address_on_creation                = "false"
-  cidr_block                                     = "10.10.0.0/20"
+  cidr_block                                     = "${var.public_subnet1}/${var.subnet_mask}"
   enable_dns64                                   = "false"
   enable_resource_name_dns_a_record_on_launch    = "false"
   enable_resource_name_dns_aaaa_record_on_launch = "false"
@@ -23,7 +23,7 @@ resource "aws_subnet" "tutorial-public-subnet1" {
 
 resource "aws_subnet" "tutorial-public-subnet2" {
   assign_ipv6_address_on_creation                = "false"
-  cidr_block                                     = "10.10.16.0/20"
+  cidr_block                                     = "${var.public_subnet2}/${var.subnet_mask}"
   enable_dns64                                   = "false"
   enable_resource_name_dns_a_record_on_launch    = "false"
   enable_resource_name_dns_aaaa_record_on_launch = "false"
@@ -45,7 +45,7 @@ resource "aws_subnet" "tutorial-public-subnet2" {
 
 resource "aws_subnet" "tutorial-private-subnet1" {
   assign_ipv6_address_on_creation                = "false"
-  cidr_block                                     = "10.10.128.0/20"
+  cidr_block                                     = "${var.private_subnet1}/${var.subnet_mask}"
   enable_dns64                                   = "false"
   enable_resource_name_dns_a_record_on_launch    = "false"
   enable_resource_name_dns_aaaa_record_on_launch = "false"
@@ -67,7 +67,7 @@ resource "aws_subnet" "tutorial-private-subnet1" {
 
 resource "aws_subnet" "tutorial-private-subnet2" {
   assign_ipv6_address_on_creation                = "false"
-  cidr_block                                     = "10.10.144.0/20"
+  cidr_block                                     = "${var.private_subnet2}/${var.subnet_mask}"
   enable_dns64                                   = "false"
   enable_resource_name_dns_a_record_on_launch    = "false"
   enable_resource_name_dns_aaaa_record_on_launch = "false"

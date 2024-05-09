@@ -1,11 +1,11 @@
-output "example-sg" {
-  value = aws_security_group.example-ec2-sg.id
+output "example_sg" {
+  value = aws_security_group.example_ec2_sg.id
 }
 
-output "example-redis-sg" {
-  value = aws_security_group.example-redis-sg.id
+output "example_redis_sg" {
+  value = aws_security_group.example_redis_sg.id
 }
 
-output "example-rds-sg" {
-  value = aws_security_group.example-rds-sg.id
+output "example_rds_sg" {
+  value = aws_security_group.example_rds_sg.id
 }
