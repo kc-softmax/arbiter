@@ -1,3 +1,9 @@
-variable "example-public-subnet1-id" {}
-variable "example-public-subnet2-id" {}
-variable "example-rds-sg" {}
+variable "example_public_subnet1_id" {}
+variable "example_public_subnet2_id" {}
+variable "example_rds_sg" {}
+variable "engine" {
+  default = "aurora-postgresql"
+}
+variable "engine_version" {
+  default = "15.4"
+}

@@ -26,6 +26,23 @@ $ pytest -s
 2. 아비터의 key features: 장점, 사용해야하는 이유
 3. 시작할 수 있도록 도움되는 설명
 
+Why Arbiter
+
+The key features:
+- **Stream**:
+- **Authenticated**:
+- **Dedicated**:
+- **Seamless**:
+
+**Command Line**
+```shell
+arbiter init
+arbiter start # (아래의 태스크들을 하나로 묶어야 할지...)
+arbiter db # (start background)
+arbiter stream # (start background)
+# docker compose로 묶어서 실행
+```
+
 ## IaC(Infrastructure as Code) for deploying your service
 ### Your service need to deploy in cloude system for playing with user. This code handle AWS resource and writen basic resource for deploying service. If you want to other resource, you can add by referencing document and README.
 - [Terraform Script based AWS](https://registry.terraform.io/providers/hashicorp/aws/latest/docs)
@@ -34,20 +51,18 @@ $ pytest -s
 **The key features are**:
 - **Infrastructure as Code (IaC)**:
 Terraform을 사용하면 인프라를 코드로 관리할 수 있습니다. 이를 통해 개발자와 시스템 관리자가 인프라를 보다 쉽게 관리하고, 버전 관리하며, 변경사항을 추적할 수 있습니다.
+You can manage infra as code when you using terraform. Through this, developer and system manager can track changed resource and manage version and infra easily.
 - **Provider Ecosystem**:
-Terraform은 AWS, Microsoft Azure, Google Cloud 등을 포함한 다양한 프로바이더와 호환됩니다. 사용자는 이를 통해 거의 모든 기술 스택과 서비스를 자동으로 관리할 수 있습니다.
+Terraform compatible with AWS, Microsoft Azure, Google Cloud. User can manage almost skill stack and service using terraform.
 - **Modular Design**:
-Terraform 모듈을 사용하면 코드를 재사용하고, 공유하며, 더욱 효율적인 인프라 관리가 가능합니다. 모듈은 Terraform 커뮤니티 내에서 공유될 수 있어, 사용자는 이미 검증된 인프라 패턴을 손쉽게 적용할 수 있습니다.
+Terraform module can recycle, share the code and manage infra more efficiently. Module can share in terraform community, user can appply already verified infra pattern.
 - **Change Automation and Orchestration**:
-Terraform은 계획과 적용의 두 단계로 인프라 변경 사항을 관리합니다. 이를 통해 변경 전에 무엇이 변경될지 예측하고, 실제 적용 전에 자동으로 종속성을 해결하며 안정적인 배포를 도모합니다.
+Terraform manage changed infra by plan and apply. Through this, predict what will change before update, plan stable deployment by solve dependancy automatically before real apply.
 - **State Management**:
-Terraform은 인프라의 현재 상태를 추적하여 관리합니다. 이 상태 파일은 사용자가 인프라의 현재 상태를 이해하고, 팀 간에 일관된 환경을 유지하도록 돕습니다.
-- **Security and Compliance**:
-Terraform 코드를 사용하여 보안 기준과 규정 준수 요구사항을 코딩할 수 있습니다. 이는 인프라 배포 과정에서 보안과 규정을 자동으로 적용할 수 있게 돕습니다.
+Terraform manage present state of infra by tracking. User understand about present state of infra by state file and help maintain consistent envrioment accross team.
 
 ### Prepare
-**AWS 클라우드에 배포할 때 필요한 패키지들에 대한 설명.
-클라우드 리소스에 접근하기 위해 클라우드 계정과 권한이 필요합니다. 콘솔 계정을 생성하고 필요한 권한을 추가해주세요. 필요한 리소스들은 terraform을 통해 배포될 것입니다.**
+**You need authentication for accessing cloud resource. First, create console account and add policy**
 
 **MAC**
 ```shell
@@ -72,9 +87,6 @@ sudo apt update && sudo apt install terraform
 - [awscli](https://docs.aws.amazon.com/ko_kr/cli/latest/userguide/getting-started-install.html)
 - [terraform](https://developer.hashicorp.com/terraform/install#windows)
 
-### Configure your environment
-AWS의 profile을 등록하고 terraform의 버전을 확인해주세요
-
 **aws configure**
 ```shell
 aws configure --profile name
@@ -91,8 +103,8 @@ tfenv use version
 terraform version
 ```
 
-### Example(main.tf script)
-root 경로에서 하위 모듈들을 인식하여 구조화
+### main.tf script
+- **main.tf include child module and terraform state**
 ```hcl
 module "service" {
   source   = "./infra"
@@ -117,8 +129,7 @@ terraform {
 ```
 
 ### Deploy
-**hcl 스크립트를 작성했다면 아래의 명령어를 사용하여 클라우드에 배포 할 수 있습니다.
-클라우드 배포에 필요한 명령어로 자주 사용되는 명령어입니다.**
+- **CLI**: You can deploy the cloud resource using below cli.
 ```shell
 # You have to execute init when you add tf file
 terraform init

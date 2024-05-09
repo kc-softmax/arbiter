@@ -4,6 +4,6 @@ module "service" {
   source = "./service"
 }
 
-module "examples" {
-  source = "./examples"
-}
+# module "examples" {
+#   source = "./examples"
+# }

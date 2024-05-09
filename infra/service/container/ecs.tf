@@ -2,7 +2,7 @@ variable "log_group" {
   default = "/ecs/Example"
 }
 
-resource "aws_ecs_cluster" "example-ecs-cluster" {
+resource "aws_ecs_cluster" "example_ecs_cluster" {
   name = "Example"
   setting {
     name  = "containerInsights"
@@ -10,25 +10,25 @@ resource "aws_ecs_cluster" "example-ecs-cluster" {
   }
 }
 
-resource "aws_ecs_task_definition" "example-task-definition" {
+resource "aws_ecs_task_definition" "example_task_definition" {
   family                   = "Example"
-  requires_compatibilities = ["EC2"]
+  requires_compatibilities = [var.launch_type]
   network_mode             = "bridge"
-  cpu                      = 128
-  memory                   = 256
-  task_role_arn            = "arn:aws:iam::669354009400:role/ecsTaskExecutionRole"
-  execution_role_arn       = "arn:aws:iam::669354009400:role/ecsTaskExecutionRole"
+  cpu                      = 256
+  memory                   = 512
+  task_role_arn            = var.task_exec_role_arn
+  execution_role_arn       = var.task_exec_role_arn
   container_definitions = jsonencode(
     [
       {
         name      = "example-service"
-        image     = "nginx:latest"
-        cpu       = 128
-        memory    = 256
+        image     = "${var.image_uri}:latest"
+        cpu       = 256
+        memory    = 512
         essential = true
         portMappings = [
           {
-            containerPort = 80
+            containerPort = 9991
             hostPort      = 0
           }
         ]
@@ -51,19 +51,19 @@ resource "aws_ecs_task_definition" "example-task-definition" {
   }
 }
 
-resource "aws_ecs_service" "example-ecs-service" {
+resource "aws_ecs_service" "example_ecs_service" {
   name                 = "example-ecs-service"
-  launch_type          = "EC2"
-  cluster              = aws_ecs_cluster.example-ecs-cluster.id
-  iam_role             = "arn:aws:iam::669354009400:role/ecsServiceRole"
-  task_definition      = aws_ecs_task_definition.example-task-definition.arn
-  desired_count        = 2
+  launch_type          = var.launch_type
+  cluster              = aws_ecs_cluster.example_ecs_cluster.id
+  iam_role             = var.iam_role
+  task_definition      = aws_ecs_task_definition.example_task_definition.arn
+  desired_count        = 1
   force_new_deployment = true
 
   load_balancer {
-    target_group_arn = var.example-tg.arn
+    target_group_arn = var.example_tg.arn
     container_name   = "example-service"
-    container_port   = 80
+    container_port   = 9991
   }
 
   ordered_placement_strategy {

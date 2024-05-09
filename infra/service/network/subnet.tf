@@ -1,7 +1,7 @@
 # 서브넷은 HA(High Availablity)를 위해 2개씩 생성한다
-resource "aws_subnet" "example-public-subnet1" {
+resource "aws_subnet" "example_public_subnet1" {
   assign_ipv6_address_on_creation                = "false"
-  cidr_block                                     = "10.10.0.0/20"
+  cidr_block                                     = var.public_subnet1_cidr_block
   enable_dns64                                   = "false"
   enable_resource_name_dns_a_record_on_launch    = "false"
   enable_resource_name_dns_aaaa_record_on_launch = "false"
@@ -18,12 +18,12 @@ resource "aws_subnet" "example-public-subnet1" {
     Name = "example-public-subnet1"
   }
 
-  vpc_id = aws_vpc.example-vpc.id
+  vpc_id = aws_vpc.example_vpc.id
 }
 
-resource "aws_subnet" "example-public-subnet2" {
+resource "aws_subnet" "example_public_subnet2" {
   assign_ipv6_address_on_creation                = "false"
-  cidr_block                                     = "10.10.16.0/20"
+  cidr_block                                     = var.public_subnet2_cidr_block
   enable_dns64                                   = "false"
   enable_resource_name_dns_a_record_on_launch    = "false"
   enable_resource_name_dns_aaaa_record_on_launch = "false"
@@ -40,12 +40,12 @@ resource "aws_subnet" "example-public-subnet2" {
     Name = "example-public-subnet2"
   }
 
-  vpc_id = aws_vpc.example-vpc.id
+  vpc_id = aws_vpc.example_vpc.id
 }
 
-resource "aws_subnet" "example-private-subnet1" {
+resource "aws_subnet" "example_private_subnet1" {
   assign_ipv6_address_on_creation                = "false"
-  cidr_block                                     = "10.10.128.0/20"
+  cidr_block                                     = var.private_subnet1_cidr_block
   enable_dns64                                   = "false"
   enable_resource_name_dns_a_record_on_launch    = "false"
   enable_resource_name_dns_aaaa_record_on_launch = "false"
@@ -62,12 +62,12 @@ resource "aws_subnet" "example-private-subnet1" {
     Name = "example-private-subnet1"
   }
 
-  vpc_id = aws_vpc.example-vpc.id
+  vpc_id = aws_vpc.example_vpc.id
 }
 
-resource "aws_subnet" "example-private-subnet2" {
+resource "aws_subnet" "example_private_subnet2" {
   assign_ipv6_address_on_creation                = "false"
-  cidr_block                                     = "10.10.144.0/20"
+  cidr_block                                     = var.private_subnet2_cidr_block
   enable_dns64                                   = "false"
   enable_resource_name_dns_a_record_on_launch    = "false"
   enable_resource_name_dns_aaaa_record_on_launch = "false"
@@ -84,5 +84,5 @@ resource "aws_subnet" "example-private-subnet2" {
     Name = "example-private-subnet2"
   }
 
-  vpc_id = aws_vpc.example-vpc.id
+  vpc_id = aws_vpc.example_vpc.id
 }
