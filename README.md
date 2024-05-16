@@ -41,6 +41,16 @@ arbiter start # (아래의 태스크들을 하나로 묶어야 할지...)
 arbiter db # (start background)
 arbiter stream # (start background)
 # docker compose로 묶어서 실행
+arbiter build --target={aws, local...}
+# 실행 순서
+# 1. 사용 계획(init, plan)
+# 2. "Are you sure you want to deploy it?" y/N
+# 3. create network, security group
+# 4. create cache(redis) for Broker
+# 5. get endpoint(redis, (Optional)rds)
+# 6. App image push(ECR)
+# 7. Create Cluster(LB, Container, Compute, Domain)
+# 8. get app domain
 ```
 
 ## IaC(Infrastructure as Code) for deploying your service
@@ -50,7 +60,6 @@ arbiter stream # (start background)
 
 **The key features are**:
 - **Infrastructure as Code (IaC)**:
-Terraform을 사용하면 인프라를 코드로 관리할 수 있습니다. 이를 통해 개발자와 시스템 관리자가 인프라를 보다 쉽게 관리하고, 버전 관리하며, 변경사항을 추적할 수 있습니다.
 You can manage infra as code when you using terraform. Through this, developer and system manager can track changed resource and manage version and infra easily.
 - **Provider Ecosystem**:
 Terraform compatible with AWS, Microsoft Azure, Google Cloud. User can manage almost skill stack and service using terraform.

@@ -52,4 +52,6 @@ module "cache" {
 module "domain" {
   source      = "./domain"
   example_elb = module.lb.example_alb
+  zone_name = var.zone_name
+  record_name = var.record_name
 }
