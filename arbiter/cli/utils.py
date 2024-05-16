@@ -8,11 +8,17 @@ from typer import Typer
 from enum import StrEnum
 
 
+class PROVIDER(StrEnum):
+    AWS = "aws"
+    DEV = "dev"
+    LOCAL = "local"
+
+
 class TERRAFORM_COMMAND(StrEnum):
     INIT = "terraform init"
     PLAN = "terraform plan"
     APPLY = "terraform apply -target={module} -auto-approve"
-    DESTROY = "terraform destroy"
+    DESTROY = "terraform destroy -auto-approve"
     OUTPUT = "terraform output -json"
 
 
@@ -34,7 +40,7 @@ def read_config(config_file: str):
     """
     file_path = os.path.join(config_file)
     if os.path.exists(file_path):
-        config = configparser.ConfigParser(interpolation=configparser.ExtendedInterpolation())
+        config = configparser.ConfigParser(interpolation=configparser.ExtendedInterpolation(), allow_no_value=True)
         config.read(file_path)
         return config
     return None
@@ -65,7 +71,7 @@ def refresh_output(pwd: str):
     terraform_images.wait(86400)
 
 
-def popen_command(command: TERRAFORM_COMMAND, pwd: str, module: str = None) -> str | list[str]:
+def popen_command(command: TERRAFORM_COMMAND, pwd: str = None, module: str = None) -> str | list[str]:
     match command:
         case TERRAFORM_COMMAND.APPLY:
             res = subprocess.Popen(
@@ -98,7 +104,38 @@ def popen_command(command: TERRAFORM_COMMAND, pwd: str, module: str = None) -> s
             res.wait(86400)
             _, stderr = res.communicate()
             return stderr.decode()
-        
+
+
+async def check_db_server(drivername: str, username: str, password: str, hostname: str, port: int) -> bool:
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.engine import URL
+    from sqlalchemy.exc import OperationalError
+    status = True
+    url = URL.create(
+        drivername=drivername,
+        username=username if username else None,
+        password=password if password else None,
+        host=hostname if hostname else None,
+        port=port if port else None,
+    )
+    engine = create_async_engine(url)
+    try:
+        conn = await engine.connect()
+        await conn.close()
+    except OperationalError:
+        status = False
+    return status
+
+
+def check_cache_server(url: str) -> bool:
+    import redis
+    status = True
+    try:
+        r = redis.StrictRedis(url)
+        r.ping()
+    except redis.ConnectionError:
+        status = False
+    return status
 
 
 class AsyncTyper(Typer):
