@@ -1,17 +1,13 @@
-variable "log_group" {
-  default = "/ecs/Example"
-}
-
-resource "aws_ecs_cluster" "example_ecs_cluster" {
-  name = "Example"
+resource "aws_ecs_cluster" "ecs_cluster" {
+  name = var.service_name
   setting {
     name  = "containerInsights"
     value = "enabled"
   }
 }
 
-resource "aws_ecs_task_definition" "example_task_definition" {
-  family                   = "Example"
+resource "aws_ecs_task_definition" "task_definition" {
+  family                   = var.service_name
   requires_compatibilities = [var.launch_type]
   network_mode             = "bridge"
   cpu                      = 256
@@ -21,8 +17,8 @@ resource "aws_ecs_task_definition" "example_task_definition" {
   container_definitions = jsonencode(
     [
       {
-        name      = "example-service"
-        image     = "${var.image_uri}:latest"
+        name      = "${var.service_name}-service"
+        image     = "${var.image_url}:latest"
         cpu       = 256
         memory    = 512
         essential = true
@@ -36,8 +32,8 @@ resource "aws_ecs_task_definition" "example_task_definition" {
           logDriver = "awslogs"
           options = {
             awslogs-create-group  = "true"
-            awslogs-group         = "${var.log_group}"
-            awslogs-region        = "ap-northeast-2"
+            awslogs-group         = "/ecs/${var.service_name}"
+            awslogs-region        = "${var.region}"
             awslogs-stream-prefix = "ecs"
           }
           secretOptions = []
@@ -51,18 +47,18 @@ resource "aws_ecs_task_definition" "example_task_definition" {
   }
 }
 
-resource "aws_ecs_service" "example_ecs_service" {
-  name                 = "example-ecs-service"
+resource "aws_ecs_service" "ecs_service" {
+  name                 = "${var.service_name}-ecs-service"
   launch_type          = var.launch_type
-  cluster              = aws_ecs_cluster.example_ecs_cluster.id
+  cluster              = aws_ecs_cluster.ecs_cluster.id
   iam_role             = var.iam_role
-  task_definition      = aws_ecs_task_definition.example_task_definition.arn
+  task_definition      = aws_ecs_task_definition.task_definition.arn
   desired_count        = 1
   force_new_deployment = true
 
   load_balancer {
-    target_group_arn = var.example_tg.arn
-    container_name   = "example-service"
+    target_group_arn = var.ec2_tg.arn
+    container_name   = "${var.service_name}-service"
     container_port   = 9991
   }
 

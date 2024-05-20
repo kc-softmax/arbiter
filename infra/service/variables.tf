@@ -1,15 +1,24 @@
+variable "service_name" {
+  type = string
+}
 variable "cidr" {
-    type = string
+  type = string
 }
 variable "region" {
-    type = string
+  type = string
 }
 variable "instance_type" {
-    type = string
+  type = string
+}
+variable "cache_node_type" {
+  type = string
 }
 variable "zone_name" {
-    type = string
+  type = string
 }
 variable "record_name" {
-    type = string
+  type = string
+}
+variable "key_pair" {
+  type = string
 }

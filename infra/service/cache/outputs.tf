@@ -8,5 +8,5 @@
 #   value = "${aws_elasticache_subnet_group.tfer--fourbarracks.id}"
 # }
 output "endpoint" {
-  value = aws_elasticache_replication_group.example_replication_group.primary_endpoint_address
+  value = aws_elasticache_replication_group.redis_replication_group.primary_endpoint_address
 }

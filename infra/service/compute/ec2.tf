@@ -77,19 +77,19 @@
 #   depends_on = [ var.example-cluster ]
 # }
 
-resource "aws_launch_configuration" "example_lc" {
-  name                        = "example-lc"
+resource "aws_launch_configuration" "ec2_launch_configuration" {
+  name                        = "${var.service_name}-ec2-launch-configuration"
   image_id                    = var.image_id
   instance_type               = var.instance_type
   iam_instance_profile        = "ecsInstanceRole"
   associate_public_ip_address = true
-  key_name                    = var.key_name
+  key_name                    = var.key_pair
   ebs_block_device {
     device_name = "/dev/sda1"
     volume_type = "gp2"
     volume_size = 20
   }
-  security_groups = [var.example_sg_id]
+  security_groups = [var.ec2_sg_id]
   user_data       = <<-EOF
     #!/bin/bash
     # Amazon Linux 2 AMI
@@ -104,14 +104,14 @@ resource "aws_launch_configuration" "example_lc" {
     service docker start
 
     # (선택사항) 위와 같이 띄워놓은 ECS 클러스터가 있다면 아래 파일 추가
-    echo "ECS_CLUSTER=${var.example_cluster.name}" | tee -a /etc/ecs/ecs.config
+    echo "ECS_CLUSTER=${var.cluster.name}" | tee -a /etc/ecs/ecs.config
 
     service ecs stop
     # service ecs start
     systemctl enable --now --no-block ecs
   EOF
 
-  depends_on = [var.example_cluster]
+  depends_on = [var.cluster]
 }
 
 resource "aws_autoscaling_group" "example_ag" {
@@ -119,14 +119,13 @@ resource "aws_autoscaling_group" "example_ag" {
   desired_capacity     = 1
   min_size             = 1
   max_size             = 1
-  launch_configuration = aws_launch_configuration.example_lc.name
-  # availability_zones = [ "ap-northeast-2a", "ap-northeast-2b", "ap-northeast-2c" ]
-  vpc_zone_identifier = [var.example_public_subnet1_id, var.example_public_subnet1_id]
-  target_group_arns   = [var.example_tg.arn]
+  launch_configuration = aws_launch_configuration.ec2_launch_configuration.name
+  vpc_zone_identifier  = [var.public_subnet1_id, var.public_subnet1_id]
+  target_group_arns    = [var.ec2_tg.arn]
   instance_maintenance_policy {
     min_healthy_percentage = 60
     max_healthy_percentage = 100
   }
 
-  depends_on = [var.example_tg]
+  depends_on = [var.ec2_tg]
 }

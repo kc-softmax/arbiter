@@ -1,5 +1,5 @@
-resource "aws_ecr_repository" "example_repository" {
-  name                 = "example-repository"
+resource "aws_ecr_repository" "ecr_repository" {
+  name                 = "${var.service_name}-repository"
   image_tag_mutability = "MUTABLE"
 
   image_scanning_configuration {

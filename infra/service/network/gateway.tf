@@ -1,9 +1,9 @@
-resource "aws_internet_gateway" "example_ig" {
-  vpc_id = aws_vpc.example_vpc.id
+resource "aws_internet_gateway" "internet_gateway" {
+  vpc_id = aws_vpc.vpc.id
   tags = {
-    Name = "example-ig"
+    Name = "${var.service_name}-ig"
   }
   tags_all = {
-    Name = "example-ig"
+    Name = "${var.service_name}-ig"
   }
 }

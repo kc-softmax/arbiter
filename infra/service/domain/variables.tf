@@ -1,3 +1,3 @@
-variable "example_elb" {}
+variable "alb" {}
 variable "zone_name" {}
 variable "record_name" {}
