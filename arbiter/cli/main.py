@@ -122,7 +122,7 @@ def dev(
     app_path = f"{PROJECT_NAME}.main:arbiterApp"
     commands = [f"uvicorn {app_path} --host 0.0.0.0 --port 9991"]
     for app in apps:
-        commands.append(f"pymon {app}.py")
+        commands.append(f"python {app}.py")
 
     async def run_command(command: str):
         proc = await asyncio.create_subprocess_shell(
