@@ -1,8 +1,12 @@
-resource "aws_alb_target_group" "example_tg" {
-  name     = "example-tg"
+data "aws_acm_certificate" "certificate" {
+  domain = var.zone_name
+}
+
+resource "aws_alb_target_group" "ec2_tg" {
+  name     = "${var.service_name}-ec2-tg"
   port     = 9991
   protocol = "HTTP"
-  vpc_id   = var.example_vpc
+  vpc_id   = var.vpc_id
 
   health_check {
     interval            = 30
@@ -14,13 +18,13 @@ resource "aws_alb_target_group" "example_tg" {
   tags = { Name = "Example ALB Target Group" }
 }
 
-resource "aws_alb" "example_alb" {
-  name            = "alb-example"
+resource "aws_alb" "alb" {
+  name            = "${var.service_name}-alb"
   internal        = false
-  security_groups = ["${var.example_sg}"]
+  security_groups = ["${var.alb_sg_id}"]
   subnets = [
-    "${var.example_public_subnet1_id}",
-    "${var.example_public_subnet2_id}"
+    "${var.public_subnet1_id}",
+    "${var.public_subnet2_id}"
   ]
 
   # access_logs {
@@ -30,7 +34,7 @@ resource "aws_alb" "example_alb" {
   # }
 
   tags = {
-    Name = "example-alb"
+    Name = "${var.service_name}-alb"
   }
 
 
@@ -38,14 +42,14 @@ resource "aws_alb" "example_alb" {
 }
 
 resource "aws_alb_listener" "https" {
-  load_balancer_arn = aws_alb.example_alb.arn
+  load_balancer_arn = aws_alb.alb.arn
   port              = "443"
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-2016-08"
-  certificate_arn   = "arn:aws:acm:ap-northeast-2:669354009400:certificate/65d3f071-0472-406d-9b41-05b771e3a39e"
+  certificate_arn   = data.aws_acm_certificate.certificate.arn
 
   default_action {
-    target_group_arn = aws_alb_target_group.example_tg.arn
+    target_group_arn = aws_alb_target_group.ec2_tg.arn
     type             = "forward"
   }
 

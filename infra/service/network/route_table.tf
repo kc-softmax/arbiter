@@ -1,48 +1,44 @@
 
-resource "aws_route_table" "example_public_route_table" {
-  vpc_id = aws_vpc.example_vpc.id
+resource "aws_route_table" "public_route_table" {
+  vpc_id = aws_vpc.vpc.id
   route {
     cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.example_ig.id
+    gateway_id = aws_internet_gateway.internet_gateway.id
   }
   tags = {
-    Name = "example-public-route-table"
+    Name = "${var.service_name}-public-route-table"
   }
   tags_all = {
-    Name = "example-public-route-table"
+    Name = "${var.service_name}-public-route-table"
   }
 }
 
-resource "aws_route_table_association" "aws-public_route_table_association1" {
-  subnet_id      = aws_subnet.example_public_subnet1.id
-  route_table_id = aws_route_table.example_public_route_table.id
+resource "aws_route_table_association" "public_route_table_association1" {
+  subnet_id      = aws_subnet.public_subnet1.id
+  route_table_id = aws_route_table.public_route_table.id
 }
 
-resource "aws_route_table_association" "aws_public_route_table_association2" {
-  subnet_id      = aws_subnet.example_public_subnet2.id
-  route_table_id = aws_route_table.example_public_route_table.id
+resource "aws_route_table_association" "public_route_table_association2" {
+  subnet_id      = aws_subnet.public_subnet2.id
+  route_table_id = aws_route_table.public_route_table.id
 }
 
-resource "aws_route_table" "example_private_route_table" {
-  vpc_id = aws_vpc.example_vpc.id
-  # route {
-  #     cidr_block = "0.0.0.0/0"
-  #     gateway_id = aws_internet_gateway.example-ig.id
-  # }
+resource "aws_route_table" "private_route_table" {
+  vpc_id = aws_vpc.vpc.id
   tags = {
-    Name = "example-private-route-table"
+    Name = "${var.service_name}-private-route-table"
   }
   tags_all = {
-    Name = "example-private-route-table"
+    Name = "${var.service_name}-private-route-table"
   }
 }
 
-resource "aws_route_table_association" "aws_private_route_table_association1" {
-  subnet_id      = aws_subnet.example_private_subnet1.id
-  route_table_id = aws_route_table.example_private_route_table.id
+resource "aws_route_table_association" "private_route_table_association1" {
+  subnet_id      = aws_subnet.private_subnet1.id
+  route_table_id = aws_route_table.private_route_table.id
 }
 
-resource "aws_route_table_association" "aws_private_route_table_association2" {
-  subnet_id      = aws_subnet.example_private_subnet2.id
-  route_table_id = aws_route_table.example_private_route_table.id
+resource "aws_route_table_association" "private_route_table_association2" {
+  subnet_id      = aws_subnet.private_subnet2.id
+  route_table_id = aws_route_table.private_route_table.id
 }

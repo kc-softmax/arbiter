@@ -1,7 +1,6 @@
 import os
 import typer
 import subprocess
-import pathlib
 import json
 import asyncio
 from typing import Optional
@@ -10,12 +9,14 @@ from mako.template import Template
 
 from arbiter.cli import PROJECT_NAME, CONFIG_FILE
 from arbiter.cli.commands.database import app as database_app
-from arbiter.cli.commands.staging import app as staging_app
+from arbiter.cli.commands.build import app as build_app
 from arbiter.cli.utils import read_config
 
 app = typer.Typer()
 app.add_typer(database_app, name="db", help="Execute commands for database creation and migration.")
-app.add_typer(staging_app, name="stage", help="staging")
+app.add_typer(build_app, name="build", rich_help_panel="build environment",
+    help="Configure build environment for deploying service"
+)
 
 
 @app.command()
@@ -109,6 +110,33 @@ def _create_project_structure(project_path='.'):
                             of.write(template.render(project_name=PROJECT_NAME))
                         else:
                             of.write(template.render())
+
+
+@app.command()
+def dev(
+    reload: bool = typer.Option(False, "--reload", help="Enable auto-reload for code changes.")
+):
+    config = read_config(CONFIG_FILE)
+    installed_apps = config.get("installed_app", "apps")
+    apps = json.loads(installed_apps)
+    app_path = f"{PROJECT_NAME}.main:arbiterApp"
+    commands = [f"uvicorn {app_path} --host 0.0.0.0 --port 9991"]
+    for app in apps:
+        commands.append(f"pymon {app}.py")
+
+    async def run_command(command: str):
+        proc = await asyncio.create_subprocess_shell(
+            command,
+            shell=True,
+        )
+        await proc.communicate()
+
+    async def waiting_until_finish(commands: list[str]):
+        await asyncio.gather(
+            *[run_command(command) for command in commands]
+        )
+
+    asyncio.run(waiting_until_finish(commands))
 
 
 if __name__ == "__main__":

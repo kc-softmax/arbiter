@@ -56,7 +56,7 @@ def write_config(config: configparser.ConfigParser, config_file: str):
     return None
 
 
-def refresh_output(pwd: str):
+def refresh_output(pwd: str = None):
     terraform_images = subprocess.Popen(
         args=["terraform plan -refresh-only"],
         shell=True,

@@ -1,6 +1,6 @@
-output "example_tg" {
-  value = aws_alb_target_group.example_tg
+output "ec2_tg" {
+  value = aws_alb_target_group.ec2_tg
 }
-output "example_alb" {
-  value = aws_alb.example_alb
+output "alb" {
+  value = aws_alb.alb
 }
