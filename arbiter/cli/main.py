@@ -114,15 +114,49 @@ def _create_project_structure(project_path='.'):
 
 @app.command()
 def dev(
+    app_path: Annotated[Optional[str], typer.Argument(..., help="The path to the FastAPI app, e.g., 'myapp.main:app'")] = f"{PROJECT_NAME}.main:arbiterApp",
+    host: str = typer.Option(None, "--host", "-h", help="The host of the Arbiter FastAPI app."),
+    port: int = typer.Option(8080, "--port", "-p", help="The port of the Arbiter FastAPI app."),
     reload: bool = typer.Option(False, "--reload", help="Enable auto-reload for code changes.")
 ):
+    """
+    Read the config file.
+    """
+    # list of commands
+    commands: list[str] = []
     config = read_config(CONFIG_FILE)
-    installed_apps = config.get("installed_app", "apps")
+    if (config is None):
+        typer.echo("No config file path found. Please run 'init' first.")
+        return
+
+    """
+    Get the "host" and "port" from config file.
+    """
+    host = host or config.get("fastapi", "host", fallback=None)
+    port = port or config.get("fastapi", "port", fallback=None)
+    if (host is None or port is None):
+        typer.echo("Set the port and host in 'arbiter.settings.ini' or give them as options.")
+        return
+
+    """
+    Starts the Arbiter FastAPI app using Uvicorn.
+    """
+    typer.echo("Starting FastAPI app...")
+    # Command to run Uvicorn with the FastAPI app
+    uvicorn_command = f"uvicorn {app_path} --host {host} --port {port}"
+    
+    # Add reload option if specified
+    if reload:
+        uvicorn_command += " --reload"
+    commands.append(uvicorn_command)
+
+    installed_apps = config.get("installed_apps", "apps")
     apps = json.loads(installed_apps)
-    app_path = f"{PROJECT_NAME}.main:arbiterApp"
-    commands = [f"uvicorn {app_path} --host 0.0.0.0 --port 9991"]
     for app in apps:
-        commands.append(f"python {app}.py")
+        if reload:
+            commands.append(f"pymon {app}.py")
+        else:
+            commands.append(f"python {app}.py")
 
     async def run_command(command: str):
         proc = await asyncio.create_subprocess_shell(
