@@ -115,25 +115,46 @@ terraform version
 ### main.tf script
 - **main.tf include child module and terraform state**
 ```hcl
-module "service" {
-  source   = "./infra"
-  key_name = "infra"
+module "infra" {
+  source   = "git::https://github.com/kc-softmax/arbiter-server.git//infra?ref=develop"
+
+  service_name = "" # input your service name
+  cidr = "" # input your network class like 10.10.0.0/16
+  region = "" # input your deployment region
+  instance_type = "" # input type of instance
+  cache_node_type = "" # input type of cache node
+  zone_name = "" # you have to register the domain
+  record_name = "" # input host name
+  key_pair = "" # input specific key name you made
 }
 
 terraform {
-  You can manage tfstate with S3(default is local storage)
-  Manage tfstate using S3(First, you have to create Bucket) 
-  backend "s3" {
-    bucket  = "Bucket Name" like "example"
-    key     = "specific Key path in Bucket" like "/example.tfstate"
-    region  = "specific region" like "ap-northeast-2" "us-west-1"
-    profile = "your profile name created aws configure --profile name"
-  }
+  # You can manage tfstate with S3(default is local storage)
+  # backend "s3" {
+  #   bucket  = "" # input bucket name you made
+  #   key     = "" # input key/file name
+  #   region  = "" # input bucket region name you made
+  #   profile = "" # input aws configure profile
+  # }
   required_providers {
     aws = {
-      version = "~> major.minor.patch" like 5.43.0
+      version = "~> 5.43.0"
     }
   }
+}
+
+### please do not change below output field ###
+output "rds_endpoint" {
+  value = ""
+}
+output "redis_endpoint" {
+  value = module.infra.service.cache.endpoint
+}
+output "images" {
+  value = module.infra.service.images.repo_name
+}
+output "domain" {
+  value = "https://${module.infra.service.domain.domain_name}/docs"
 }
 ```
 

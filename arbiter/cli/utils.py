@@ -57,18 +57,18 @@ def write_config(config: configparser.ConfigParser, config_file: str):
 
 
 def refresh_output(pwd: str = None):
-    terraform_images = subprocess.Popen(
+    terraform_refresh_plan = subprocess.Popen(
         args=["terraform plan -refresh-only"],
         shell=True,
         cwd=pwd
     )
-    terraform_images.wait(86400)
-    terraform_images = subprocess.Popen(
+    terraform_refresh_plan.wait(86400)
+    terraform_refresh_apply = subprocess.Popen(
         args=["terraform apply -refresh-only -auto-approve"],
         shell=True,
         cwd=pwd
     )
-    terraform_images.wait(86400)
+    terraform_refresh_apply.wait(86400)
 
 
 def popen_command(command: TERRAFORM_COMMAND, pwd: str = None, module: str = None) -> str | list[str]:
@@ -116,7 +116,7 @@ async def check_db_server(drivername: str, username: str, password: str, hostnam
         username=username if username else None,
         password=password if password else None,
         host=hostname if hostname else None,
-        port=port if port else None,
+        port=port if port else None
     )
     engine = create_async_engine(url)
     try:

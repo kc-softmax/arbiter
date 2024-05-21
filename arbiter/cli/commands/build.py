@@ -2,7 +2,6 @@ import typer
 import os
 import pathlib
 import json
-import asyncio
 
 from arbiter.cli.utils import AsyncTyper
 from arbiter.cli.utils import (

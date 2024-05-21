@@ -139,3 +139,6 @@ formatter = generic
 [formatter_generic]
 format = %(levelname)-5.5s [%(name)s] %(message)s
 datefmt = %H:%M:%S
+
+[installed_apps]
+apps = ["your_service"]
