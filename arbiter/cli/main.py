@@ -3,6 +3,7 @@ import typer
 import subprocess
 import json
 import asyncio
+import click
 from typing import Optional
 from typing_extensions import Annotated
 from mako.template import Template
@@ -123,6 +124,7 @@ def dev(
     Read the config file.
     """
     # list of commands
+    pids: dict[str, int] = {}
     commands: list[str] = []
     config = read_config(CONFIG_FILE)
     if (config is None):
@@ -163,14 +165,24 @@ def dev(
             command,
             shell=True,
         )
+        pids["app" if "uvicorn" in command else "service"] = proc.pid
         await proc.communicate()
+                            
+    async def waiting_until_finish(loop: asyncio.AbstractEventLoop, commands: list[str]):
+        tasks = []
+        for command in commands:
+            task = asyncio.create_task(run_command(command))
+            tasks.append(task)
+        for task in tasks:
+            await task
 
-    async def waiting_until_finish(commands: list[str]):
-        await asyncio.gather(
-            *[run_command(command) for command in commands]
-        )
-
-    asyncio.run(waiting_until_finish(commands))
+    try:
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(waiting_until_finish(loop, commands))
+    finally:
+        # 태스크가 종료될 때까지 기다린다(터미널의 순서 보장)
+        import time
+        time.sleep(1)
 
 
 if __name__ == "__main__":
