@@ -12,6 +12,7 @@ class SHORTCUT(StrEnum):
     SHOW_PROCESS = "p"
     KILL_PROCESS = "k"
     START_PROCESS = "s"
+    SHOW_SHORTCUT = "h"
 
 
 class PROVIDER(StrEnum):
