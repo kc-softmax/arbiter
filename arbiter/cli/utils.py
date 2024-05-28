@@ -8,6 +8,12 @@ from typer import Typer
 from enum import StrEnum
 
 
+class SHORTCUT(StrEnum):
+    SHOW_PROCESS = "p"
+    KILL_PROCESS = "k"
+    START_PROCESS = "s"
+
+
 class PROVIDER(StrEnum):
     AWS = "aws"
     DEV = "dev"

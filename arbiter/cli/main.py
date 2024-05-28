@@ -3,15 +3,17 @@ import typer
 import subprocess
 import json
 import asyncio
-import click
+import sys
+from io import TextIOWrapper
 from typing import Optional
 from typing_extensions import Annotated
 from mako.template import Template
+from contextlib import asynccontextmanager
 
 from arbiter.cli import PROJECT_NAME, CONFIG_FILE
 from arbiter.cli.commands.database import app as database_app
 from arbiter.cli.commands.build import app as build_app
-from arbiter.cli.utils import read_config
+from arbiter.cli.utils import read_config, SHORTCUT
 
 app = typer.Typer()
 app.add_typer(database_app, name="db", help="Execute commands for database creation and migration.")
@@ -167,20 +169,73 @@ def dev(
         )
         pids["app" if "uvicorn" in command else "service"] = proc.pid
         await proc.communicate()
-                            
-    async def waiting_until_finish(loop: asyncio.AbstractEventLoop, commands: list[str]):
+
+    @asynccontextmanager
+    async def raw_mode(file: TextIOWrapper):
+        import termios
+        old_attrs = termios.tcgetattr(file.fileno())
+        new_attrs = old_attrs[:]
+        new_attrs[3] = new_attrs[3] & ~(termios.ECHO | termios.ICANON)
+        try:
+            termios.tcsetattr(file.fileno(), termios.TCSADRAIN, new_attrs)
+            yield
+        finally:
+            termios.tcsetattr(file.fileno(), termios.TCSADRAIN, old_attrs)
+
+    async def interact(loop: asyncio.AbstractEventLoop, reload: bool):
+        await asyncio.sleep(2)
+        # key 입력을 계속 기다리지않고 바로 내보낸다
+        typer.echo(typer.style("Arbiter CLI Options", fg=typer.colors.WHITE, bold=True))
+        typer.echo(typer.style("Usage: ...", fg=typer.colors.WHITE, bold=True))
+        typer.echo(typer.style("  Commands:", fg=typer.colors.CYAN, bold=True))
+        typer.echo(typer.style("    p    display running process name and id", fg=typer.colors.WHITE, bold=True))
+        typer.echo(typer.style("    k    kill running process with name", fg=typer.colors.WHITE, bold=True))
+        typer.echo(typer.style("    s    start registered service or app", fg=typer.colors.WHITE, bold=True))
+        async with raw_mode(sys.stdin):
+            while True:
+                await asyncio.sleep(0.001)
+                option = sys.stdin.read(1)
+                match option:
+                    case SHORTCUT.SHOW_PROCESS:
+                        for service, pid in pids.items():
+                            typer.echo(typer.style(f"{service}: {pid}", fg=typer.colors.GREEN, bold=True))
+                    case SHORTCUT.KILL_PROCESS:
+                        import signal
+                        typer.echo(typer.style(f"kill process number {[f'{key}({key[0]})' for key in pids.keys()]}", fg=typer.colors.WHITE, bold=True))
+                        option = sys.stdin.read(1)
+                        for key, pid in pids.items():
+                            if option == key[0]:
+                                os.kill(pids[key], signal.SIGTERM)
+                                typer.echo(typer.style(f"killed {key}.....", fg=typer.colors.RED, bold=True))
+                                pids.pop(key)
+                                break
+                    case SHORTCUT.START_PROCESS:
+                        for app in apps:
+                            if "service" not in pids.keys():
+                                if reload:
+                                    loop.create_task(run_command(f"pymon {app}.py"))
+                                else:
+                                    loop.create_task(run_command(f"python {app}.py"))
+                        if "app" not in pids.keys():
+                            loop.create_task(run_command(uvicorn_command))
+
+                        typer.echo(typer.style(f"started service!!!!!!", fg=typer.colors.GREEN, bold=True))
+                    case _:
+                        continue
+
+    async def waiting_until_finish(loop: asyncio.AbstractEventLoop, commands: list[str], reload: bool):
         tasks = []
         for command in commands:
             task = asyncio.create_task(run_command(command))
             tasks.append(task)
+        tasks.append(asyncio.create_task(interact(loop, reload)))
         for task in tasks:
             await task
 
     try:
         loop = asyncio.get_event_loop()
-        loop.run_until_complete(waiting_until_finish(loop, commands))
+        loop.run_until_complete(waiting_until_finish(loop, commands, reload))
     finally:
-        # 태스크가 종료될 때까지 기다린다(터미널의 순서 보장)
         import time
         time.sleep(1)
 
