@@ -162,6 +162,15 @@ def dev(
         else:
             commands.append(f"python {app}.py")
 
+    def show_shortcut_info():
+        typer.echo(typer.style("Arbiter CLI Options", fg=typer.colors.WHITE, bold=True))
+        typer.echo(typer.style("Usage: ...", fg=typer.colors.WHITE, bold=True))
+        typer.echo(typer.style("  Commands:", fg=typer.colors.CYAN, bold=True))
+        typer.echo(typer.style("    h    show shortcut command", fg=typer.colors.WHITE, bold=True))
+        typer.echo(typer.style("    p    display running process name and id", fg=typer.colors.WHITE, bold=True))
+        typer.echo(typer.style("    k    kill running process with name", fg=typer.colors.WHITE, bold=True))
+        typer.echo(typer.style("    s    start registered service or app", fg=typer.colors.WHITE, bold=True))
+
     async def run_command(command: str):
         proc = await asyncio.create_subprocess_shell(
             command,
@@ -185,12 +194,7 @@ def dev(
     async def interact(loop: asyncio.AbstractEventLoop, reload: bool):
         await asyncio.sleep(2)
         # key 입력을 계속 기다리지않고 바로 내보낸다
-        typer.echo(typer.style("Arbiter CLI Options", fg=typer.colors.WHITE, bold=True))
-        typer.echo(typer.style("Usage: ...", fg=typer.colors.WHITE, bold=True))
-        typer.echo(typer.style("  Commands:", fg=typer.colors.CYAN, bold=True))
-        typer.echo(typer.style("    p    display running process name and id", fg=typer.colors.WHITE, bold=True))
-        typer.echo(typer.style("    k    kill running process with name", fg=typer.colors.WHITE, bold=True))
-        typer.echo(typer.style("    s    start registered service or app", fg=typer.colors.WHITE, bold=True))
+        show_shortcut_info()
         async with raw_mode(sys.stdin):
             while True:
                 await asyncio.sleep(0.001)
@@ -220,6 +224,8 @@ def dev(
                             loop.create_task(run_command(uvicorn_command))
 
                         typer.echo(typer.style(f"started service!!!!!!", fg=typer.colors.GREEN, bold=True))
+                    case SHORTCUT.SHOW_SHORTCUT:
+                        show_shortcut_info()
                     case _:
                         continue
 
