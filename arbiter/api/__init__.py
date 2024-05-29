@@ -1,12 +1,17 @@
-from fastapi import FastAPI
+from typing import Awaitable, Callable
+from fastapi import FastAPI, Query, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi.websockets import WebSocketState
 
 from arbiter.api.auth.router import router as auth_router
-from arbiter.api.database import async_engine, create_db_and_tables
 from arbiter.api.exceptions import BadRequest
 from arbiter.api.config import settings
+from arbiter.api.stream import ArbiterStream
+from arbiter.database import PrismaClientWrapper
+
+from arbiter.broker.redis_broker import RedisBroker
 
 
 class ArbiterApp(FastAPI):
@@ -30,11 +35,36 @@ class ArbiterApp(FastAPI):
         )
         # app.add_middleware(BaseHTTPMiddleware, dispatch=log_middleware)
         self.include_router(auth_router)
+        self.redis_broker: RedisBroker = None
+        self.stream_handler: Callable[[ArbiterStream], Awaitable[None]] = None
 
     async def on_startup(self):
-        await create_db_and_tables()
+        await PrismaClientWrapper.connect()
+        self.redis_broker = await RedisBroker.create()
+        # start system event consumer
+        # if initialize broker failed, raise exception or warning
 
     async def on_shutdown(self):
-        await async_engine.dispose()
+        await PrismaClientWrapper.disconnect()
+        await self.redis_broker.close()
+
+    def stream(self, path: str) -> Callable[[Callable[[ArbiterStream], Awaitable[None]]], None]:
+        async def connect_stream(websocket: WebSocket, token: str = Query()):
+            stream = await ArbiterStream.create(websocket, token, self.redis_broker)
+            try:
+                await self.stream_handler(stream)  # 스트림 핸들러 호출
+            except Exception as e:
+                print(f"WebSocket connection error: {e}")
+            finally:
+                if websocket.client_state is WebSocketState.CONNECTED:
+                    # show warning message that we recommend to close connection in stream
+                    await websocket.close()
+
+        def decorator(handler: Callable[[ArbiterStream], Awaitable[None]]) -> None:
+            self.stream_handler = handler
+            self.websocket(path)(connect_stream)
+
+        return decorator
+
 
 arbiterApp = ArbiterApp()

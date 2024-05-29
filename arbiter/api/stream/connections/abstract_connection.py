@@ -1,9 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Callable, Coroutine
 from fastapi import WebSocket
-from fastapi.websockets import WebSocketState
-from arbiter.api.auth.models import GameUser
-from arbiter.api.stream.data import StreamMessage
 
 
 class ArbiterConnection(ABC):
