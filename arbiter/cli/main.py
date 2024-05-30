@@ -223,7 +223,10 @@ def dev(
                         pids["arbiter"].cancel()
                         for key, pid in pids.items():
                             if isinstance(pid, int):
-                                os.kill(pid, signal.SIGTERM)
+                                try:
+                                    os.kill(pid, signal.SIGTERM)
+                                except Exception:
+                                    typer.echo(typer.style(f"already killed {key}.....", fg=typer.colors.RED, bold=True))
                                 typer.echo(typer.style(f"shutdown {key}.....", fg=typer.colors.RED, bold=True))
                         pids.clear()
                     case SHORTCUT.START_PROCESS:
