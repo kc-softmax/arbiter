@@ -8,7 +8,7 @@ from typer import Typer
 from enum import StrEnum
 
 
-class SHORTCUT(StrEnum):
+class Shortcut(StrEnum):
     SHOW_PROCESS = "p"
     KILL_PROCESS = "k"
     START_PROCESS = "s"
@@ -16,21 +16,21 @@ class SHORTCUT(StrEnum):
     EXIT = "q"
 
 
-class PROVIDER(StrEnum):
+class Providers(StrEnum):
     AWS = "aws"
     DEV = "dev"
     LOCAL = "local"
 
 
-class TERRAFORM_COMMAND(StrEnum):
-    INIT = "terraform init"
-    PLAN = "terraform plan"
-    APPLY = "terraform apply -target={module} -auto-approve"
-    DESTROY = "terraform destroy -auto-approve"
-    OUTPUT = "terraform output -json"
+class Commands(StrEnum):
+    TERRAFORM_INIT = "terraform init"
+    TERRAFORM_PLAN = "terraform plan"
+    TERRAFORM_APPLY = "terraform apply -target={module} -auto-approve"
+    TERRAFORM_DESTROY = "terraform destroy -auto-approve"
+    TERRAFORM_OUTPUT = "terraform output -json"
 
 
-class SUPPORTED_MODULE(StrEnum):
+class SupportedModules(StrEnum):
     CACHE = "module.infra.module.service.module.cache"
     COMPUTE = "module.infra.module.service.module.compute"
     CONTAINER = "module.infra.module.service.module.container"
@@ -79,9 +79,9 @@ def refresh_output(pwd: str = None):
     terraform_refresh_apply.wait(86400)
 
 
-def popen_command(command: TERRAFORM_COMMAND, pwd: str = None, module: str = None) -> str | list[str]:
+def popen_command(command: Commands, pwd: str = None, module: str = None) -> str | list[str]:
     match command:
-        case TERRAFORM_COMMAND.APPLY:
+        case Commands.TERRAFORM_APPLY:
             res = subprocess.Popen(
                 args=[command.format(module=module)],
                 stderr=subprocess.PIPE,
@@ -91,7 +91,7 @@ def popen_command(command: TERRAFORM_COMMAND, pwd: str = None, module: str = Non
             res.wait(86400)
             _, stderr = res.communicate()
             return stderr.decode()
-        case TERRAFORM_COMMAND.OUTPUT:
+        case Commands.TERRAFORM_OUTPUT:
             res = subprocess.Popen(
                 args=[command],
                 stdout=subprocess.PIPE,
