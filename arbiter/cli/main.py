@@ -4,6 +4,7 @@ import subprocess
 import json
 import asyncio
 import sys
+import signal
 from io import TextIOWrapper
 from typing import Optional
 from typing_extensions import Annotated
@@ -122,6 +123,11 @@ def dev(
     port: int = typer.Option(8080, "--port", "-p", help="The port of the Arbiter FastAPI app."),
     reload: bool = typer.Option(False, "--reload", help="Enable auto-reload for code changes.")
 ):
+    import uvicorn
+
+    from watchfiles import awatch
+    # You add your execute path for starting uvicorn app
+    sys.path.insert(0, os.getcwd())
     """
     Read the config file.
     """
@@ -146,21 +152,11 @@ def dev(
     Starts the Arbiter FastAPI app using Uvicorn.
     """
     typer.echo("Starting FastAPI app...")
-    # Command to run Uvicorn with the FastAPI app
-    uvicorn_command = f"uvicorn {app_path} --host {host} --port {port}"
-    
-    # Add reload option if specified
-    if reload:
-        uvicorn_command += " --reload"
-    commands.append(uvicorn_command)
 
     installed_apps = config.get("installed_apps", "apps")
     apps = json.loads(installed_apps)
     for app in apps:
-        if reload:
-            commands.append(f"pymon {app}.py")
-        else:
-            commands.append(f"python {app}.py")
+        commands.append(f"python {app}.py")
 
     def show_shortcut_info():
         typer.echo(typer.style("Arbiter CLI Options", fg=typer.colors.WHITE, bold=True))
@@ -170,13 +166,14 @@ def dev(
         typer.echo(typer.style("    p    display running process name and id", fg=typer.colors.WHITE, bold=True))
         typer.echo(typer.style("    k    kill running process with name", fg=typer.colors.WHITE, bold=True))
         typer.echo(typer.style("    s    start registered service or app", fg=typer.colors.WHITE, bold=True))
+        typer.echo(typer.style("    q    exit", fg=typer.colors.WHITE, bold=True))
 
     async def run_command(command: str):
         proc = await asyncio.create_subprocess_shell(
             command,
             shell=True,
         )
-        pids["app" if "uvicorn" in command else "service"] = proc.pid
+        pids["service"] = proc.pid
         await proc.communicate()
 
     @asynccontextmanager
@@ -191,55 +188,108 @@ def dev(
         finally:
             termios.tcsetattr(file.fileno(), termios.TCSADRAIN, old_attrs)
 
+    async def connect_stdin_stdout() -> list[asyncio.StreamReader | asyncio.StreamWriter]:
+        """stream stdin
+        This function help stdin as async
+        
+        Returns:
+            list[asyncio.StreamReader | asyncio.StreamWriter]: stream
+        """
+        loop = asyncio.get_event_loop()
+        reader = asyncio.StreamReader()
+        protocol = asyncio.StreamReaderProtocol(reader)
+        await loop.connect_read_pipe(lambda: protocol, sys.stdin)
+        w_transport, w_protocol = await loop.connect_write_pipe(asyncio.streams.FlowControlMixin, sys.stdout)
+        writer = asyncio.StreamWriter(w_transport, w_protocol, reader, loop)
+        return reader, writer
+
     async def interact(loop: asyncio.AbstractEventLoop, reload: bool):
         await asyncio.sleep(2)
-        # key 입력을 계속 기다리지않고 바로 내보낸다
         show_shortcut_info()
+        signal.signal(signal.SIGINT, sigint_handler)
+        signal.signal(signal.SIGTERM, sigint_handler)
+        reader, _ = await connect_stdin_stdout()
         async with raw_mode(sys.stdin):
             while True:
-                await asyncio.sleep(0.001)
-                option = sys.stdin.read(1)
+                encoded_option = await reader.read(100)
+                option = encoded_option.decode()
                 match option:
                     case SHORTCUT.SHOW_PROCESS:
-                        for service, pid in pids.items():
-                            typer.echo(typer.style(f"{service}: {pid}", fg=typer.colors.GREEN, bold=True))
+                        typer.echo(typer.style(f"Running List", fg=typer.colors.GREEN, bold=True))
+                        for service in pids.keys():
+                            typer.echo(typer.style(f"{service}", fg=typer.colors.YELLOW, bold=True))
                     case SHORTCUT.KILL_PROCESS:
-                        import signal
-                        typer.echo(typer.style(f"kill process number {[f'{key}({key[0]})' for key in pids.keys()]}", fg=typer.colors.WHITE, bold=True))
-                        option = sys.stdin.read(1)
+                        typer.echo(typer.style(f"kill all of process", fg=typer.colors.WHITE, bold=True))
+                        pids["app"].cancel()
                         for key, pid in pids.items():
-                            if option == key[0]:
-                                os.kill(pids[key], signal.SIGTERM)
-                                typer.echo(typer.style(f"killed {key}.....", fg=typer.colors.RED, bold=True))
-                                pids.pop(key)
-                                break
+                            if isinstance(pid, int):
+                                os.kill(pid, signal.SIGTERM)
+                                typer.echo(typer.style(f"shutdown {key}.....", fg=typer.colors.RED, bold=True))
+                        pids.clear()
                     case SHORTCUT.START_PROCESS:
                         for app in apps:
-                            if "service" not in pids.keys():
-                                if reload:
-                                    loop.create_task(run_command(f"pymon {app}.py"))
-                                else:
-                                    loop.create_task(run_command(f"python {app}.py"))
-                        if "app" not in pids.keys():
-                            loop.create_task(run_command(uvicorn_command))
+                            if not pids.get("service"):
+                                loop.create_task(run_command(f"python {app}.py"))
+                        if not pids.get("app"):
+                            uvicorn_task = loop.create_task(run_uvicorn())
+                            pids["app"] = uvicorn_task
 
-                        typer.echo(typer.style(f"started service!!!!!!", fg=typer.colors.GREEN, bold=True))
+                        typer.echo(typer.style(f"started all of service", fg=typer.colors.GREEN, bold=True))
                     case SHORTCUT.SHOW_SHORTCUT:
                         show_shortcut_info()
+                    case SHORTCUT.EXIT:
+                        for key, pid in pids.items():
+                            if isinstance(pid, int):
+                                os.kill(pid, signal.SIGTERM)
+                        sys.exit(0)
                     case _:
                         continue
 
+    async def run_uvicorn():
+        config = uvicorn.Config(
+            app_path,
+            host=host,
+            port=port,
+        )
+        server = uvicorn.Server(config)
+        socket = config.bind_socket()
+        try:
+            # If you add reload option, it will watch your present directory path
+            if reload:
+                async def watch_in_files():
+                    signal.signal(signal.SIGINT, sigint_handler)
+                    signal.signal(signal.SIGTERM, sigint_handler)
+                    async for _ in awatch(os.getcwd()):
+                        server.should_exit = True
+                        await server.shutdown()
+                        await server.startup()
+                await asyncio.gather(server.serve([socket]), watch_in_files(), return_exceptions=True)
+            else:
+                await server.serve([socket])
+        except asyncio.CancelledError:
+            typer.echo(typer.style(f"shutdown app.......", fg=typer.colors.RED, bold=True))
+            await server.shutdown([socket])
+
     async def waiting_until_finish(loop: asyncio.AbstractEventLoop, commands: list[str], reload: bool):
         tasks = []
+        app_task = asyncio.create_task(run_uvicorn())
+        pids["app"] = app_task
+        tasks.append(app_task)
         for command in commands:
-            task = asyncio.create_task(run_command(command))
-            tasks.append(task)
-        tasks.append(asyncio.create_task(interact(loop, reload)))
-        for task in tasks:
-            await task
+            service_task = asyncio.create_task(run_command(command))
+            tasks.append(service_task)
+        return await interact(loop, reload)
+
+    def sigint_handler(sig, frame):
+        """
+        Return without error on SIGINT or SIGTERM signals in interactive command mode.
+
+        e.g. CTRL+C or kill <PID>
+        """
+        sys.exit(0)
 
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.new_event_loop()
         loop.run_until_complete(waiting_until_finish(loop, commands, reload))
     finally:
         import time
