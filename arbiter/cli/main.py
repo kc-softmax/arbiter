@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 from arbiter.cli import PROJECT_NAME, CONFIG_FILE
 from arbiter.cli.commands.database import app as database_app
 from arbiter.cli.commands.build import app as build_app
-from arbiter.cli.utils import read_config, SHORTCUT
+from arbiter.cli.utils import read_config, Shortcut
 
 app = typer.Typer()
 app.add_typer(database_app, name="db", help="Execute commands for database creation and migration.")
@@ -134,7 +134,7 @@ def dev(
     """
     # dict of commands with app name
     pids: dict[str, int] = {}
-    commands: dict[str, str] = {}
+    process_commands: dict[str, str] = {}
     config = read_config(CONFIG_FILE)
     if (config is None):
         typer.echo("No config file path found. Please run 'init' first.")
@@ -157,7 +157,7 @@ def dev(
     installed_apps = config.get("installed_apps", "apps")
     apps = json.loads(installed_apps)
     for app in apps:
-        commands[app] = f"python {app}.py"
+        process_commands[app] = f"python {app}.py"
 
     def show_shortcut_info():
         typer.echo(typer.style("Arbiter CLI Options", fg=typer.colors.WHITE, bold=True))
@@ -214,11 +214,11 @@ def dev(
                 encoded_option = await reader.read(100)
                 option = encoded_option.decode()
                 match option:
-                    case SHORTCUT.SHOW_PROCESS:
+                    case Shortcut.SHOW_PROCESS:
                         typer.echo(typer.style(f"Running List", fg=typer.colors.GREEN, bold=True))
                         for service in pids.keys():
                             typer.echo(typer.style(f"{service}", fg=typer.colors.YELLOW, bold=True))
-                    case SHORTCUT.KILL_PROCESS:
+                    case Shortcut.KILL_PROCESS:
                         typer.echo(typer.style(f"kill all of process", fg=typer.colors.WHITE, bold=True))
                         pids["arbiter"].cancel()
                         for key, pid in pids.items():
@@ -229,8 +229,8 @@ def dev(
                                     typer.echo(typer.style(f"already killed {key}.....", fg=typer.colors.RED, bold=True))
                                 typer.echo(typer.style(f"shutdown {key}.....", fg=typer.colors.RED, bold=True))
                         pids.clear()
-                    case SHORTCUT.START_PROCESS:
-                        for app_name, command in commands.items():
+                    case Shortcut.START_PROCESS:
+                        for app_name, command in process_commands.items():
                             if not pids.get(app_name):
                                 loop.create_task(run_command(app_name, command))
                         if not pids.get("arbiter"):
@@ -238,9 +238,9 @@ def dev(
                             pids["arbiter"] = uvicorn_task
 
                         typer.echo(typer.style(f"started all of service", fg=typer.colors.GREEN, bold=True))
-                    case SHORTCUT.SHOW_SHORTCUT:
+                    case Shortcut.SHOW_SHORTCUT:
                         show_shortcut_info()
-                    case SHORTCUT.EXIT:
+                    case Shortcut.EXIT:
                         for key, pid in pids.items():
                             if isinstance(pid, int):
                                 os.kill(pid, signal.SIGTERM)
@@ -265,19 +265,19 @@ def dev(
                 if reload:
                     async for _ in awatch(os.getcwd()):
                         server.should_exit = True
-                        await server.shutdown([socket])
-                        await server.startup([socket])
+                        await server.shutdown()
+                        await server.startup()
             await asyncio.gather(server.serve([socket]), watch_in_files(reload), return_exceptions=True)
         except asyncio.CancelledError:
             typer.echo(typer.style(f"shutdown arbiter.......", fg=typer.colors.RED, bold=True))
             await server.shutdown([socket])
 
-    async def waiting_until_finish(loop: asyncio.AbstractEventLoop, commands: dict[str, str], reload: bool):
+    async def waiting_until_finish(loop: asyncio.AbstractEventLoop, process_commands: dict[str, str], reload: bool):
         tasks = []
         app_task = asyncio.create_task(run_uvicorn(reload))
         pids["arbiter"] = app_task
         tasks.append(app_task)
-        for app_name, command in commands.items():
+        for app_name, command in process_commands.items():
             service_task = asyncio.create_task(run_command(app_name, command))
             tasks.append(service_task)
         return await interact(loop, reload)
@@ -292,7 +292,7 @@ def dev(
 
     try:
         loop = asyncio.new_event_loop()
-        loop.run_until_complete(waiting_until_finish(loop, commands, reload))
+        loop.run_until_complete(waiting_until_finish(loop, process_commands, reload))
     finally:
         import time
         time.sleep(1)
