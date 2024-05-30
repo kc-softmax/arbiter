@@ -11,7 +11,8 @@ class RedisBroker(MessageBrokerInterface):
         self.client: aioredis.Redis = None
 
     async def connect(self):
-        async_redis_connection_pool = aioredis.ConnectionPool(host=settings.CACHE_CONNECTION_URL)
+        async_redis_connection_pool = aioredis.ConnectionPool(
+            host=settings.CACHE_CONNECTION_URL)
         self.client = aioredis.Redis.from_pool(async_redis_connection_pool)
 
     async def disconnect(self):
@@ -28,7 +29,13 @@ class RedisMessageProducer(MessageProducerInterface):
         super().__init__()
         self.client = client
 
-    async def send(self, topic: str, message: str):
+    async def setup(self):
+        pass
+
+    async def teardown(self):
+        pass
+
+    async def send(self, topic: str, message: bytes):
         await self.client.publish(topic, message)
 
 
@@ -52,10 +59,10 @@ class RedisMessageConsumer(MessageConsumerInterface):
             if message['type'] == 'message':
                 yield message['data']
 
-    async def __aenter__(self):
-        return self
+    async def setup(self):
+        pass
 
-    async def __aexit__(self, exc_type, exc_value, traceback):
+    async def teardown(self):
         if self.pubsub:
             await self.pubsub.unsubscribe()
             await self.pubsub.close()

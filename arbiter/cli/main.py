@@ -17,29 +17,38 @@ from arbiter.cli.commands.build import app as build_app
 from arbiter.cli.utils import read_config, Shortcut
 
 app = typer.Typer()
-app.add_typer(database_app, name="db", help="Execute commands for database creation and migration.")
+app.add_typer(database_app, name="db",
+              help="Execute commands for database creation and migration.")
 app.add_typer(build_app, name="build", rich_help_panel="build environment",
-    help="Configure build environment for deploying service"
-)
+              help="Configure build environment for deploying service"
+              )
 
 
 @app.command()
 def init(
-    base_path: Optional[str] = typer.Option(".", "--path", "-p", help="The base path where to create the project.")
+    base_path: Optional[str] = typer.Option(
+        ".", "--path", "-p", help="The base path where to create the project.")
 ):
     """
     Creates a basic project structure with predefined files and directories.
-    """    
+    """
     _create_project_structure(base_path)
+    """
+    initialize prisma db
+    """
     typer.echo(f"Project created successfully.")
 
 
 @app.command()
 def start(
-    app_path: Annotated[Optional[str], typer.Argument(..., help="The path to the FastAPI app, e.g., 'myapp.main:app'")] = f"{PROJECT_NAME}.main:arbiterApp",
-    host: str = typer.Option(None, "--host", "-h", help="The host of the Arbiter FastAPI app."),
-    port: int = typer.Option(None, "--port", "-p", help="The port of the Arbiter FastAPI app."),
-    reload: bool = typer.Option(False, "--reload", help="Enable auto-reload for code changes.")
+    app_path: Annotated[Optional[str], typer.Argument(
+        ..., help="The path to the FastAPI app, e.g., 'myapp.main:app'")] = f"{PROJECT_NAME}.main:arbiterApp",
+    host: str = typer.Option(None, "--host", "-h",
+                             help="The host of the Arbiter FastAPI app."),
+    port: int = typer.Option(None, "--port", "-p",
+                             help="The port of the Arbiter FastAPI app."),
+    reload: bool = typer.Option(
+        False, "--reload", help="Enable auto-reload for code changes.")
 ):
     """
     Read the config file.
@@ -55,7 +64,8 @@ def start(
     host = host or config.get("fastapi", "host", fallback=None)
     port = port or config.get("fastapi", "port", fallback=None)
     if (host is None or port is None):
-        typer.echo("Set the port and host in 'arbiter.settings.ini' or give them as options.")
+        typer.echo(
+            "Set the port and host in 'arbiter.settings.ini' or give them as options.")
         return
 
     """
@@ -64,7 +74,7 @@ def start(
     typer.echo("Starting FastAPI app...")
     # Command to run Uvicorn with the FastAPI app
     uvicorn_command = f"uvicorn {app_path} --host {host} --port {port}"
-    
+
     # Add reload option if specified
     if reload:
         uvicorn_command += " --reload"
@@ -92,7 +102,7 @@ def _create_project_structure(project_path='.'):
 
         for file in files:
             file_path = os.path.join(dir_path, file)
-            
+
             if dir_path.find("migrations") != -1:
                 template_path = f'{template_root_path}/alembic'
             elif dir_path.find(PROJECT_NAME) != -1:
@@ -111,17 +121,22 @@ def _create_project_structure(project_path='.'):
                     template = Template(tf.read())
                     with open(file_path, "w") as of:
                         if template_file.find(CONFIG_FILE) != -1 or template_file.find("env.py") != 1:
-                            of.write(template.render(project_name=PROJECT_NAME))
+                            of.write(template.render(
+                                project_name=PROJECT_NAME))
                         else:
                             of.write(template.render())
 
 
 @app.command()
 def dev(
-    app_path: Annotated[Optional[str], typer.Argument(..., help="The path to the FastAPI app, e.g., 'myapp.main:app'")] = f"{PROJECT_NAME}.main:arbiterApp",
-    host: str = typer.Option(None, "--host", "-h", help="The host of the Arbiter FastAPI app."),
-    port: int = typer.Option(8080, "--port", "-p", help="The port of the Arbiter FastAPI app."),
-    reload: bool = typer.Option(False, "--reload", help="Enable auto-reload for code changes.")
+    app_path: Annotated[Optional[str], typer.Argument(
+        ..., help="The path to the FastAPI app, e.g., 'myapp.main:app'")] = f"{PROJECT_NAME}.main:arbiterApp",
+    host: str = typer.Option(None, "--host", "-h",
+                             help="The host of the Arbiter FastAPI app."),
+    port: int = typer.Option(8080, "--port", "-p",
+                             help="The port of the Arbiter FastAPI app."),
+    reload: bool = typer.Option(
+        False, "--reload", help="Enable auto-reload for code changes.")
 ):
     # This package used in only this function
     import uvicorn
@@ -146,7 +161,8 @@ def dev(
     host = host or config.get("fastapi", "host", fallback=None)
     port = port or config.get("fastapi", "port", fallback=None)
     if (host is None or port is None):
-        typer.echo("Set the port and host in 'arbiter.settings.ini' or give them as options.")
+        typer.echo(
+            "Set the port and host in 'arbiter.settings.ini' or give them as options.")
         return
 
     """
@@ -160,14 +176,20 @@ def dev(
         process_commands[app] = f"python {app}.py"
 
     def show_shortcut_info():
-        typer.echo(typer.style("Arbiter CLI Options", fg=typer.colors.WHITE, bold=True))
+        typer.echo(typer.style("Arbiter CLI Options",
+                   fg=typer.colors.WHITE, bold=True))
         typer.echo(typer.style("Usage: ...", fg=typer.colors.WHITE, bold=True))
         typer.echo(typer.style("  Commands:", fg=typer.colors.CYAN, bold=True))
-        typer.echo(typer.style("    h    show shortcut command", fg=typer.colors.WHITE, bold=True))
-        typer.echo(typer.style("    p    display running process name and id", fg=typer.colors.WHITE, bold=True))
-        typer.echo(typer.style("    k    kill running process with name", fg=typer.colors.WHITE, bold=True))
-        typer.echo(typer.style("    s    start registered service or app", fg=typer.colors.WHITE, bold=True))
-        typer.echo(typer.style("    q    exit", fg=typer.colors.WHITE, bold=True))
+        typer.echo(typer.style("    h    show shortcut command",
+                   fg=typer.colors.WHITE, bold=True))
+        typer.echo(typer.style(
+            "    p    display running process name and id", fg=typer.colors.WHITE, bold=True))
+        typer.echo(typer.style(
+            "    k    kill running process with name", fg=typer.colors.WHITE, bold=True))
+        typer.echo(typer.style(
+            "    s    start registered service or app", fg=typer.colors.WHITE, bold=True))
+        typer.echo(typer.style("    q    exit",
+                   fg=typer.colors.WHITE, bold=True))
 
     async def run_command(app_name: str, command: str):
         # Run subprocess shell command
@@ -193,7 +215,7 @@ def dev(
     async def connect_stdin_stdout() -> asyncio.StreamReader:
         """stream stdin
         This function help stdin as async
-        
+
         Returns:
             asyncio.StreamReader: stream
         """
@@ -215,36 +237,45 @@ def dev(
                 option = encoded_option.decode()
                 match option:
                     case Shortcut.SHOW_PROCESS:
-                        typer.echo(typer.style(f"Running List", fg=typer.colors.GREEN, bold=True))
+                        typer.echo(typer.style(f"Running List",
+                                   fg=typer.colors.GREEN, bold=True))
                         for service in pids.keys():
-                            typer.echo(typer.style(f"{service}", fg=typer.colors.YELLOW, bold=True))
+                            typer.echo(typer.style(
+                                f"{service}", fg=typer.colors.YELLOW, bold=True))
                     case Shortcut.KILL_PROCESS:
-                        typer.echo(typer.style(f"kill all of process", fg=typer.colors.WHITE, bold=True))
+                        typer.echo(typer.style(f"kill all of process",
+                                   fg=typer.colors.WHITE, bold=True))
                         pids["arbiter"].cancel()
                         for key, pid in pids.items():
                             if isinstance(pid, int):
                                 try:
                                     os.kill(pid, signal.SIGTERM)
                                 except Exception:
-                                    typer.echo(typer.style(f"already killed {key}.....", fg=typer.colors.RED, bold=True))
-                                typer.echo(typer.style(f"shutdown {key}.....", fg=typer.colors.RED, bold=True))
+                                    typer.echo(typer.style(
+                                        f"already killed {key}.....", fg=typer.colors.RED, bold=True))
+                                typer.echo(typer.style(
+                                    f"shutdown {key}.....", fg=typer.colors.RED, bold=True))
                         pids.clear()
                     case Shortcut.START_PROCESS:
                         for app_name, command in process_commands.items():
                             if not pids.get(app_name):
-                                loop.create_task(run_command(app_name, command))
+                                loop.create_task(
+                                    run_command(app_name, command))
                         if not pids.get("arbiter"):
-                            uvicorn_task = loop.create_task(run_uvicorn(reload))
+                            uvicorn_task = loop.create_task(
+                                run_uvicorn(reload))
                             pids["arbiter"] = uvicorn_task
 
-                        typer.echo(typer.style(f"started all of service", fg=typer.colors.GREEN, bold=True))
+                        typer.echo(typer.style(
+                            f"started all of service", fg=typer.colors.GREEN, bold=True))
                     case Shortcut.SHOW_SHORTCUT:
                         show_shortcut_info()
                     case Shortcut.EXIT:
                         for key, pid in pids.items():
                             if isinstance(pid, int):
                                 os.kill(pid, signal.SIGTERM)
-                        typer.echo(typer.style(f"closing arbiter.....", fg=typer.colors.YELLOW, bold=True))
+                        typer.echo(typer.style(f"closing arbiter.....",
+                                   fg=typer.colors.YELLOW, bold=True))
                         break
                     case _:
                         continue
@@ -269,7 +300,8 @@ def dev(
                         await server.startup()
             await asyncio.gather(server.serve([socket]), watch_in_files(reload), return_exceptions=True)
         except asyncio.CancelledError:
-            typer.echo(typer.style(f"shutdown arbiter.......", fg=typer.colors.RED, bold=True))
+            typer.echo(typer.style(f"shutdown arbiter.......",
+                       fg=typer.colors.RED, bold=True))
             await server.shutdown([socket])
 
     async def waiting_until_finish(loop: asyncio.AbstractEventLoop, process_commands: dict[str, str], reload: bool):
@@ -292,7 +324,8 @@ def dev(
 
     try:
         loop = asyncio.new_event_loop()
-        loop.run_until_complete(waiting_until_finish(loop, process_commands, reload))
+        loop.run_until_complete(waiting_until_finish(
+            loop, process_commands, reload))
     finally:
         import time
         time.sleep(1)

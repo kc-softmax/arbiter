@@ -30,8 +30,8 @@ class NotFoundUserForUpdate(NotFound):
     DETAIL = ErrorCode.USER_NOT_FOUND_FOR_UPDATE
 
 
-class UserAlready(BadRequest):
-    DETAIL = ErrorCode.USER_ALREADY
+class UserAlreadyExists(BadRequest):
+    DETAIL = ErrorCode.USER_ALREADY_EXISTS
 
 
 class AtLeastOneOwner(BadRequest):

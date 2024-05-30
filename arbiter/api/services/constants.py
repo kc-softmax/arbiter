@@ -1,9 +1,9 @@
 from enum import Enum
 
 
-class AuthRouterTag(str, Enum):
-    TOKEN = "Token"
-    USER = "Auth"
+class ServicesRouterTag(str, Enum):
+    MANAGE = "manage"
+    MESSAGES = "messages"
 
 
 class ErrorCode(str, Enum):
@@ -17,11 +17,3 @@ class ErrorCode(str, Enum):
     USER_NOT_FOUND_FOR_DELETE = "There are no users you want to delete"
     PROTECT_OWNER = "At least one OWNER permission must be maintained."
     NOT_ALLOWED_UPDATE_ROLE_MAINTAINER = "Maintainer can't update role"
-
-
-class TOKEN_GENERATE_ALGORITHM(str, Enum):
-    HS256 = "HS256"
-
-
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7
-REFRESH_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7

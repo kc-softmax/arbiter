@@ -1,7 +1,15 @@
-from pydantic import BaseModel
+from sqlalchemy import Column, String
+from pydantic import BaseModel, Field
 
-from arbiter.api.auth.models import GameUserBase, PKModel
 
+# class LoginType(str, Enum):
+#     GUEST = "guest"
+#     EMAIL = "email"
+#     FACEBOOK = "facebook"
+#     APPLE = "apple"
+#     STEAM = "steam"
+#     GOOGLE = "google"
+#     TESTER = "tester"
 
 class TokenSchema(BaseModel):
     access_token: str
@@ -17,23 +25,21 @@ class TokenRefreshRequest(TokenSchema):
     pass
 
 
-class GamerUserSchema(GameUserBase, PKModel):
-    class Config:
-        omit_fields = {"password"}
+class UserSchema(BaseModel):
+    id: int
+    email: str
+    password: str
+    hash_tag: int
+    access_token: str | None = Field(sa_column=Column(String(128)))
+    refresh_token: str | None = Field(sa_column=Column(String(128)))
 
 
-class GamerUserCreateByEmail(GameUserBase):
-    class Config:
-        pick_fields = {"user_name", "email", "password", "adapter"}
+class UserCreate(BaseModel):
+    email: str
+    password: str
 
 
-class GamerUserUpdate(GameUserBase):
-    class Config:
-        pick_fields = {"user_name"}
-
-
-class GamerUserLoginByGuest(GameUserBase):
-    class Config:
-        pick_fields = {"device_id"}
-
-GamerUserLoginByUserName = GamerUserUpdate
+class UserResponse(BaseModel):
+    email: str
+    access_token: str = Field(sa_column=Column(String(128)))
+    refresh_token: str = Field(sa_column=Column(String(128)))
