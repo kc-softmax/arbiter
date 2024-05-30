@@ -1,0 +1,37 @@
+// database
+datasource db {
+  provider = "sqlite"
+  url      = "file:database.db"
+}
+// generator
+generator client {
+  provider             = "prisma-client-py"
+  interface            = "asyncio"
+  recursive_type_depth = 5
+}
+model User {
+  id             Int      @id @default(autoincrement()) // 기본 키로 설정된 자동 증가 정수
+  email          String   @unique // 고유한 이메일
+  hash_tag       Int      @unique // 해시 태그 필드 추가
+  password       String   // 해시된 비밀번호
+  access_token   String?  // 접근 토큰 (옵션)
+  refresh_token  String?  // 갱신 토큰 (옵션)
+  created_at     DateTime @default(now()) // 기본값이 현재 시간인 생성 시간
+  updated_at     DateTime @updatedAt // 레코드가 업데이트될 때마다 자동으로 설정되는 업데이트 시간
+}
+model Service {
+  id            Int      @id @default(autoincrement())
+  name          String   @unique// 서비스 이름 (예: "Database, Game, etc.")
+  description   String?  // 서비스 설명
+  registered_services      ServiceRegistry[]
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+}
+model ServiceRegistry {
+  id            Int      @id @default(autoincrement())
+  state         String   @default("active")// 서비스 상태 (예: "ACTIVE", "STOP", "PAUSE")
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+  service       Service  @relation(fields: [service_id], references: [id])
+  service_id    Int
+}

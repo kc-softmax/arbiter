@@ -1,4 +1,4 @@
-import uuid
+from typing import Callable, Coroutine
 from aiortc import (
     RTCIceServer,
     RTCPeerConnection,
@@ -7,21 +7,16 @@ from aiortc import (
     RTCDataChannel,
     RTCIceCandidate
 )
+from fastapi import WebSocket
 from aiortc.contrib.signaling import BYE, object_from_string
 from aiortc.sdp import (
     candidate_from_sdp,
     parameters_from_sdp,
-    parameters_to_sdp)
-
-# using absolute path?
-from ..abstract_connection import (
-    ArbiterConnection,
-    Callable,
-    StreamMessage,
-    Coroutine,
-    WebSocket,
-    GameUser
+    parameters_to_sdp
 )
+from arbiter.api.auth.schemas import UserSchema
+from arbiter.api.stream.data import StreamMessage
+from arbiter.api.stream.connections.abstract_connection import ArbiterConnection
 
 
 class ArbiterWebRTC(ArbiterConnection):
@@ -29,10 +24,10 @@ class ArbiterWebRTC(ArbiterConnection):
     def __init__(
         self,
         websocket: WebSocket,
-        game_user: GameUser,
+        user: UserSchema,
     ):
-        self.websocket: WebSocket = websocket
-        self.game_user: GameUser = game_user
+        self.websocket = websocket
+        self.user = user
         self.data_channel: RTCDataChannel = None
 
     async def run(self, callback: Callable[[StreamMessage], Coroutine]):
@@ -48,7 +43,7 @@ class ArbiterWebRTC(ArbiterConnection):
 
         @data_channel.on("message")
         async def on_message(message: str):
-            callback(StreamMessage(message, self.game_user))
+            callback(StreamMessage(message, self.user))
 
         @data_channel.on("error")
         async def on_error(error: str):
@@ -59,7 +54,7 @@ class ArbiterWebRTC(ArbiterConnection):
         await self.websocket.send(peer_connection.localDescription)
 
         async for message in self.websocket.iter_text():
-            signaling_object: RTCSessionDescription | RTCIceCandidate | BYE = object_from_string(
+            signaling_object: RTCSessionDescription | RTCIceCandidate = object_from_string(
                 message)
             if isinstance(signaling_object, RTCSessionDescription):
                 await peer_connection.setRemoteDescription(signaling_object)

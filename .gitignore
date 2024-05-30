@@ -1,6 +1,10 @@
 # Created by https://www.toptal.com/developers/gitignore/api/macos,python,visualstudiocode,virtualenv
 # Edit at https://www.toptal.com/developers/gitignore?templates=macos,python,visualstudiocode,virtualenv
 
+# ignore after arbiter init
+infra/
+arbiter.setting.ini
+
 ### macOS ###
 # General
 .DS_Store

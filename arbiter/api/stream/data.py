@@ -2,7 +2,7 @@ from __future__ import annotations
 import json
 import pickle
 from dataclasses import dataclass
-from arbiter.api.stream.const import StreamSystemEvent
+from arbiter.api.stream.constants import StreamSystemEvent
 
 
 @dataclass

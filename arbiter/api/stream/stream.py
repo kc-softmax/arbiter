@@ -1,224 +1,96 @@
 from __future__ import annotations
+import pickle
 import asyncio
-from dataclasses import dataclass
+import arbiter.api.auth.exceptions as AuthExceptions
 from typing import Awaitable, Callable
-from fastapi import Query, WebSocket
-from fastapi.datastructures import QueryParams
-from arbiter.api.auth.repository import game_uesr_repository
+from fastapi import WebSocket
 from arbiter.api.auth.utils import verify_token
-from arbiter.api.dependencies import unit_of_work
+from arbiter.api.auth.schemas import UserSchema
+from arbiter.api.stream.common import extra_query_params
 from arbiter.api.stream.connections import ArbiterConnection, ArbiterWebsocket
 from arbiter.broker.base import MessageConsumerInterface, MessageProducerInterface
 from arbiter.broker.redis_broker import RedisBroker
-from arbiter.api import arbiterApp
-
-
-def extra_query_params(query_params: QueryParams) -> dict:
-    extraParams = {}
-    for k in query_params.keys():
-        if k != 'token':
-            extraParams[k] = query_params[k]
-    return extraParams
-
-
-@dataclass(kw_only=True)
-class StreamMeta:
-    connection: ArbiterConnection
-    topic: str
-    producer: MessageProducerInterface
-    consumer: MessageConsumerInterface
-
-
-# temp
-@dataclass(kw_only=True)
-class ServiceMessage:
-    message: any
-
-
-StreamSystemCallback = Callable[[StreamMeta, str | None, dict | None], Awaitable[None]]
-# 브로커 메시지 콜백 타입
-ServiceMessageReceiveCallback = Callable[[StreamMeta, ServiceMessage, str | None], Awaitable[None]]
-# 브로커 메시지 인터셉트 콜백
-ServiceMessageInterceptCallback = Callable[[StreamMeta, ServiceMessage, str | None], Awaitable[None]]
-# 유저 메시지 콜백 타입
-UserMessageReceiveCallback = Callable[[StreamMeta, bytes, str | None], Awaitable[None]]
-# 에러 콜백 타입
-BackgroundErrorCallback = Callable[[Exception, None], Awaitable[None]]
+from arbiter.database import get_db, Prisma
 
 
 class ArbiterStream:
-    def __init__(self, path: str) -> None:
-        self.path: str = path
-        self.connected_service_ids: dict = {}
-        self.socket_connect_callback: StreamSystemCallback = None
-        self.socket_close_callback: StreamSystemCallback = None
-        self.service_intercept_callback: ServiceMessageInterceptCallback = None
-        self.service_receive_callback: ServiceMessageReceiveCallback = None
-        self.user_receive_callback: UserMessageReceiveCallback = None
-        self.background_error_callback: BackgroundErrorCallback | None = None
+    def __init__(
+        self,
+        user: UserSchema,
+        connection: ArbiterConnection,
+        redis_broker: RedisBroker,
+        extra: dict = None,
+    ) -> None:
+        self.user = user
+        self.connection = connection
+        self.redis_broker = redis_broker
+        self.extra = extra
+        self.on_connection_open_handler: Callable[[], Awaitable[None]] = None
+        self.on_connection_close_handler: Callable[[], Awaitable[None]] = None
+        self.on_message_receive_handler: Callable[[
+            bytes], Awaitable[None]] = None
 
-    async def _consume(self,
-                       user_id: str,
-                       connection: ArbiterConnection,
-                       producer: MessageProducerInterface,
-                       consumer: MessageConsumerInterface):
-        async for message in consumer.listen():
-            connected_service_id = self.connected_service_ids.get(user_id)
-            is_continue = False
-            if self.service_intercept_callback:
-                is_continue = await self.service_intercept_callback(
-                    StreamMeta(
-                        connection=connection,
-                        topic=user_id,
-                        producer=producer,
-                        consumer=consumer,
-                    ),
-                    ServiceMessage(
-                        message=message
-                    ),
-                    connected_service_id,
-                )
-            else:
-                is_continue = True
+    @property
+    def producer(self) -> MessageProducerInterface:
+        return self.redis_broker.producer
 
-            if is_continue and connected_service_id is not None:
-                await connection.send_message(message)
-                await self.service_receive_callback(
-                    StreamMeta(
-                        connection=connection,
-                        topic=user_id,
-                        producer=producer,
-                        consumer=consumer
-                    ),
-                    ServiceMessage(
-                        message=message
-                    ),
-                    connected_service_id,
-                )
+    @property
+    def consumer(self) -> MessageConsumerInterface:
+        return self.redis_broker.consumer
 
-    async def _monitor_background_task(self, task: asyncio.Task):
+    @ classmethod
+    async def create(cls, websocket: WebSocket, token: str, redis_broker: RedisBroker):
+        # Perform some async operation
+        token_data = verify_token(token)
+        user = await get_db().user.find_unique(where={"id": int(token_data.sub)})
+        if user == None:
+            raise AuthExceptions.NotFoundUser
+        if user.access_token != token:
+            raise AuthExceptions.InvalidToken
+        await websocket.accept()
+        connection = ArbiterWebsocket(websocket)
+        extra = extra_query_params(websocket.query_params)
+        # Initialize the instance
+        instance = cls(
+            UserSchema(**user.__dict__),
+            connection,
+            redis_broker,
+            extra)
+        return instance
+
+    async def process_messages(self):
+        await self.consumer.subscribe(str(self.user.hash_tag))
+        async for message in self.consumer.listen():
+            print('consume', message)
+            await self.connection.send_message(message)
+
+    async def send_message(self, service_id: str, message: any):
+        await self.producer.send(message)
+
+    async def start(self):
         try:
-            await task
+            consume_task = asyncio.create_task(self.process_messages())
+            # 소켓 연결 완료 콜백 실행
+            await self.on_connection_open()
+            async for message in self.connection.run():
+                # 유저 메시지를 받으면 유저 메시지 콜백 실행
+                await self.on_message_receive(message)
         except Exception as e:
-            if self.background_error_callback:
-                self.background_error_callback(e)
+            print(f"[Stream Error] {e}")
+        finally:
+            await self.on_connection_close()
+            if consume_task is not None:
+                consume_task.cancel()
+            await self.connection.close()
 
-    async def _websocket_endpoint(self, token: str, extra: dict, connection: ArbiterConnection):
-        async with RedisBroker() as (broker, producer, consumer):
-            await connection.websocket.accept()
-            try:
-                token_data = verify_token(token)
-                user_id = token_data.sub
-
-                async with unit_of_work.transaction() as session:
-                    user = await game_uesr_repository.get_by_id(session, int(user_id))
-                    if user == None:
-                        raise Exception("유저를 찾을 수 없습니다.")
-                    if user.access_token != token:
-                        raise Exception("유효하지 않은 토큰입니다.")
-
-                # 이미 게임에 접속된 id인지 체크
-                if self.connected_service_ids.get(user_id) is not None:
-                    await connection.error("You're already in the game.")
-                    return
-
-                await consumer.subscribe(user_id)
-
-                consume_task = asyncio.create_task(
-                    self._consume(
-                        user_id,
-                        connection,
-                        producer=producer,
-                        consumer=consumer,
-                    ))
-                monitor_task = asyncio.create_task(
-                    self._monitor_background_task(consume_task)
-                )
-
-                # 소켓 연결 완료 콜백 실행
-                await self.socket_connect_callback(
-                    StreamMeta(
-                        connection=connection,
-                        topic=user_id,
-                        producer=producer,
-                        consumer=consumer,
-                    ),
-                    None,
-                    extra,
-                )
-
-                # 유저 메시지 대기
-                async for websocket_message in connection.run():
-                    # 유저 메시지를 받으면 유저 메시지 콜백 실행
-                    await self.user_receive_callback(
-                        StreamMeta(
-                            connection=connection,
-                            topic=user_id,
-                            producer=producer,
-                            consumer=consumer,
-                        ),
-                        websocket_message,
-                        self.connected_service_ids.get(user_id),
-                    )
-                # 연결이 끝난 후
-                if self.connected_service_ids.get(user_id):
-                    service_id = self.connected_service_ids.pop(user_id)
-                    # 연결 종료 콜백 실행
-                    await self.socket_close_callback(
-                        StreamMeta(
-                            connection=connection,
-                            topic=user_id,
-                            producer=producer,
-                            consumer=consumer,
-                        ),
-                        service_id,
-                    )
-            except Exception as e:
-                print(f"[Stream Error] {e}")
-                if self.connected_service_ids.get(user_id):
-                    service_id = self.connected_service_ids.pop(user_id)
-                    # 연결 종료 콜백 실행
-                    await self.socket_close_callback(
-                        StreamMeta(
-                            connection=connection,
-                            topic=user_id,
-                            producer=producer,
-                            consumer=consumer,
-                        ),
-                        service_id,
-                    )
-            finally:
-                if consume_task is not None:
-                    consume_task.cancel()
-                if monitor_task is not None:
-                    monitor_task.cancel()
-                await connection.close()
-
-    def start(self):
-        @arbiterApp.websocket(self.path)
-        async def add_stream(websocket: WebSocket, token: str = Query()):
-            await self._websocket_endpoint(token, extra_query_params(websocket.query_params), ArbiterWebsocket(websocket))
-
-    def on_socket_connect(self, callback: StreamSystemCallback) -> StreamSystemCallback:
-        self.socket_connect_callback = callback
+    async def on_connection_close(self, callback: Callable[[], Awaitable[None]]) -> Callable[[], Awaitable[None]]:
+        self.on_connection_close_handler = callback
         return callback
 
-    def on_socket_close(self, callback: StreamSystemCallback) -> StreamSystemCallback:
-        self.socket_close_callback = callback
+    async def on_connection_open(self, callback: Callable[[], Awaitable[None]]) -> Callable[[], Awaitable[None]]:
+        self.on_connection_open_handler = callback
         return callback
 
-    def on_service_message_receive(self, callback: ServiceMessageReceiveCallback) -> ServiceMessageReceiveCallback:
-        self.service_receive_callback = callback
-        return callback
-
-    def on_service_message_intercept(self, callback: ServiceMessageInterceptCallback) -> ServiceMessageInterceptCallback:
-        self.service_intercept_callback = callback
-        return callback
-
-    def on_user_message_receive(self, callback: UserMessageReceiveCallback) -> UserMessageReceiveCallback:
-        self.user_receive_callback = callback
-        return callback
-
-    def on_background_error(self, callback: BackgroundErrorCallback) -> BackgroundErrorCallback:
-        self.background_error_callback = callback
+    async def on_message_receive(self, callback: Callable[[bytes], Awaitable[None]]) -> Callable[[bytes], Awaitable[None]]:
+        self.on_message_receive_handler = callback
         return callback
