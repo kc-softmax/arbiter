@@ -131,9 +131,9 @@ def dev(
     """
     Read the config file.
     """
-    # list of commands
+    # dict of commands with app name
     pids: dict[str, int] = {}
-    commands: list[str] = []
+    commands: dict[str, str] = {}
     config = read_config(CONFIG_FILE)
     if (config is None):
         typer.echo("No config file path found. Please run 'init' first.")
@@ -156,7 +156,7 @@ def dev(
     installed_apps = config.get("installed_apps", "apps")
     apps = json.loads(installed_apps)
     for app in apps:
-        commands.append(f"python {app}.py")
+        commands[app] = f"python {app}.py"
 
     def show_shortcut_info():
         typer.echo(typer.style("Arbiter CLI Options", fg=typer.colors.WHITE, bold=True))
@@ -168,12 +168,12 @@ def dev(
         typer.echo(typer.style("    s    start registered service or app", fg=typer.colors.WHITE, bold=True))
         typer.echo(typer.style("    q    exit", fg=typer.colors.WHITE, bold=True))
 
-    async def run_command(command: str):
+    async def run_command(app_name: str, command: str):
         proc = await asyncio.create_subprocess_shell(
             command,
             shell=True,
         )
-        pids["service"] = proc.pid
+        pids[app_name] = proc.pid
         await proc.communicate()
 
     @asynccontextmanager
@@ -218,19 +218,19 @@ def dev(
                             typer.echo(typer.style(f"{service}", fg=typer.colors.YELLOW, bold=True))
                     case SHORTCUT.KILL_PROCESS:
                         typer.echo(typer.style(f"kill all of process", fg=typer.colors.WHITE, bold=True))
-                        pids["app"].cancel()
+                        pids["arbiter"].cancel()
                         for key, pid in pids.items():
                             if isinstance(pid, int):
                                 os.kill(pid, signal.SIGTERM)
                                 typer.echo(typer.style(f"shutdown {key}.....", fg=typer.colors.RED, bold=True))
                         pids.clear()
                     case SHORTCUT.START_PROCESS:
-                        for app in apps:
-                            if not pids.get("service"):
-                                loop.create_task(run_command(f"python {app}.py"))
-                        if not pids.get("app"):
+                        for app_name, command in commands.items():
+                            if not pids.get(app_name):
+                                loop.create_task(run_command(app_name, command))
+                        if not pids.get("arbiter"):
                             uvicorn_task = loop.create_task(run_uvicorn())
-                            pids["app"] = uvicorn_task
+                            pids["arbiter"] = uvicorn_task
 
                         typer.echo(typer.style(f"started all of service", fg=typer.colors.GREEN, bold=True))
                     case SHORTCUT.SHOW_SHORTCUT:
@@ -266,16 +266,16 @@ def dev(
             else:
                 await server.serve([socket])
         except asyncio.CancelledError:
-            typer.echo(typer.style(f"shutdown app.......", fg=typer.colors.RED, bold=True))
+            typer.echo(typer.style(f"shutdown arbiter.......", fg=typer.colors.RED, bold=True))
             await server.shutdown([socket])
 
-    async def waiting_until_finish(loop: asyncio.AbstractEventLoop, commands: list[str], reload: bool):
+    async def waiting_until_finish(loop: asyncio.AbstractEventLoop, commands: dict[str, str], reload: bool):
         tasks = []
         app_task = asyncio.create_task(run_uvicorn())
-        pids["app"] = app_task
+        pids["arbiter"] = app_task
         tasks.append(app_task)
-        for command in commands:
-            service_task = asyncio.create_task(run_command(command))
+        for app_name, command in commands.items():
+            service_task = asyncio.create_task(run_command(app_name, command))
             tasks.append(service_task)
         return await interact(loop, reload)
 
