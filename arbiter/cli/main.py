@@ -123,6 +123,7 @@ def dev(
     port: int = typer.Option(8080, "--port", "-p", help="The port of the Arbiter FastAPI app."),
     reload: bool = typer.Option(False, "--reload", help="Enable auto-reload for code changes.")
 ):
+    # This package used in only this function
     import uvicorn
 
     from watchfiles import awatch
@@ -169,6 +170,7 @@ def dev(
         typer.echo(typer.style("    q    exit", fg=typer.colors.WHITE, bold=True))
 
     async def run_command(app_name: str, command: str):
+        # Run subprocess shell command
         proc = await asyncio.create_subprocess_shell(
             command,
             shell=True,
@@ -193,7 +195,7 @@ def dev(
         This function help stdin as async
         
         Returns:
-            list[asyncio.StreamReader | asyncio.StreamWriter]: stream
+            asyncio.StreamReader: stream
         """
         _loop = asyncio.get_event_loop()
         reader = asyncio.StreamReader()
@@ -229,7 +231,7 @@ def dev(
                             if not pids.get(app_name):
                                 loop.create_task(run_command(app_name, command))
                         if not pids.get("arbiter"):
-                            uvicorn_task = loop.create_task(run_uvicorn())
+                            uvicorn_task = loop.create_task(run_uvicorn(reload))
                             pids["arbiter"] = uvicorn_task
 
                         typer.echo(typer.style(f"started all of service", fg=typer.colors.GREEN, bold=True))
@@ -244,7 +246,7 @@ def dev(
                     case _:
                         continue
 
-    async def run_uvicorn():
+    async def run_uvicorn(reload: bool):
         config = uvicorn.Config(
             app_path,
             host=host,
@@ -254,24 +256,22 @@ def dev(
         socket = config.bind_socket()
         try:
             # If you add reload option, it will watch your present directory path
-            if reload:
-                async def watch_in_files():
-                    signal.signal(signal.SIGINT, sigint_handler)
-                    signal.signal(signal.SIGTERM, sigint_handler)
+            async def watch_in_files(reload: bool):
+                signal.signal(signal.SIGINT, sigint_handler)
+                signal.signal(signal.SIGTERM, sigint_handler)
+                if reload:
                     async for _ in awatch(os.getcwd()):
                         server.should_exit = True
                         await server.shutdown([socket])
                         await server.startup([socket])
-                await asyncio.gather(server.serve([socket]), watch_in_files(), return_exceptions=True)
-            else:
-                await server.serve([socket])
+            await asyncio.gather(server.serve([socket]), watch_in_files(reload), return_exceptions=True)
         except asyncio.CancelledError:
             typer.echo(typer.style(f"shutdown arbiter.......", fg=typer.colors.RED, bold=True))
             await server.shutdown([socket])
 
     async def waiting_until_finish(loop: asyncio.AbstractEventLoop, commands: dict[str, str], reload: bool):
         tasks = []
-        app_task = asyncio.create_task(run_uvicorn())
+        app_task = asyncio.create_task(run_uvicorn(reload))
         pids["arbiter"] = app_task
         tasks.append(app_task)
         for app_name, command in commands.items():
