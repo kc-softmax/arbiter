@@ -95,3 +95,67 @@ class AbstractService(ABC):
         if not self.consuming_task.done():
             self.consuming_task.cancel()
         print(f"[{self.service_id}] DONE!!")
+
+##############################################################################################
+channel_name = "arbiter"
+broadcast_sub_channel = f"{channel_name}.sub"
+broadcast_unsub_channel = f"{channel_name}.unsub"
+
+
+# T = TypeVar('T', bound='BaseChannelMessage')
+
+
+# class BaseChannelMessage:
+#     @classmethod
+#     def decode_pickle(cls: Type[T], data: bytes) -> T:
+#         return pickle.loads(data)
+
+
+# @dataclass
+# class ArbiterChannelMessage(BaseChannelMessage):
+#     service_channel: str
+
+
+# class ArbiterService(ABC):
+#     service_id: str | None = None
+
+#     @abstractmethod
+#     async def subscribe(self, borker: RedisBroker):
+#         pass
+
+#     @abstractmethod
+#     async def listen(self, broker: RedisBroker):
+#         pass
+
+#     async def start(self):
+#         try:
+#             async with RedisBroker() as (broker, _, _):
+#                 service_task = asyncio.create_task(self._start(broker))
+#                 await service_task
+#         finally:
+#             print("##end service##")
+#             await broker.producer.send(broadcast_unsub_channel, self.service_id)
+
+#     async def _start(self, broker: RedisBroker):
+#         try:
+#             pubsub = broker.client.pubsub()
+#             await pubsub.psubscribe(**{f"{channel_name}.*": self._arbiter_channel_handler(broker)})
+#             asyncio.create_task(pubsub.run())
+#             await self.subscribe(broker)
+#             await self.listen(broker)
+#         except Exception as e:
+#             print(e)
+
+#     def _arbiter_channel_handler(self, broker: RedisBroker):
+#         async def handler(message):
+#             print(message)
+#             channel = message["channel"].decode("utf-8")
+#             target_channel = message["data"].decode("utf-8")
+#             if (channel == broadcast_sub_channel):
+#                 await broker.consumer.subscribe(target_channel)
+#             elif (channel == broadcast_unsub_channel):
+#                 await broker.consumer.unsubscribe(target_channel)
+#         return handler
+
+
+##############################################################################################
