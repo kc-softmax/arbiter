@@ -188,27 +188,25 @@ def dev(
         finally:
             termios.tcsetattr(file.fileno(), termios.TCSADRAIN, old_attrs)
 
-    async def connect_stdin_stdout() -> list[asyncio.StreamReader | asyncio.StreamWriter]:
+    async def connect_stdin_stdout() -> asyncio.StreamReader:
         """stream stdin
         This function help stdin as async
         
         Returns:
             list[asyncio.StreamReader | asyncio.StreamWriter]: stream
         """
-        loop = asyncio.get_event_loop()
+        _loop = asyncio.get_event_loop()
         reader = asyncio.StreamReader()
         protocol = asyncio.StreamReaderProtocol(reader)
-        await loop.connect_read_pipe(lambda: protocol, sys.stdin)
-        w_transport, w_protocol = await loop.connect_write_pipe(asyncio.streams.FlowControlMixin, sys.stdout)
-        writer = asyncio.StreamWriter(w_transport, w_protocol, reader, loop)
-        return reader, writer
+        await _loop.connect_read_pipe(lambda: protocol, sys.stdin)
+        return reader
 
     async def interact(loop: asyncio.AbstractEventLoop, reload: bool):
         await asyncio.sleep(2)
         show_shortcut_info()
         signal.signal(signal.SIGINT, sigint_handler)
         signal.signal(signal.SIGTERM, sigint_handler)
-        reader, _ = await connect_stdin_stdout()
+        reader = await connect_stdin_stdout()
         async with raw_mode(sys.stdin):
             while True:
                 encoded_option = await reader.read(100)
@@ -241,7 +239,8 @@ def dev(
                         for key, pid in pids.items():
                             if isinstance(pid, int):
                                 os.kill(pid, signal.SIGTERM)
-                        sys.exit(0)
+                        typer.echo(typer.style(f"closing arbiter.....", fg=typer.colors.YELLOW, bold=True))
+                        break
                     case _:
                         continue
 
@@ -261,8 +260,8 @@ def dev(
                     signal.signal(signal.SIGTERM, sigint_handler)
                     async for _ in awatch(os.getcwd()):
                         server.should_exit = True
-                        await server.shutdown()
-                        await server.startup()
+                        await server.shutdown([socket])
+                        await server.startup([socket])
                 await asyncio.gather(server.serve([socket]), watch_in_files(), return_exceptions=True)
             else:
                 await server.serve([socket])
@@ -286,7 +285,7 @@ def dev(
 
         e.g. CTRL+C or kill <PID>
         """
-        sys.exit(0)
+        sys.exit(1)
 
     try:
         loop = asyncio.new_event_loop()
