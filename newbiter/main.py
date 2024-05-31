@@ -1,4 +1,6 @@
 import asyncio
+import anyio
+import watchfiles
 
 class Arbiter:
     
@@ -10,14 +12,28 @@ class Arbiter:
         # 구 아비타(웹서버 서비스)
         self.web_server_service = ""
 
+
     # cli 등에서 실행
-    def start(self):
-        # 기본으로 실행되어야 할 서비스들 시작
-        self.start_default_service()
+    async def start(self, app_path: str, host: str, port: str, reload: bool):
+        # reload 값에 따라
+        # watchfiles로 실행할지, 그냥 실행할지 결정해야함
+        if reload:
+            await watchfiles.arun_process('arbiter_server', target=self.start_web_server, args=(app_path, host, port, reload))
+        else:
+            uvicorn_command = f"uvicorn {app_path} --host {host} --port {port}"
+            await asyncio.create_subprocess_shell(
+            uvicorn_command,
+            shell=True,
+        ) 
+        
+        # web_server = self.start_web_server(web_server_run_command)
+        # print("hohohohoh")
+        # await web_server
+
         # 시각 기록 task
-        asyncio.run(self.record_running_time())
+        # asyncio.run(self.record_running_time())
         # 서비스 구동 확인 task, delay 필요
-        asyncio.run(self.health_check())
+        # asyncio.run(self.health_check())
 
     # cli 등에서 실행
     def start_service(self):
@@ -27,13 +43,11 @@ class Arbiter:
     def stop_service(self):
         pass
 
-    def start_default_service(self):
-        # config 에서 구 arbiter main app 경로를 가져와 import
-        # import path
-        self.web_server_service = ""
-        # 새로운 프로세스에서 실행?
-        new_process.run(self.web_server_service.start())
-        self.operation_db.add_service("web server 시작함")
+    def start_web_server(self, app_path: str, host: str, port: int, reload: bool):
+        # process로 실행이 된다.
+        import uvicorn
+        import os
+        uvicorn.run(app=app_path, host=host, app_dir=os.getcwd())
 
     async def record_running_time(self):
         async for message in self.broker.listen():
@@ -60,3 +74,8 @@ class Arbiter:
         return now - time < base_time
     
 
+
+ # TODO
+ # watch file에서 파일 변경 감지 및 재실행
+
+arbiter = Arbiter()

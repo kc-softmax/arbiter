@@ -9,7 +9,6 @@ from arbiter.api.auth.router import router as auth_router
 from arbiter.api.exceptions import BadRequest
 from arbiter.api.config import settings
 from arbiter.api.stream import ArbiterStream
-from arbiter.database import PrismaClientWrapper
 
 from arbiter.broker.redis_broker import RedisBroker
 
@@ -40,13 +39,11 @@ class ArbiterApp(FastAPI):
             ArbiterStream], Awaitable[None]]] = {}
 
     async def on_startup(self):
-        await PrismaClientWrapper.connect()
         self.redis_broker = await RedisBroker.create()
         # start system event consumer
         # if initialize broker failed, raise exception or warning
 
     async def on_shutdown(self):
-        await PrismaClientWrapper.disconnect()
         await self.redis_broker.close()
 
     def stream(self, path: str) -> Callable[[Callable[[ArbiterStream], Awaitable[None]]], None]:
