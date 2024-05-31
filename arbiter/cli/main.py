@@ -44,11 +44,6 @@ def init(
     """
     initialize prisma db
     """
-    package_path = os.path.dirname(os.path.abspath(__file__))
-    root_path = pathlib.Path(package_path)
-    pwd = f'{str(root_path.parent)}/database'
-    popen_command(Commands.PRISMA_PUSH, pwd=pwd)
-    popen_command(Commands.PRISMA_GENERATE, pwd=pwd)
     typer.echo(f"Project created successfully.")
 
 
@@ -63,6 +58,8 @@ def start(
     reload: bool = typer.Option(
         False, "--reload", help="Enable auto-reload for code changes.")
 ):
+    from newbiter.main import arbiter
+    
     """
     Read the config file.
     """
@@ -70,7 +67,7 @@ def start(
     if (config is None):
         typer.echo("No config file path found. Please run 'init' first.")
         return
-
+    
     """
     Get the "host" and "port" from config file.
     """
@@ -82,18 +79,15 @@ def start(
         return
 
     """
-    Starts the Arbiter FastAPI app using Uvicorn.
+    Prisma
     """
-    typer.echo("Starting FastAPI app...")
-    # Command to run Uvicorn with the FastAPI app
-    uvicorn_command = f"uvicorn {app_path} --host {host} --port {port}"
+    package_path = os.path.dirname(os.path.abspath(__file__))
+    root_path = pathlib.Path(package_path)
+    pwd = f'{str(root_path.parent)}/database'
+    popen_command(Commands.PRISMA_PUSH, pwd=pwd)
+    # popen_command(Commands.PRISMA_GENERATE, pwd=pwd)
 
-    # Add reload option if specified
-    if reload:
-        uvicorn_command += " --reload"
-
-    # Use subprocess to execute the command
-    subprocess.run(uvicorn_command, shell=True)
+    asyncio.run(arbiter.start(app_path, host, port, reload))
 
 
 def _create_project_structure(project_path='.'):
