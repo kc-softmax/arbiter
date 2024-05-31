@@ -1,6 +1,7 @@
 import os
 import typer
 import subprocess
+import pathlib
 import json
 import asyncio
 import sys
@@ -14,7 +15,12 @@ from contextlib import asynccontextmanager
 from arbiter.cli import PROJECT_NAME, CONFIG_FILE
 from arbiter.cli.commands.database import app as database_app
 from arbiter.cli.commands.build import app as build_app
-from arbiter.cli.utils import read_config, Shortcut
+from arbiter.cli.utils import (
+    read_config,
+    Shortcut,
+    popen_command,
+    Commands
+)
 
 app = typer.Typer()
 app.add_typer(database_app, name="db",
@@ -31,11 +37,16 @@ def init(
 ):
     """
     Creates a basic project structure with predefined files and directories.
-    """
+    # """
     _create_project_structure(base_path)
     """
     initialize prisma db
     """
+    package_path = os.path.dirname(os.path.abspath(__file__))
+    root_path = pathlib.Path(package_path)
+    pwd = f'{str(root_path.parent)}/database'
+    popen_command(Commands.PRISMA_PUSH, pwd=pwd)
+    popen_command(Commands.PRISMA_GENERATE, pwd=pwd)
     typer.echo(f"Project created successfully.")
 
 
