@@ -28,6 +28,8 @@ class Commands(StrEnum):
     TERRAFORM_APPLY = "terraform apply -target={module} -auto-approve"
     TERRAFORM_DESTROY = "terraform destroy -auto-approve"
     TERRAFORM_OUTPUT = "terraform output -json"
+    PRISMA_PUSH = "prisma db push"
+    PRISMA_GENERATE = "prisma generate"
 
 
 class SupportedModules(StrEnum):
@@ -48,7 +50,8 @@ def read_config(config_file: str):
     """
     file_path = os.path.join(config_file)
     if os.path.exists(file_path):
-        config = configparser.ConfigParser(interpolation=configparser.ExtendedInterpolation(), allow_no_value=True)
+        config = configparser.ConfigParser(
+            interpolation=configparser.ExtendedInterpolation(), allow_no_value=True)
         config.read(file_path)
         return config
     return None

@@ -30,11 +30,10 @@ async def send_message_to_service(
         targets = await db.serviceregistry.find_many(where={"id": {"in": data.target_registry_ids}})
     else:
         targets = service.registered_services
-
     if targets:
-        # send messages?
+        # send messages
+        # TODO
         pass
-
     return True
 
 
@@ -44,7 +43,7 @@ async def send_message_to_service(
     status_code=HTTPStatus.ACCEPTED,
     response_model=list[schemas.ServiceSchema]
 )
-async def send_message_to_service(
+async def fetch_service_list(
     data: schemas.FetchServiceListSchema,
     db: Prisma = Depends(get_db)
 ):
@@ -60,13 +59,16 @@ async def send_message_to_service(
     status_code=HTTPStatus.ACCEPTED,
     response_model=schemas.ServiceRegistrySchema
 )
-async def send_message_to_service(
+async def service_start(
     data: schemas.StartServiceSchema,
     db: Prisma = Depends(get_db)
 ):
     service = await db.service.find_unique(where={"id": data.service_id})
     if not service:
         raise exceptions.ServiceNotFound
+
+    # TODO start service and check is actually started
+    #
 
     registry = await db.serviceregistry.create(
         data={"service": {"connect": {"id": service.id}}}
@@ -81,7 +83,7 @@ async def send_message_to_service(
     status_code=HTTPStatus.ACCEPTED,
     response_model=bool
 )
-async def send_message_to_service(
+async def service_restart(
     data: schemas.MessageSchema,
     db: Prisma = Depends(get_db)
 ):
@@ -95,7 +97,7 @@ async def send_message_to_service(
     status_code=HTTPStatus.ACCEPTED,
     response_model=bool
 )
-async def send_message_to_service(
+async def service_pause(
     data: schemas.MessageSchema,
     db: Prisma = Depends(get_db)
 ):
@@ -109,7 +111,7 @@ async def send_message_to_service(
     status_code=HTTPStatus.ACCEPTED,
     response_model=bool
 )
-async def send_message_to_service(
+async def service_resume(
     data: schemas.MessageSchema,
     db: Prisma = Depends(get_db)
 ):
@@ -123,7 +125,7 @@ async def send_message_to_service(
     status_code=HTTPStatus.ACCEPTED,
     response_model=bool
 )
-async def send_message_to_service(
+async def service_stop(
     data: schemas.MessageSchema,
     db: Prisma = Depends(get_db)
 ):
