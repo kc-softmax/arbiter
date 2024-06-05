@@ -8,8 +8,7 @@ from arbiter.api.auth.utils import verify_token
 from arbiter.api.auth.schemas import UserSchema
 from arbiter.api.stream.common import extra_query_params
 from arbiter.api.stream.connections import ArbiterConnection, ArbiterWebsocket
-from arbiter.broker.base import MessageConsumerInterface, MessageProducerInterface
-from arbiter.broker.redis_broker import RedisBroker
+from arbiter.broker import RedisBroker
 from arbiter.database import get_db, Prisma
 
 
@@ -29,14 +28,6 @@ class ArbiterStream:
         self.on_connection_close_handler: Callable[[], Awaitable[None]] = None
         self.on_message_receive_handler: Callable[[
             bytes], Awaitable[None]] = None
-
-    @property
-    def producer(self) -> MessageProducerInterface:
-        return self.redis_broker.producer
-
-    @property
-    def consumer(self) -> MessageConsumerInterface:
-        return self.redis_broker.consumer
 
     @ classmethod
     async def create(cls, websocket: WebSocket, token: str, redis_broker: RedisBroker):
