@@ -9,7 +9,7 @@ from newbiter.abstract_sercvice import AbstractService
 from newbiter.utils import find_python_files_in_path, get_running_command 
 
 
-class Arbiter:
+class Newbiter:
     
     def __init__(self) -> None:
         # 서비스 운용에 사용되는 데이터베이스
@@ -22,6 +22,7 @@ class Arbiter:
         self.registered_services: list[type[AbstractService]] = []
         # 서비스 pdis
         self.pids: dict[str, int] = {}
+        self.services_number: dict[int, str] = {}
 
     def init_broker(self):
         print('init broker!')
@@ -52,14 +53,14 @@ class Arbiter:
         for python_file in python_files_in_root:
             importlib.import_module(python_file)
         # import 되었으므로 AbstractService의 subclasses로 접근 가능
-        for service in AbstractService.__subclasses__():
+        for idx, service in enumerate(AbstractService.__subclasses__(), start=1):
+            self.services_number[idx] = service.__name__
             self.registered_services.append(service)
 
     # cli 등에서 실행 가능
     async def start_service(self, service_name: str):
         # 중복 실행 막기
         # ...
-        
         # 실행
         # 서비스 클래스 이름(eg)AchivementService)으로 서비스 찾기
         service = next((service for service in self.registered_services if service.__name__ == service_name), None)
@@ -91,4 +92,4 @@ class Arbiter:
     # def health_check(self):    
     # def is_running_service(self, time) -> bool:
     
-arbiter = Arbiter()
+newbiter = Newbiter()
