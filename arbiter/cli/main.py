@@ -59,6 +59,8 @@ def start(
         False, "--reload", help="Enable auto-reload for code changes.")
 ):
     from newbiter.main import arbiter
+
+    sys.path.insert(0, os.getcwd())
     
     """
     Read the config file.
@@ -81,10 +83,10 @@ def start(
     """
     Prisma
     """
-    package_path = os.path.dirname(os.path.abspath(__file__))
-    root_path = pathlib.Path(package_path)
-    pwd = f'{str(root_path.parent)}/database'
-    popen_command(Commands.PRISMA_PUSH, pwd=pwd)
+    # package_path = os.path.dirname(os.path.abspath(__file__))
+    # root_path = pathlib.Path(package_path)
+    # pwd = f'{str(root_path.parent)}/database'
+    # popen_command(Commands.PRISMA_PUSH, pwd=pwd)
     # popen_command(Commands.PRISMA_GENERATE, pwd=pwd)
 
     asyncio.run(arbiter.start(app_path, host, port, reload))
