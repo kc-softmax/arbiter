@@ -12,7 +12,6 @@ from typing_extensions import Annotated
 from mako.template import Template
 from contextlib import asynccontextmanager
 
-from arbiter.service.absctract_service import AbstractServiceTemp
 from arbiter.cli import PROJECT_NAME, CONFIG_FILE
 from arbiter.cli.commands.database import app as database_app
 from arbiter.cli.commands.build import app as build_app
