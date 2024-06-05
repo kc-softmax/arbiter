@@ -1,7 +1,5 @@
 import os
 import typer
-import subprocess
-import pathlib
 import asyncio
 import sys
 import signal
@@ -11,19 +9,17 @@ from typing import Optional
 from typing_extensions import Annotated
 from mako.template import Template
 from contextlib import asynccontextmanager
-
-from newbiter.main import newbiter
-from arbiter.cli import PROJECT_NAME, CONFIG_FILE
-from arbiter.cli.commands.database import app as database_app
-from arbiter.cli.commands.build import app as build_app
+from arbiter import Arbiter
 from arbiter.cli.utils import (
     read_config,
     Shortcut,
-    popen_command,
-    Commands,
-    find_python_files_in_path,
-    get_command,
 )
+from arbiter.cli.commands.build import app as build_app
+from arbiter.cli.commands.database import app as database_app
+from arbiter.cli import PROJECT_NAME, CONFIG_FILE
+# from arbiter.api.api_service import ApiService
+from arbiter.service import AbstractService
+
 
 app = typer.Typer()
 app.add_typer(database_app, name="db",
@@ -59,10 +55,9 @@ def start(
     reload: bool = typer.Option(
         False, "--reload", help="Enable auto-reload for code changes.")
 ):
-    from newbiter.main import arbiter
 
     sys.path.insert(0, os.getcwd())
-    
+
     """
     Read the config file.
     """
@@ -70,7 +65,7 @@ def start(
     if (config is None):
         typer.echo("No config file path found. Please run 'init' first.")
         return
-    
+
     """
     Get the "host" and "port" from config file.
     """
@@ -90,7 +85,43 @@ def start(
     # popen_command(Commands.PRISMA_PUSH, pwd=pwd)
     # popen_command(Commands.PRISMA_GENERATE, pwd=pwd)
 
-    asyncio.run(arbiter.start(app_path, host, port, reload))
+    # asyncio.run(arbiter.start(app_path, host, port, reload))
+    # async def run_command(command: str):
+    #     print(f"Running command '{command}'...")
+    #     # Run subprocess shell command
+    #     proc = await asyncio.create_subprocess_shell(
+    #         command,
+    #         shell=True,
+    #     )
+    #     await proc.communicate()
+    #     print(f"Command '{command}' finished")
+
+    # async def run():
+    #     # Run subprocess shell command
+    #     uvicorn_command = f"uvicorn {app_path} --host {host} --port {port}"
+    #     mewbiter = Mewbiter()
+    #     print(f"Starting Arbiter...")
+    #     mewbiter_task = asyncio.create_task(mewbiter.start())
+    #     # ApiService
+    #     asyncio.create_task(
+    #         run_command(
+    #             'python -c "from arbiter.api.api_service import ApiService; ApiService.launch()"')
+    #     )
+
+    #     # asyncio.create_task(
+    #     #     run_command('python test_service.py')
+    #     # )
+    #     # asyncio.create_task(
+    #     #     run_command('python test_service2.py')
+    #     # )
+
+    #     # asyncio.create_task(run_command(uvicorn_command))
+    #     # Command to run Uvicorn with the FastAPI app
+    #     await mewbiter_task
+
+    # # Use subprocess to execute the command
+    # loop = asyncio.new_event_loop()
+    # loop.run_until_complete(run())
 
 
 def _create_project_structure(project_path='.'):
@@ -153,6 +184,7 @@ def dev(
 
     from watchfiles import awatch
     # You add your execute path for starting uvicorn app
+    arbiter = Arbiter()
     sys.path.insert(0, os.getcwd())
     """
     Read the config file.
@@ -176,7 +208,6 @@ def dev(
     """
     Starts the Arbiter FastAPI app using Uvicorn.
     """
-    typer.echo("Starting FastAPI app...")
 
     def show_shortcut_info():
         typer.echo(typer.style("Arbiter CLI Options",
@@ -235,14 +266,14 @@ def dev(
                     case Shortcut.SHOW_ALL_PROCESS:
                         typer.echo(typer.style(f"All of Service",
                                    fg=typer.colors.GREEN, bold=True))
-                        for idx, service in enumerate(newbiter.registered_services, start=1):
+                        for idx, service in enumerate(arbiter.registered_services, start=1):
                             typer.echo(typer.style(
                                 f"{idx}. {service.__name__}", fg=typer.colors.YELLOW, bold=True))
                     case Shortcut.SHOW_RUNNING_PROCESS:
                         typer.echo(typer.style(f"Running service",
                                    fg=typer.colors.GREEN, bold=True))
-                        for number, service_name in newbiter.services_number.items():
-                            if newbiter.pids.get(service_name):
+                        for number, service_name in arbiter.services_number.items():
+                            if arbiter.pids.get(service_name):
                                 typer.echo(typer.style(
                                     f"{number}. {service_name}", fg=typer.colors.YELLOW, bold=True))
                     case Shortcut.KILL_PROCESS:
@@ -250,58 +281,50 @@ def dev(
                                    fg=typer.colors.WHITE, bold=True))
                         encoded_option = await reader.read(100)
                         option = int(encoded_option.decode())
-                        service_name = newbiter.services_number[option]
-                        newbiter.stop_service(service_name)
+                        service_name = arbiter.services_number[option]
+                        arbiter.stop_service(service_name)
                         typer.echo(typer.style(
-                            f"shutdown {newbiter.services_number[option]}.....", fg=typer.colors.RED, bold=True))
+                            f"shutdown {arbiter.services_number[option]}.....", fg=typer.colors.RED, bold=True))
                     case Shortcut.START_PROCESS:
                         typer.echo(typer.style(f"start order of service(press number of service):",
-                            fg=typer.colors.WHITE, bold=True))
+                                               fg=typer.colors.WHITE, bold=True))
                         encoded_option = await reader.read(100)
                         option = int(encoded_option.decode())
-                        service_name = newbiter.services_number[option]
-                        if newbiter.pids.get(service_name):
+                        service_name = arbiter.services_number[option]
+                        if arbiter.pids.get(service_name):
                             typer.echo(typer.style(
                                 f"already started service {service_name}", fg=typer.colors.GREEN, bold=True))
                         else:
-                            asyncio.create_task(newbiter.start_service(service_name))
+                            asyncio.create_task(
+                                arbiter.start_service(service_name))
                             typer.echo(typer.style(
                                 f"started service {service_name}", fg=typer.colors.GREEN, bold=True))
                     case Shortcut.SHOW_SHORTCUT:
                         show_shortcut_info()
                     case Shortcut.EXIT:
-                        typer.echo(typer.style(f"closing arbiter.....",
-                                   fg=typer.colors.YELLOW, bold=True))
                         break
                     case _:
                         continue
 
-    async def run_uvicorn(reload: bool):
-        config = uvicorn.Config(
-            app_path,
-            host=host,
-            port=port,
-        )
-        server = uvicorn.Server(config)
-        socket = config.bind_socket()
-        try:
-            # If you add reload option, it will watch your present directory path
-            async def watch_in_files(reload: bool):
-                signal.signal(signal.SIGINT, sigint_handler)
-                signal.signal(signal.SIGTERM, sigint_handler)
-                if reload:
-                    async for _ in awatch(os.getcwd()):
-                        server.should_exit = True
-                        await server.shutdown()
-                        await server.startup()
-            await asyncio.gather(server.serve([socket]), watch_in_files(reload), return_exceptions=True)
-        except asyncio.CancelledError:
-            await server.shutdown([socket])
-
     async def waiting_until_finish(reload: bool):
-        # process_tasks["arbiter"] = asyncio.create_task(run_uvicorn(reload))
-        asyncio.create_task(newbiter.start('', '', '', ''))
-        await interact(reload)
+        arbiter_task = asyncio.create_task(arbiter.start())
+        interact_task = asyncio.create_task(interact(reload))
+        done, pending = await asyncio.wait(
+            [
+                arbiter_task,
+                interact_task
+            ],
+            return_when=asyncio.FIRST_COMPLETED
+        )
+        for task in done:
+            await task
+        for task in pending:
+            task.cancel()
+
+        typer.echo(
+            typer.style(
+                f"closing arbiter.....",
+                fg=typer.colors.YELLOW, bold=True))
 
     def sigint_handler(sig, frame):
         """

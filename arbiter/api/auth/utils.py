@@ -3,7 +3,6 @@ from datetime import datetime, timedelta, timezone
 from jose import jwt, JWTError
 from passlib.context import CryptContext
 from pydantic import ValidationError
-from arbiter.api.config import settings
 from arbiter.api.auth.constants import TOKEN_GENERATE_ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_MINUTES
 from arbiter.api.auth.schemas import TokenDataSchema
 from arbiter.api.auth.exceptions import InvalidToken
@@ -31,7 +30,7 @@ def verify_password(plain_password, hashed_password):
 
 
 def create_token(subject: str, is_refresh_token: bool = False):
-    key = settings.JWT_REFRESH_SECRET_KEY if is_refresh_token else settings.JWT_ACCESS_SECRET_KEY
+    key = 'refersh' if is_refresh_token else 'access'
     expire_delta = timedelta(
         minutes=REFRESH_TOKEN_EXPIRE_MINUTES if is_refresh_token else ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode = {"exp": datetime.now(
@@ -51,7 +50,7 @@ def verify_token(token: str, is_refresh_token: bool = False):
 
 
 def decode_token(token: str, is_refresh_token: bool = False):
-    key = settings.JWT_REFRESH_SECRET_KEY if is_refresh_token else settings.JWT_ACCESS_SECRET_KEY
+    key = 'refresh' if is_refresh_token else 'access'
     try:
         payload = jwt.decode(
             token, key, algorithms=[

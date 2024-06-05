@@ -1,1 +1,1 @@
-from abc import ABCMeta, abstractmethod
+from .absctract_service import AbstractService
