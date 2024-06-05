@@ -2,16 +2,17 @@ import os
 import typer
 import subprocess
 import pathlib
-import json
 import asyncio
 import sys
 import signal
+from importlib import import_module
 from io import TextIOWrapper
 from typing import Optional
 from typing_extensions import Annotated
 from mako.template import Template
 from contextlib import asynccontextmanager
 
+from arbiter.service.absctract_service import AbstractServiceTemp
 from arbiter.cli import PROJECT_NAME, CONFIG_FILE
 from arbiter.cli.commands.database import app as database_app
 from arbiter.cli.commands.build import app as build_app
@@ -19,7 +20,9 @@ from arbiter.cli.utils import (
     read_config,
     Shortcut,
     popen_command,
-    Commands
+    Commands,
+    find_python_files_in_path,
+    get_command,
 )
 
 app = typer.Typer()
@@ -159,8 +162,10 @@ def dev(
     Read the config file.
     """
     # dict of commands with app name
-    pids: dict[str, int] = {}
+    process_tasks: dict[str, asyncio.Task] = {}
     process_commands: dict[str, str] = {}
+    service_order: dict[str, int] = {}
+    pids: dict[str, int] = {}
     config = read_config(CONFIG_FILE)
     if (config is None):
         typer.echo("No config file path found. Please run 'init' first.")
@@ -180,36 +185,43 @@ def dev(
     Starts the Arbiter FastAPI app using Uvicorn.
     """
     typer.echo("Starting FastAPI app...")
+    
+    apps = find_python_files_in_path()
+    for app_name in apps:
+        import_module(app_name)
 
-    installed_apps = config.get("installed_apps", "apps")
-    apps = json.loads(installed_apps)
-    for app in apps:
-        process_commands[app] = f"python {app}.py"
+    for service in AbstractServiceTemp.__subclasses__():
+        process_commands[service.__module__] = get_command(service.__module__, service.__name__)
 
     def show_shortcut_info():
         typer.echo(typer.style("Arbiter CLI Options",
                    fg=typer.colors.WHITE, bold=True))
         typer.echo(typer.style("Usage: ...", fg=typer.colors.WHITE, bold=True))
         typer.echo(typer.style("  Commands:", fg=typer.colors.CYAN, bold=True))
-        typer.echo(typer.style("    h    show shortcut command",
+        typer.echo(typer.style("\th\tshow shortcut command",
                    fg=typer.colors.WHITE, bold=True))
         typer.echo(typer.style(
-            "    p    display running process name and id", fg=typer.colors.WHITE, bold=True))
+            "\ta\tdisplay all service name and id", fg=typer.colors.WHITE, bold=True))
         typer.echo(typer.style(
-            "    k    kill running process with name", fg=typer.colors.WHITE, bold=True))
+            "\tr\tdisplay running service name and id", fg=typer.colors.WHITE, bold=True))
         typer.echo(typer.style(
-            "    s    start registered service or app", fg=typer.colors.WHITE, bold=True))
-        typer.echo(typer.style("    q    exit",
+            "\tk\tkill running process with name", fg=typer.colors.WHITE, bold=True))
+        typer.echo(typer.style(
+            "\ts\tstart registered service or app", fg=typer.colors.WHITE, bold=True))
+        typer.echo(typer.style("\tq\texit",
                    fg=typer.colors.WHITE, bold=True))
 
-    async def run_command(app_name: str, command: str):
+    async def run_command(idx: int, command: str):
         # Run subprocess shell command
         proc = await asyncio.create_subprocess_shell(
             command,
+            stderr=asyncio.subprocess.PIPE,
             shell=True,
         )
-        pids[app_name] = proc.pid
-        await proc.communicate()
+        pids[idx] = proc.pid
+        _, err = await proc.communicate()
+        typer.echo(typer.style(err.decode(),
+                   fg=typer.colors.YELLOW, bold=True))
 
     @asynccontextmanager
     async def raw_mode(file: TextIOWrapper):
@@ -236,7 +248,7 @@ def dev(
         await _loop.connect_read_pipe(lambda: protocol, sys.stdin)
         return reader
 
-    async def interact(loop: asyncio.AbstractEventLoop, reload: bool):
+    async def interact(reload: bool):
         await asyncio.sleep(2)
         show_shortcut_info()
         signal.signal(signal.SIGINT, sigint_handler)
@@ -247,44 +259,59 @@ def dev(
                 encoded_option = await reader.read(100)
                 option = encoded_option.decode()
                 match option:
-                    case Shortcut.SHOW_PROCESS:
-                        typer.echo(typer.style(f"Running List",
+                    case Shortcut.SHOW_ALL_PROCESS:
+                        typer.echo(typer.style(f"All of Service",
                                    fg=typer.colors.GREEN, bold=True))
-                        for service in pids.keys():
+                        for idx, service in enumerate(process_commands.keys(), start=1):
                             typer.echo(typer.style(
-                                f"{service}", fg=typer.colors.YELLOW, bold=True))
+                                f"{idx}. {service}", fg=typer.colors.YELLOW, bold=True))
+                    case Shortcut.SHOW_RUNNING_PROCESS:
+                        typer.echo(typer.style(f"Running service",
+                                   fg=typer.colors.GREEN, bold=True))
+                        for idx, service in enumerate(process_tasks.keys(), start=1):
+                            typer.echo(typer.style(
+                                f"{idx}. {service}", fg=typer.colors.YELLOW, bold=True))
                     case Shortcut.KILL_PROCESS:
-                        typer.echo(typer.style(f"kill all of process",
+                        typer.echo(typer.style(f"kill order of service(press number of service):",
                                    fg=typer.colors.WHITE, bold=True))
-                        pids["arbiter"].cancel()
-                        for key, pid in pids.items():
-                            if isinstance(pid, int):
+                        encoded_option = await reader.read(100)
+                        option = int(encoded_option.decode())
+                        if option in pids:
+                            for service in process_commands.keys():
                                 try:
-                                    os.kill(pid, signal.SIGTERM)
-                                except Exception:
+                                    os.kill(pids[option], signal.SIGTERM)
+                                    process_tasks.pop(service)
                                     typer.echo(typer.style(
-                                        f"already killed {key}.....", fg=typer.colors.RED, bold=True))
-                                typer.echo(typer.style(
-                                    f"shutdown {key}.....", fg=typer.colors.RED, bold=True))
-                        pids.clear()
+                                        f"shutdown {service}.....", fg=typer.colors.RED, bold=True))
+                                except Exception as err:
+                                    typer.echo(typer.style(
+                                        f"already killed {service}.....", fg=typer.colors.YELLOW, bold=True))
+                        else:
+                            typer.echo(typer.style(
+                                f"check service order", fg=typer.colors.YELLOW, bold=True))
                     case Shortcut.START_PROCESS:
-                        for app_name, command in process_commands.items():
-                            if not pids.get(app_name):
-                                loop.create_task(
-                                    run_command(app_name, command))
-                        if not pids.get("arbiter"):
-                            uvicorn_task = loop.create_task(
-                                run_uvicorn(reload))
-                            pids["arbiter"] = uvicorn_task
+                        typer.echo(typer.style(f"start order of service(press number of service):",
+                            fg=typer.colors.WHITE, bold=True))
+                        encoded_option = await reader.read(100)
+                        option = int(encoded_option.decode())
+                        if option in pids:
+                            typer.echo(typer.style(f"already running...",
+                                fg=typer.colors.YELLOW, bold=True))
+                            for app_name, command in process_commands.items():
+                                if not process_tasks.get(app_name):
+                                    process_tasks[app_name] = asyncio.create_task(
+                                        run_command(app_name, command))
+                        else:
+                            pass
+                        # if not process_tasks.get("arbiter"):
+                        #     process_tasks["arbiter"] = asyncio.create_task(
+                        #         run_uvicorn(reload))
 
                         typer.echo(typer.style(
                             f"started all of service", fg=typer.colors.GREEN, bold=True))
                     case Shortcut.SHOW_SHORTCUT:
                         show_shortcut_info()
                     case Shortcut.EXIT:
-                        for key, pid in pids.items():
-                            if isinstance(pid, int):
-                                os.kill(pid, signal.SIGTERM)
                         typer.echo(typer.style(f"closing arbiter.....",
                                    fg=typer.colors.YELLOW, bold=True))
                         break
@@ -311,19 +338,13 @@ def dev(
                         await server.startup()
             await asyncio.gather(server.serve([socket]), watch_in_files(reload), return_exceptions=True)
         except asyncio.CancelledError:
-            typer.echo(typer.style(f"shutdown arbiter.......",
-                       fg=typer.colors.RED, bold=True))
             await server.shutdown([socket])
 
-    async def waiting_until_finish(loop: asyncio.AbstractEventLoop, process_commands: dict[str, str], reload: bool):
-        tasks = []
-        app_task = asyncio.create_task(run_uvicorn(reload))
-        pids["arbiter"] = app_task
-        tasks.append(app_task)
-        for app_name, command in process_commands.items():
-            service_task = asyncio.create_task(run_command(app_name, command))
-            tasks.append(service_task)
-        return await interact(loop, reload)
+    async def waiting_until_finish(process_commands: dict[str, str], reload: bool):
+        # process_tasks["arbiter"] = asyncio.create_task(run_uvicorn(reload))
+        for idx, (app_name, command) in enumerate(process_commands.items(), start=1):
+            process_tasks[app_name] = asyncio.create_task(run_command(idx, command))
+        return await interact(reload)
 
     def sigint_handler(sig, frame):
         """
@@ -336,7 +357,7 @@ def dev(
     try:
         loop = asyncio.new_event_loop()
         loop.run_until_complete(waiting_until_finish(
-            loop, process_commands, reload))
+            process_commands, reload))
     finally:
         import time
         time.sleep(1)
