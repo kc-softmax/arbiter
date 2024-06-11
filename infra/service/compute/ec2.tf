@@ -114,11 +114,11 @@ resource "aws_launch_configuration" "ec2_launch_configuration" {
   depends_on = [var.cluster]
 }
 
-resource "aws_autoscaling_group" "example_ag" {
+resource "aws_autoscaling_group" "service_ag" {
   # 초기 크기
-  desired_capacity     = 1
-  min_size             = 1
-  max_size             = 1
+  desired_capacity     = length(var.service_list) + 1
+  min_size             = length(var.service_list) + 1
+  max_size             = (length(var.service_list) + 1) * 2
   launch_configuration = aws_launch_configuration.ec2_launch_configuration.name
   vpc_zone_identifier  = [var.public_subnet1_id, var.public_subnet1_id]
   target_group_arns    = [var.ec2_tg.arn]

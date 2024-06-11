@@ -25,10 +25,17 @@ class Providers(StrEnum):
     LOCAL = "local"
 
 
+class Communication(StrEnum):
+    RETURN_OUT = "OUT_ON"
+    TERMINAL_OUT = "OUT_OFF"
+    RETURN_ERR = "ERR_ON"
+    TERMINAL_ERR = "ERR_OFF"
+
+
 class Commands(StrEnum):
     TERRAFORM_INIT = "terraform init"
-    TERRAFORM_PLAN = "terraform plan"
-    TERRAFORM_APPLY = "terraform apply -target={module} -auto-approve"
+    TERRAFORM_PLAN = "terraform plan {var}"
+    TERRAFORM_APPLY = "terraform apply {var} -target={module} -auto-approve"
     TERRAFORM_DESTROY = "terraform destroy -auto-approve"
     TERRAFORM_OUTPUT = "terraform output -json"
     PRISMA_PUSH = "prisma db push"
@@ -85,39 +92,29 @@ def refresh_output(pwd: str = None):
     terraform_refresh_apply.wait(86400)
 
 
-def popen_command(command: Commands, pwd: str = None, module: str = None) -> str | list[str]:
-    match command:
-        case Commands.TERRAFORM_APPLY:
-            res = subprocess.Popen(
-                args=[command.format(module=module)],
-                stderr=subprocess.PIPE,
-                shell=True,
-                cwd=pwd,
-            )
-            res.wait(86400)
-            _, stderr = res.communicate()
-            return stderr.decode()
-        case Commands.TERRAFORM_OUTPUT:
-            res = subprocess.Popen(
-                args=[command],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                shell=True,
-                cwd=pwd,
-            )
-            res.wait(86400)
-            stdout, stderr = res.communicate()
-            return stdout.decode(), stderr.decode()
-        case _:
-            res = subprocess.Popen(
-                args=[command],
-                stderr=subprocess.PIPE,
-                shell=True,
-                cwd=pwd,
-            )
-            res.wait(86400)
-            _, stderr = res.communicate()
-            return stderr.decode()
+def popen_command(
+    command: Commands,
+    communication_out: Communication = Communication.TERMINAL_OUT,
+    communication_err: Communication = Communication.TERMINAL_ERR,
+    pwd: str = None
+) -> str | list[str]:
+    proc = subprocess.Popen(
+        args=[command],
+        stdout=subprocess.PIPE if communication_out == Communication.RETURN_OUT else None,
+        stderr=subprocess.PIPE if communication_err == Communication.RETURN_ERR else None,
+        shell=True,
+        cwd=pwd,
+    )
+    proc.wait(86400)
+    # It will return bytes type value when you input Communication.RETURN_OUT
+    # It will return None type value when you input Communication.TERMINAL_OUT,
+    # you can see output in terminal
+    stdout, stderr = proc.communicate()
+    if stdout:
+        stdout = stdout.decode()
+    if stderr:
+        stderr = stderr.decode()
+    return stdout, stderr
 
 
 async def check_db_server(drivername: str, username: str, password: str, hostname: str, port: int) -> bool:

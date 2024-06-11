@@ -2,6 +2,10 @@ variable "service_name" {
   description = "input your service name"
   type        = string
 }
+variable "service_list" {
+  description = "defined service list"
+  type        = map(string)
+}
 variable "cidr" {
   description = "vpc cidr block"
   type        = string
@@ -16,7 +20,7 @@ variable "instance_type" {
 }
 variable "cache_node_type" {
   description = "cache node type(cache.t3.small)"
-  type = string
+  type        = string
 }
 variable "zone_name" {
   description = "domain"

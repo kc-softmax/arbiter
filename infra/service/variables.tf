@@ -1,6 +1,9 @@
 variable "service_name" {
   type = string
 }
+variable "service_list" {
+  type = map(string)
+}
 variable "cidr" {
   type = string
 }

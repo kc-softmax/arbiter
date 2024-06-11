@@ -1,4 +1,5 @@
 variable "service_name" {}
+variable "service_list" {}
 variable "ec2_sg_id" {}
 variable "public_subnet1_id" {}
 variable "public_subnet2_id" {}
