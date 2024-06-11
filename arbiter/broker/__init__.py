@@ -59,7 +59,7 @@ class RedisBroker(MessageBrokerInterface):
         super().__init__()
         self.client: aioredis.Redis = None
 
-    async def connect(self):
+    async def connect(self, temp: str = None):
         async_redis_connection_pool = aioredis.ConnectionPool(
             host='localhost')
         self.client = aioredis.Redis.from_pool(async_redis_connection_pool)
@@ -87,6 +87,13 @@ class RedisBroker(MessageBrokerInterface):
     async def publish(self, topic: str, message: any):
         await self.client.publish(topic, message)
 
+    async def send_request(
+        self,
+        queue: str,
+        message: ArbiterMessage,
+    ):
+        await self.client.rpush(queue, message.encode())
+
     async def send_request_and_wait_for_response(
         self,
         queue: str,
@@ -96,6 +103,8 @@ class RedisBroker(MessageBrokerInterface):
         """
             현재는 한 서비스에서 한번에 1개의 메세지만 보낼 수 있다.
         """
+        # print("Sending request and waiting for response")
+        # print(f"Queue: {queue}, Message: {message}")
         # 요청 데이터를 Redis에 게시
         await self.client.rpush(queue, message.encode())
         # 응답 대기 (최대 5초)

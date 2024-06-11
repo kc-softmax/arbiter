@@ -21,30 +21,26 @@ class ApiService(AbstractService[RedisBroker]):
         self.server = server
 
     @ classmethod
-    def launch(cls, **kwargs):
+    async def launch(cls, **kwargs):
         app = FastAPI()
         app.include_router(auth_router)
         config = uvicorn.Config(
             app,
             host=kwargs.get('host', '0.0.0.0'),
-            port=kwargs.get('port', 8011),
+            port=kwargs.get('port', 8080),
+            log_level='error',
         )
 
         server = uvicorn.Server(config)
         instance = cls(app, server)
-        api_loop = asyncio.new_event_loop()
-        service_loop = asyncio.new_event_loop()
-        tasks = [
-            api_loop.run_in_executor(None, server.run),
-            service_loop.run_until_complete(instance.service_start())
-        ]
-        loop = asyncio.new_event_loop()
-        loop.run_until_complete(*tasks)
+        asyncio.create_task(server.serve())
+        service = asyncio.create_task(instance.service_start())
+        result = await service
+        return result
 
     async def service_stop(self):
-        print("ApiService stop")
         await self.server.shutdown()
-        super().service_stop()
+        await super().service_stop()
 
     async def on_startup(self):
         await PrismaClientWrapper.connect()
