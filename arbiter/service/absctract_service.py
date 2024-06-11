@@ -31,6 +31,7 @@ class AbstractService(ABC, Generic[T]):
             기존 서비스 ID + 숫자를 hash 형식으로 생성된다.
         """
         self.service_id = None  # 등록 이 완료된 후 생성된다.
+        self.force_stop = False
         self.frequency = frequency
         self.broker_type = broker_type
         self.broker = broker_type()
@@ -41,10 +42,11 @@ class AbstractService(ABC, Generic[T]):
         self.health_check_time = 0
 
     @classmethod
-    def launch(cls, **kwargs):
+    async def launch(cls, **kwargs):
         instance = cls()
-        loop = asyncio.new_event_loop()
-        loop.run_until_complete(instance.service_start())
+        service = asyncio.create_task(instance.service_start())
+        result = await service
+        return result
 
     async def system_listen_task_func(self) -> str:
         await self.broker.subscribe(ARBITER_SYSTEM_CHANNEL)
@@ -63,7 +65,7 @@ class AbstractService(ABC, Generic[T]):
     async def health_check_func(self) -> str:
         if not self.health_check_time:
             self.health_check_time = asyncio.get_event_loop().time()
-        while True:
+        while True and not self.force_stop:
             start_time = asyncio.get_event_loop().time()
             if start_time - self.health_check_time > ARBITER_SERVICE_TIMEOUT:
                 break
@@ -81,6 +83,8 @@ class AbstractService(ABC, Generic[T]):
                 else:
                     break
             await asyncio.sleep(1)
+        if self.force_stop:
+            return 'Force Stop from System'
         return 'Health Check Finished'
 
     async def service_worker_func(self) -> str:
@@ -121,8 +125,6 @@ class AbstractService(ABC, Generic[T]):
         서비스가 시작되면, manage_task를 통해 initialize 하는 과정을 진행하고,
         initialize가 완료되면 consuming_task와 start_task를 실행합니다.
         """
-        #     if not self.worker or self.worker.done():
-        # self.worker = asyncio.create_task(self.worker_func())
         await self.broker.connect()
         self.system_listen_task = asyncio.create_task(
             self.system_listen_task_func())
@@ -150,20 +152,22 @@ class AbstractService(ABC, Generic[T]):
         )
         for task in done:
             result = await task
-            print(f"Service close : {result}")
+            print(
+                f"{self.service_id} {self.__class__.__name__} service close - {result}")
         await self.service_stop()
 
     async def get_system_message(self, message: ArbiterMessage):
         match message.message_type:
             case ArbiterMessageType.SHUTDOWN:
-                await self.handle_arbiter_shutdown(message.data)
+                # main arbiter가 비정상적으로 종료되었을때 온다.
+                # 정상적으로 종료되면, arbiter가 모든 서비스에게 stop 메세지를 보내고 종료한다.
+                pass
+            case ArbiterMessageType.ARBITER_SERVICE_STOP:
+                self.force_stop = self.service_id in message.data
             case ArbiterMessageType.ARBITER_SERVICE_UNREGISTER:
                 await self.handle_service_unregistered(message.data)
 
     async def handle_service_unregistered(self, service_id: str):
-        pass
-
-    async def handle_arbiter_shutdown(self, data: any = None):
         pass
 
     @abstractmethod

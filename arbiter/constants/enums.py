@@ -6,14 +6,14 @@ class ArbiterMessageType(IntEnum):
     PING = 0
     PONG = 1
 
-    # Arbiter
     SHUTDOWN = 2
-
     # Arbiter messages
     ARBITER_SERVICE_REGISTER = 10
     ARBITER_SERVICE_REGISTER_ACK = 11
     ARBITER_SERVICE_UNREGISTER = 12
     ARBITER_SERVICE_UNREGISTER_ACK = 13
+    ARBITER_SERVICE_STOP = 14
+    ARBITER_SERVICE_STOP_ACK = 15
 
     # Worker messages
     WORKER_REGISTER = 20

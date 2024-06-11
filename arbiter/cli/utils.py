@@ -11,10 +11,10 @@ from enum import StrEnum
 
 
 class Shortcut(StrEnum):
-    SHOW_ALL_PROCESS = "a"
-    SHOW_RUNNING_PROCESS = "r"
-    KILL_PROCESS = "k"
-    START_PROCESS = "s"
+    SHOW_SERVICE_LIST = "a"
+    SHOW_ACTIVE_SERVICES = "r"
+    START_SERVICE = "s"
+    KILL_SERVICE = "k"
     SHOW_SHORTCUT = "h"
     EXIT = "q"
 
@@ -158,7 +158,8 @@ def get_command(module: str, name: str):
 
 def find_python_files_in_path(dir_path: str = './'):
     current_path = Path(dir_path)
-    python_files = [str(p).split('.py')[0] for p in current_path.iterdir() if p.is_file() and p.suffix == '.py']
+    python_files = [str(p).split('.py')[0] for p in current_path.iterdir(
+    ) if p.is_file() and p.suffix == '.py']
     return python_files
 
 

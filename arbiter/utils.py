@@ -14,4 +14,4 @@ def find_python_files_in_path(dir_path: str = './'):
 def get_running_command(module_name: str, service_name: str):
     # init에서 파라미터를 받으면 안됨..
     # call에서 실행할 경우 run 없어도됨
-    return f'from {module_name} import {service_name}; {service_name}.launch();'
+    return f'import asyncio; from {module_name} import {service_name}; asyncio.run({service_name}.launch());'

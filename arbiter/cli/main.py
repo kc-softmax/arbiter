@@ -1,8 +1,10 @@
 import os
+import pathlib
 import typer
 import asyncio
 import sys
 import signal
+import datetime
 from importlib import import_module
 from io import TextIOWrapper
 from typing import Optional
@@ -11,14 +13,14 @@ from mako.template import Template
 from contextlib import asynccontextmanager
 from arbiter import Arbiter
 from arbiter.cli.utils import (
+    Commands,
+    popen_command,
     read_config,
     Shortcut,
 )
 from arbiter.cli.commands.build import app as build_app
 from arbiter.cli.commands.database import app as database_app
 from arbiter.cli import PROJECT_NAME, CONFIG_FILE
-# from arbiter.api.api_service import ApiService
-from arbiter.service import AbstractService
 
 
 app = typer.Typer()
@@ -79,11 +81,6 @@ def start(
     """
     Prisma
     """
-    # package_path = os.path.dirname(os.path.abspath(__file__))
-    # root_path = pathlib.Path(package_path)
-    # pwd = f'{str(root_path.parent)}/database'
-    # popen_command(Commands.PRISMA_PUSH, pwd=pwd)
-    # popen_command(Commands.PRISMA_GENERATE, pwd=pwd)
 
     # asyncio.run(arbiter.start(app_path, host, port, reload))
     # async def run_command(command: str):
@@ -182,9 +179,23 @@ def dev(
     # This package used in only this function
     import uvicorn
 
-    from watchfiles import awatch
+    # 특정 조건에서만 실행가능하게 해야할까?
+    # 임시로 선언 나중에 바꿔보자
+    from arbiter.database import PrismaClientWrapper
+    try:
+        PrismaClientWrapper.get_instance()
+    except Exception as e:
+        package_path = os.path.dirname(os.path.abspath(__file__))
+        root_path = pathlib.Path(package_path)
+        pwd = f'{str(root_path.parent)}/database'
+        popen_command(Commands.PRISMA_PUSH, pwd=pwd)
+        popen_command(Commands.PRISMA_GENERATE, pwd=pwd)
+
     # You add your execute path for starting uvicorn app
+
     arbiter = Arbiter()
+    arbiter_task: asyncio.Task = None
+    interact_task: asyncio.Task = None
     sys.path.insert(0, os.getcwd())
     """
     Read the config file.
@@ -217,13 +228,13 @@ def dev(
         typer.echo(typer.style("\th\tshow shortcut command",
                    fg=typer.colors.WHITE, bold=True))
         typer.echo(typer.style(
-            "\ta\tdisplay all service name and id", fg=typer.colors.WHITE, bold=True))
+            "\ta\tdisplay service list", fg=typer.colors.WHITE, bold=True))
         typer.echo(typer.style(
-            "\tr\tdisplay running service name and id", fg=typer.colors.WHITE, bold=True))
+            "\tr\tdisplay active services", fg=typer.colors.WHITE, bold=True))
         typer.echo(typer.style(
-            "\tk\tkill running process with name", fg=typer.colors.WHITE, bold=True))
+            "\tk\tstop service", fg=typer.colors.WHITE, bold=True))
         typer.echo(typer.style(
-            "\ts\tstart registered service or app", fg=typer.colors.WHITE, bold=True))
+            "\ts\tstart service", fg=typer.colors.WHITE, bold=True))
         typer.echo(typer.style("\tq\texit",
                    fg=typer.colors.WHITE, bold=True))
 
@@ -253,52 +264,137 @@ def dev(
         return reader
 
     async def interact(reload: bool):
-        await asyncio.sleep(2)
+        await asyncio.sleep(1)
+
         show_shortcut_info()
-        signal.signal(signal.SIGINT, sigint_handler)
-        signal.signal(signal.SIGTERM, sigint_handler)
         reader = await connect_stdin_stdout()
         async with raw_mode(sys.stdin):
             while True:
                 encoded_option = await reader.read(100)
                 option = encoded_option.decode()
                 match option:
-                    case Shortcut.SHOW_ALL_PROCESS:
-                        typer.echo(typer.style(f"All of Service",
+                    case Shortcut.SHOW_SERVICE_LIST:
+                        typer.echo(typer.style(f"services list",
                                    fg=typer.colors.GREEN, bold=True))
-                        for idx, service in enumerate(arbiter.registered_services, start=1):
-                            typer.echo(typer.style(
-                                f"{idx}. {service.__name__}", fg=typer.colors.YELLOW, bold=True))
-                    case Shortcut.SHOW_RUNNING_PROCESS:
-                        typer.echo(typer.style(f"Running service",
+                        # TODO get function
+                        services = await arbiter.services
+                        for service in services:
+                            if service.name in arbiter.unregister_service_name:
+                                typer.echo(
+                                    typer.style(
+                                        f"{service.id}. {service.name} (unregistered)",
+                                        fg=typer.colors.RED,
+                                        overline=True
+                                    ))
+                            else:
+                                typer.echo(
+                                    typer.style(
+                                        f"{service.id}. {service.name}",
+                                        fg=typer.colors.YELLOW,
+                                        bold=True))
+                    case Shortcut.SHOW_ACTIVE_SERVICES:
+                        typer.echo(typer.style(f"active services",
                                    fg=typer.colors.GREEN, bold=True))
-                        for number, service_name in arbiter.services_number.items():
-                            if arbiter.pids.get(service_name):
-                                typer.echo(typer.style(
-                                    f"{number}. {service_name}", fg=typer.colors.YELLOW, bold=True))
-                    case Shortcut.KILL_PROCESS:
+                        # TODO get function
+                        active_services = await arbiter.active_services
+                        for idx, active_service in enumerate(active_services, start=1):
+                            typer.echo(
+                                typer.style(
+                                    f"{idx}: {active_service.service.name} ({active_service.id})",
+                                    fg=typer.colors.YELLOW,
+                                    bold=True))
+                    case Shortcut.KILL_SERVICE:
                         typer.echo(typer.style(f"kill order of service(press number of service):",
                                    fg=typer.colors.WHITE, bold=True))
+                        # TODO get function
+                        active_services = await arbiter.active_services
+                        for idx, active_service in enumerate(active_services, start=1):
+                            typer.echo(
+                                typer.style(
+                                    f"{idx}: {active_service.service.name} ({active_service.id})",
+                                    fg=typer.colors.YELLOW,
+                                    bold=True))
                         encoded_option = await reader.read(100)
                         option = int(encoded_option.decode())
-                        service_name = arbiter.services_number[option]
-                        arbiter.stop_service(service_name)
-                        typer.echo(typer.style(
-                            f"shutdown {arbiter.services_number[option]}.....", fg=typer.colors.RED, bold=True))
-                    case Shortcut.START_PROCESS:
+                        service_id = active_services[option - 1].id
+                        await arbiter.stop_services([service_id])
+                    case Shortcut.START_SERVICE:
                         typer.echo(typer.style(f"start order of service(press number of service):",
                                                fg=typer.colors.WHITE, bold=True))
+                        services = await arbiter.services
+                        for idx, service in enumerate(services, start=1):
+                            if service.name in arbiter.unregister_service_name:
+                                typer.echo(
+                                    typer.style(
+                                        f"{idx}. {service.name} (unregistered)",
+                                        fg=typer.colors.RED,
+                                        overline=True
+                                    ))
+                            else:
+                                typer.echo(
+                                    typer.style(
+                                        f"{idx}. {service.name}",
+                                        fg=typer.colors.YELLOW,
+                                        bold=True))
+
                         encoded_option = await reader.read(100)
                         option = int(encoded_option.decode())
-                        service_name = arbiter.services_number[option]
-                        if arbiter.pids.get(service_name):
-                            typer.echo(typer.style(
-                                f"already started service {service_name}", fg=typer.colors.GREEN, bold=True))
-                        else:
+                        service = services[option - 1]
+                        if service.name in arbiter.unregister_service_name:
+                            typer.echo(
+                                typer.style(
+                                    f"{service.name} is unregistered",
+                                    fg=typer.colors.RED,
+                                    bold=True))
+                            continue
+                        try:
                             asyncio.create_task(
-                                arbiter.start_service(service_name))
-                            typer.echo(typer.style(
-                                f"started service {service_name}", fg=typer.colors.GREEN, bold=True))
+                                arbiter.start_service(service.name))
+                            typer.echo(
+                                typer.style(
+                                    f"{service.name} is starting",
+                                    fg=typer.colors.GREEN,
+                                    bold=True))
+                        except Exception as e:
+                            typer.echo(
+                                typer.style(
+                                    f"Error: {e}",
+                                    fg=typer.colors.RED,
+                                    bold=True))
+
+                        # service_name = arbiter.services_number[option]
+                        # arbiter.stop_service(service_name)
+                        # typer.echo(typer.style(
+                        #     f"shutdown {arbiter.services_number[option]}.....", fg=typer.colors.RED, bold=True))
+
+                        # case Shortcut.SHOW_ALL_PROCESS:
+                        #     typer.echo(typer.style(f"All of Service",
+                        #                fg=typer.colors.GREEN, bold=True))
+                        #     for idx, service in enumerate(arbiter.registered_services, start=1):
+                        #         typer.echo(typer.style(
+                        #             f"{idx}. {service.__name__}", fg=typer.colors.YELLOW, bold=True))
+                        # case Shortcut.SHOW_RUNNING_PROCESS:
+                        #     typer.echo(typer.style(f"Running service",
+                        #                fg=typer.colors.GREEN, bold=True))
+                        #     # TODO get function
+                        #     for idx, service_name in enumerate(await arbiter.active_services, start=1):
+                        #         typer.echo(typer.style(
+                        #             f"{idx}. {service_name}", fg=typer.colors.YELLOW, bold=True))
+
+                        # case Shortcut.KILL_PROCESS:
+                        #     typer.echo(typer.style(f"kill order of service(press number of service):",
+                        #                fg=typer.colors.WHITE, bold=True))
+                        #     encoded_option = await reader.read(100)
+                        #     option = int(encoded_option.decode())
+                        #     # service_name = arbiter.services_number[option]
+                        #     # arbiter.stop_service(service_name)
+                        #     # typer.echo(typer.style(
+                        #     #     f"shutdown {arbiter.services_number[option]}.....", fg=typer.colors.RED, bold=True))
+                        # case Shortcut.START_PROCESS:
+                        #     typer.echo(typer.style(f"start order of service(press number of service):",
+                        #                            fg=typer.colors.WHITE, bold=True))
+                        #     encoded_option = await reader.read(100)
+                        #     option = int(encoded_option.decode())
                     case Shortcut.SHOW_SHORTCUT:
                         show_shortcut_info()
                     case Shortcut.EXIT:
@@ -307,39 +403,60 @@ def dev(
                         continue
 
     async def waiting_until_finish(reload: bool):
+        nonlocal arbiter_task
+        nonlocal interact_task
         arbiter_task = asyncio.create_task(arbiter.start())
         interact_task = asyncio.create_task(interact(reload))
-        done, pending = await asyncio.wait(
-            [
-                arbiter_task,
-                interact_task
-            ],
-            return_when=asyncio.FIRST_COMPLETED
-        )
-        for task in done:
-            await task
-        for task in pending:
-            task.cancel()
 
+        for signame in {'SIGINT', 'SIGTERM'}:
+            asyncio.get_running_loop().add_signal_handler(
+                getattr(signal, signame),
+                lambda: asyncio.ensure_future(signal_handler(signame)))
+
+        # arbiter_task가 먼저 끝날 경우가 있을까:? (time out 발생)
+        done, pending = await asyncio.wait(
+            [arbiter_task, interact_task], return_when=asyncio.FIRST_COMPLETED)
+
+        for task in done:
+            if task == interact_task:
+                await arbiter.shutdown()
+                await arbiter_task
+            else:
+                interact_task.cancel()
         typer.echo(
             typer.style(
                 f"closing arbiter.....",
                 fg=typer.colors.YELLOW, bold=True))
 
-    def sigint_handler(sig, frame):
+    async def signal_handler(signame: str):
         """
         Return without error on SIGINT or SIGTERM signals in interactive command mode.
 
         e.g. CTRL+C or kill <PID>
         """
-        sys.exit(1)
+        # nonlocal force_shutdown
+        # nonlocal shutdown_event
+        # force_shutdown = True
+        # print(f"Received signal {signame}")
+        # if interact_task:
+        #     interact_task.cancel()
+        # if arbiter_task:
+        #     arbiter_task.cancel()
+
+        # await asyncio.gather(interact_task, arbiter_task, return_exceptions=True)
+        # await arbiter.shutdown()
+        # print("Shutdown completed")
+        # shutdown_event.set()
 
     try:
-        loop = asyncio.new_event_loop()
-        loop.run_until_complete(waiting_until_finish(reload))
+        asyncio.run(waiting_until_finish(reload))
+    except SystemExit as e:
+        print(f"SystemExit caught in main: {e.code}")
+    except Exception as e:
+        print(f"Unhandled exception in main: {e}")
     finally:
+        # asyncio.run(shutdown_event.wait())
         import time
-        time.sleep(1)
 
 
 if __name__ == "__main__":
