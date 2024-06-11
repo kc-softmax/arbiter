@@ -1,7 +1,8 @@
 import typer
+import sys
 import os
-import pathlib
 import json
+from typing import Callable
 
 from arbiter.cli.utils import AsyncTyper
 from arbiter.cli.utils import (
@@ -10,8 +11,10 @@ from arbiter.cli.utils import (
     refresh_output,
     popen_command,
     Commands,
+    Communication,
     SupportedModules,
 )
+from newbiter.main import newbiter
 
 
 app = AsyncTyper()
@@ -24,16 +27,34 @@ def local():
 
 @app.command(help="build AWS cloud resource for deployment")
 def cloud():
-    package_path = os.path.dirname(os.path.abspath(__file__))
-    root_path = pathlib.Path(package_path)
-    pwd = str(root_path.parent.parent)
+    # add init path because cli don't know main.tf file path
+    sys.path.insert(0, os.getcwd())
     try:
+        # rewrite command by inputing value
+        filtered_plan_cmd: Callable[[str, str], str] = lambda cmd, var: cmd.format(var=var if var else '')
+        filtered_apply_cmd: Callable[[str, str, str], str] = lambda cmd, var, module: cmd.format(
+            var=var if var else '', module=module)
+        # get available service and main app
+        newbiter.register_services()
+        service_list = json.dumps(
+            {
+                service.__module__: service.__name__
+                for service in newbiter.registered_services
+            }
+        )
+        addtional_var = f"-var='service_list={service_list}' -var='service_name=arbiter'"
         # Usage plan
-        stderr = popen_command(Commands.TERRAFORM_INIT)
+        _, stderr = popen_command(
+            Commands.TERRAFORM_INIT,
+            communication_err=Communication.RETURN_ERR
+        )
         if stderr:
             typer.echo(typer.style(stderr, fg=typer.colors.RED, bold=True))
             raise typer.Abort()
-        stderr = popen_command(Commands.TERRAFORM_PLAN)
+        _, stderr = popen_command(
+            filtered_plan_cmd(Commands.TERRAFORM_PLAN, addtional_var),
+            communication_err=Communication.RETURN_ERR
+        )
         if stderr:
             typer.echo(typer.style(stderr, fg=typer.colors.RED, bold=True))
             raise typer.Abort()
@@ -42,24 +63,37 @@ def cloud():
             raise typer.Abort()
 
         # 1. create network, security group
-        stderr = popen_command(Commands.TERRAFORM_APPLY, module=SupportedModules.NETWORK)
+        _, stderr = popen_command(
+            filtered_apply_cmd(Commands.TERRAFORM_APPLY, addtional_var, SupportedModules.NETWORK),
+            communication_err=Communication.RETURN_ERR
+        )
         if stderr:
             typer.echo(typer.style(stderr, fg=typer.colors.RED, bold=True))
             raise typer.Abort()
-        stderr = popen_command(Commands.TERRAFORM_APPLY, module=SupportedModules.SG)
+        _, stderr = popen_command(
+            filtered_apply_cmd(Commands.TERRAFORM_APPLY, addtional_var, SupportedModules.SG),
+            communication_err=Communication.RETURN_ERR
+        )
         if stderr:
             typer.echo(typer.style(stderr, fg=typer.colors.RED, bold=True))
             raise typer.Abort()
 
         # 2. create cache
-        stderr = popen_command(Commands.TERRAFORM_APPLY, module=SupportedModules.CACHE)
+        _, stderr = popen_command(
+            filtered_apply_cmd(Commands.TERRAFORM_APPLY, addtional_var, SupportedModules.CACHE),
+            communication_err=Communication.RETURN_ERR
+        )
         if stderr:
             typer.echo(typer.style(stderr, fg=typer.colors.RED, bold=True))
             raise typer.Abort()
         refresh_output()
 
         # 3. get endpoint
-        stdout, stderr = popen_command(Commands.TERRAFORM_OUTPUT)
+        stdout, stderr = popen_command(
+            Commands.TERRAFORM_OUTPUT,
+            communication_out=Communication.RETURN_OUT,
+            communication_err=Communication.RETURN_ERR
+        )
         if stderr:
             typer.echo(typer.style(stderr, fg=typer.colors.RED, bold=True))
             raise typer.Abort()
@@ -75,44 +109,64 @@ def cloud():
             raise typer.Abort()
 
         # 4. docker(ECR, push image)
-        stderr = popen_command(Commands.TERRAFORM_APPLY, module=SupportedModules.IMAGES)
+        _, stderr = popen_command(
+            filtered_apply_cmd(Commands.TERRAFORM_APPLY, addtional_var, SupportedModules.IMAGES),
+            communication_err=Communication.RETURN_ERR
+        )
         if stderr:
             typer.echo(typer.style(stderr, fg=typer.colors.RED, bold=True))
             raise typer.Abort()
         refresh_output()
-        stdout, stderr = popen_command(Commands.TERRAFORM_OUTPUT)
+        stdout, stderr = popen_command(
+            Commands.TERRAFORM_OUTPUT,
+            communication_out=Communication.RETURN_OUT,
+            communication_err=Communication.RETURN_ERR
+        )
         if stderr:
             typer.echo(typer.style(stderr, fg=typer.colors.RED, bold=True))
             raise typer.Abort()
         output: dict[str, str] = json.loads(stdout)
         if output.get("images"):
             repo_name = output["images"]["value"]
-            _ = popen_command(
-                f"./build_and_push.sh {repo_name} ap-northeast-2 linux/amd64 ./",
-                pwd=None
-            )
+            _, _ = popen_command(f"./build_and_push.sh {repo_name} ap-northeast-2 linux/amd64 ./")
 
         # 5. create service(ELB, ECS, Container Instance, domain)
-        stderr = popen_command(Commands.TERRAFORM_APPLY, module=SupportedModules.LB)
+        _, stderr = popen_command(
+            filtered_apply_cmd(Commands.TERRAFORM_APPLY, addtional_var, SupportedModules.LB),
+            communication_err=Communication.RETURN_ERR
+        )
         if stderr:
             typer.echo(typer.style(stderr, fg=typer.colors.RED, bold=True))
             raise typer.Abort()
-        stderr = popen_command(Commands.TERRAFORM_APPLY, module=SupportedModules.CONTAINER)
+        _, stderr = popen_command(
+            filtered_apply_cmd(Commands.TERRAFORM_APPLY, addtional_var, SupportedModules.CONTAINER),
+            communication_err=Communication.RETURN_ERR
+        )
         if stderr:
             typer.echo(typer.style(stderr, fg=typer.colors.RED, bold=True))
             raise typer.Abort()
-        stderr = popen_command(Commands.TERRAFORM_APPLY, module=SupportedModules.COMPUTE)
+        _, stderr = popen_command(
+            filtered_apply_cmd(Commands.TERRAFORM_APPLY, addtional_var, SupportedModules.COMPUTE),
+            communication_err=Communication.RETURN_ERR
+        )
         if stderr:
             typer.echo(typer.style(stderr, fg=typer.colors.RED, bold=True))
             raise typer.Abort()
-        stderr = popen_command(Commands.TERRAFORM_APPLY, module=SupportedModules.DOMAIN)
+        _, stderr = popen_command(
+            filtered_apply_cmd(Commands.TERRAFORM_APPLY, addtional_var, SupportedModules.DOMAIN),
+            communication_err=Communication.RETURN_ERR
+        )
         if stderr:
             typer.echo(typer.style(stderr, fg=typer.colors.RED, bold=True))
             raise typer.Abort()
         refresh_output()
 
         # 6. get domain
-        stdout, stderr = popen_command(Commands.TERRAFORM_OUTPUT)
+        stdout, stderr = popen_command(
+            Commands.TERRAFORM_OUTPUT,
+            communication_out=Communication.RETURN_OUT,
+            communication_err=Communication.RETURN_ERR
+        )
         if stderr:
             typer.echo(typer.style(stderr, fg=typer.colors.RED, bold=True))
             raise typer.Abort()
@@ -123,4 +177,4 @@ def cloud():
             typer.echo(typer.style(f"Domain Name: {domain_name}", fg=typer.colors.GREEN, bold=True))
             print("#" * 100)
     except typer.Abort:
-        _ = popen_command(Commands.TERRAFORM_DESTROY)
+        _, _ = popen_command(Commands.TERRAFORM_DESTROY)
