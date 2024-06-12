@@ -26,10 +26,10 @@ class Providers(StrEnum):
 
 
 class Communication(StrEnum):
-    RETURN_OUT = "OUT_ON"
-    TERMINAL_OUT = "OUT_OFF"
-    RETURN_ERR = "ERR_ON"
-    TERMINAL_ERR = "ERR_OFF"
+    RETURN_OUT = "RETURN_OUT"
+    TERMINAL_OUT = "TERMINAL_OUT"
+    RETURN_ERR = "RETURN_ERR"
+    TERMINAL_ERR = "TERMINAL_ERR"
 
 
 class Commands(StrEnum):
@@ -97,7 +97,7 @@ def popen_command(
     communication_out: Communication = Communication.TERMINAL_OUT,
     communication_err: Communication = Communication.TERMINAL_ERR,
     pwd: str = None
-) -> str | list[str]:
+) -> tuple[str, str]:
     proc = subprocess.Popen(
         args=[command],
         stdout=subprocess.PIPE if communication_out == Communication.RETURN_OUT else None,
@@ -110,11 +110,11 @@ def popen_command(
     # It will return None type value when you input Communication.TERMINAL_OUT,
     # you can see output in terminal
     stdout, stderr = proc.communicate()
-    if stdout:
+    if isinstance(stdout, bytes):
         stdout = stdout.decode()
-    if stderr:
+    if isinstance(stderr, bytes):
         stderr = stderr.decode()
-    return stdout, stderr
+    return (stdout, stderr)
 
 
 async def check_db_server(drivername: str, username: str, password: str, hostname: str, port: int) -> bool:

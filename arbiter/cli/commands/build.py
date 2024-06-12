@@ -2,7 +2,9 @@ import typer
 import sys
 import os
 import json
+import importlib
 from typing import Callable
+from pathlib import Path
 
 from arbiter.cli.utils import AsyncTyper
 from arbiter.cli.utils import (
@@ -14,10 +16,34 @@ from arbiter.cli.utils import (
     Communication,
     SupportedModules,
 )
-from newbiter.main import newbiter
+from arbiter.service.absctract_service import AbstractService
 
 
 app = AsyncTyper()
+
+filtered_plan_cmd: Callable[[str, str], str] = lambda cmd, var: cmd.format(var=var if var else '')
+filtered_apply_cmd: Callable[[str, str, str], str] = lambda cmd, var, module: cmd.format(
+    var=var if var else '', module=module)
+
+def _find_python_files_in_path(dir_path: str = './'):
+    service_file_name_suffix = '_service'
+    current_path = Path(dir_path)
+    python_files = [str(p).split('.py')[0] for p in current_path.iterdir()
+                    if p.is_file() and p.suffix == '.py' and service_file_name_suffix in str(p).split('.py')[0]]
+    return python_files
+
+
+def _register_services():
+    registered_services = []
+    python_files_in_root = _find_python_files_in_path()
+    # 서비스 파일(root아래)들을 import
+    for python_file in python_files_in_root:
+        importlib.import_module(python_file)
+    # import 되었으므로 AbstractService의 subclasses로 접근 가능
+    for service in AbstractService.__subclasses__():
+        if service.__name__ == 'RedisService': continue
+        registered_services.append(service)
+    return registered_services
 
 
 @app.command(help="build local kubernetes deployment enviroment")
@@ -31,15 +57,12 @@ def cloud():
     sys.path.insert(0, os.getcwd())
     try:
         # rewrite command by inputing value
-        filtered_plan_cmd: Callable[[str, str], str] = lambda cmd, var: cmd.format(var=var if var else '')
-        filtered_apply_cmd: Callable[[str, str, str], str] = lambda cmd, var, module: cmd.format(
-            var=var if var else '', module=module)
         # get available service and main app
-        newbiter.register_services()
+        registered_services = _register_services()
         service_list = json.dumps(
             {
                 service.__module__: service.__name__
-                for service in newbiter.registered_services
+                for service in registered_services
             }
         )
         addtional_var = f"-var='service_list={service_list}' -var='service_name=arbiter'"
@@ -177,4 +200,6 @@ def cloud():
             typer.echo(typer.style(f"Domain Name: {domain_name}", fg=typer.colors.GREEN, bold=True))
             print("#" * 100)
     except typer.Abort:
+        _, _ = popen_command(Commands.TERRAFORM_DESTROY)
+    except Exception:
         _, _ = popen_command(Commands.TERRAFORM_DESTROY)
