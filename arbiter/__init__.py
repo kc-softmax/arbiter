@@ -47,7 +47,7 @@ class Arbiter:
         self.system_task: asyncio.Task = None
         self.current_services: list[Service] = []
         self.registered_services: list[type[AbstractService]] = []
-        self.unregister_service_name: list[str] = []
+        self.unregister_service_names: list[str] = []
         self.health_check_task: asyncio.Task = None
         # 동기화 한다.
         self.health_map: dict[int, int] = {}
@@ -132,7 +132,7 @@ class Arbiter:
             importlib.import_module(python_file)
 
         # Already registered services
-        self.unregister_service_name = [
+        self.unregister_service_names = [
             service.name
             for service in await self.services
         ]
@@ -145,12 +145,18 @@ class Arbiter:
             }):
                 await Service.prisma().create(data={'name': service_name})
             self.registered_services.append(service)
-            self.unregister_service_name.remove(service_name)
+            if service_name in self.unregister_service_names:
+                self.unregister_service_names.remove(service_name)
 
-        if self.unregister_service_name:
+        if self.unregister_service_names:
             print(
                 'Warning: Unregistered services found, check the service name.. or remove the service db..')
-            print(self.unregister_service_name)
+            print(self.unregister_service_names)
+
+    def validate_service(self, service_name: str) -> bool:
+        if service_name in self.unregister_service_names:
+            return False
+        return True
 
     async def register_service(self, temporary_service_id: str):
         # service_id = f"{self.__class__.__name__}_{timeit.timeit()}"
@@ -316,3 +322,9 @@ class Arbiter:
                 # Arbiter Shutdown
                 print('Timeout break, Arbiter Shutdown')
                 break
+
+
+arbiter = Arbiter()
+# atexit.register(arbiter.clear)
+# signal.signal(signal.SIGINT, lambda sig,
+#               frame: asyncio.create_task(arbiter.shutdown()))

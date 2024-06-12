@@ -170,10 +170,12 @@ class AbstractService(ABC, Generic[T]):
     async def handle_service_unregistered(self, service_id: str):
         pass
 
-    @abstractmethod
+    # @abstractmethod
     async def get_message(self, message: bytes):
+        # get_message의 구현 여부에 따라서 incoming_task가 생성하게 하면 좋을것 같다.
         pass
 
-    @abstractmethod
+    # @abstractmethod
     async def service_work(self) -> bool:
-        NotImplementedError("service_work method must be implemented")
+        # NotImplementedError("service_work method must be implemented")
+        return True

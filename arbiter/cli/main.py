@@ -4,14 +4,12 @@ import typer
 import asyncio
 import sys
 import signal
-import datetime
-from importlib import import_module
 from io import TextIOWrapper
 from typing import Optional
 from typing_extensions import Annotated
 from mako.template import Template
 from contextlib import asynccontextmanager
-from arbiter import Arbiter
+from arbiter import arbiter
 from arbiter.cli.utils import (
     Commands,
     popen_command,
@@ -193,7 +191,6 @@ def dev(
 
     # You add your execute path for starting uvicorn app
 
-    arbiter = Arbiter()
     arbiter_task: asyncio.Task = None
     interact_task: asyncio.Task = None
     sys.path.insert(0, os.getcwd())
@@ -279,7 +276,7 @@ def dev(
                         # TODO get function
                         services = await arbiter.services
                         for service in services:
-                            if service.name in arbiter.unregister_service_name:
+                            if arbiter.validate_service(service.name):
                                 typer.echo(
                                     typer.style(
                                         f"{service.id}. {service.name} (unregistered)",
@@ -323,7 +320,7 @@ def dev(
                                                fg=typer.colors.WHITE, bold=True))
                         services = await arbiter.services
                         for idx, service in enumerate(services, start=1):
-                            if service.name in arbiter.unregister_service_name:
+                            if arbiter.validate_service(service.name):
                                 typer.echo(
                                     typer.style(
                                         f"{idx}. {service.name} (unregistered)",
@@ -340,7 +337,7 @@ def dev(
                         encoded_option = await reader.read(100)
                         option = int(encoded_option.decode())
                         service = services[option - 1]
-                        if service.name in arbiter.unregister_service_name:
+                        if arbiter.validate_service(service.name):
                             typer.echo(
                                 typer.style(
                                     f"{service.name} is unregistered",
