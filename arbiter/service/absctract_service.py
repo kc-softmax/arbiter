@@ -23,7 +23,7 @@ class AbstractService(ABC, Generic[T]):
     def __init__(
         self,
         broker_type: type[T],
-        frequency: float = 60.0,
+        frequency: float = 1.0,
     ):
         """
             frequency
