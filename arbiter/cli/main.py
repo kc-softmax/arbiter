@@ -174,9 +174,6 @@ def dev(
     reload: bool = typer.Option(
         False, "--reload", help="Enable auto-reload for code changes.")
 ):
-    # This package used in only this function
-    import uvicorn
-
     # 특정 조건에서만 실행가능하게 해야할까?
     # 임시로 선언 나중에 바꿔보자
     from arbiter.database import PrismaClientWrapper
@@ -235,32 +232,30 @@ def dev(
         typer.echo(typer.style("\tq\texit",
                    fg=typer.colors.WHITE, bold=True))
 
+    @asynccontextmanager
+    async def raw_mode(file: TextIOWrapper):
+        import termios
+        old_attrs = termios.tcgetattr(file.fileno())
+        new_attrs = old_attrs[:]
+        new_attrs[3] = new_attrs[3] & ~(termios.ECHO | termios.ICANON)
+        try:
+            termios.tcsetattr(file.fileno(), termios.TCSADRAIN, new_attrs)
+            yield
+        finally:
+            termios.tcsetattr(file.fileno(), termios.TCSADRAIN, old_attrs)
 
-@asynccontextmanager
-async def _raw_mode(file: TextIOWrapper):
-    import termios
-    old_attrs = termios.tcgetattr(file.fileno())
-    new_attrs = old_attrs[:]
-    new_attrs[3] = new_attrs[3] & ~(termios.ECHO | termios.ICANON)
-    try:
-        termios.tcsetattr(file.fileno(), termios.TCSADRAIN, new_attrs)
-        yield
-    finally:
-        termios.tcsetattr(file.fileno(), termios.TCSADRAIN, old_attrs)
+    async def connect_stdin_stdout() -> asyncio.StreamReader:
+        """stream stdin
+        This function help stdin as async
 
-
-async def _connect_stdin_stdout() -> asyncio.StreamReader:
-    """stream stdin
-    This function help stdin as async
-
-    Returns:
-        asyncio.StreamReader: stream
-    """
-    _loop = asyncio.get_event_loop()
-    reader = asyncio.StreamReader()
-    protocol = asyncio.StreamReaderProtocol(reader)
-    await _loop.connect_read_pipe(lambda: protocol, sys.stdin)
-    return reader
+        Returns:
+            asyncio.StreamReader: stream
+        """
+        _loop = asyncio.get_event_loop()
+        reader = asyncio.StreamReader()
+        protocol = asyncio.StreamReaderProtocol(reader)
+        await _loop.connect_read_pipe(lambda: protocol, sys.stdin)
+        return reader
 
     async def interact(reload: bool):
         await asyncio.sleep(1)
