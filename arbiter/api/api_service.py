@@ -20,7 +20,7 @@ class ApiService(AbstractService[RedisBroker]):
         self.app = app
         self.server = server
 
-    @ classmethod
+    @classmethod
     async def launch(cls, **kwargs):
         app = FastAPI()
         app.include_router(auth_router)
