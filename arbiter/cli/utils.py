@@ -3,9 +3,7 @@ import configparser
 import asyncio
 import inspect
 import subprocess
-import importlib
 from functools import wraps, partial
-from pathlib import Path
 from typer import Typer
 from enum import StrEnum
 
@@ -147,17 +145,6 @@ def check_cache_server(url: str) -> bool:
     except redis.ConnectionError:
         status = False
     return status
-
-
-def get_command(module: str, name: str):
-    return f"python -c 'from {module} import {name}; {name}.run();'"
-
-
-def find_python_files_in_path(dir_path: str = './'):
-    current_path = Path(dir_path)
-    python_files = [str(p).split('.py')[0] for p in current_path.iterdir(
-    ) if p.is_file() and p.suffix == '.py']
-    return python_files
 
 
 class AsyncTyper(Typer):

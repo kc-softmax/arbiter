@@ -1,7 +1,7 @@
 import time
 import asyncio
 from typing import Generic, TypeVar
-from abc import ABC, abstractmethod
+from abc import ABC
 from arbiter.constants import (
     ARBITER_SERVICE_HEALTH_CHECK_INTERVAL,
     ARBITER_SERVICE_TIMEOUT,

@@ -2,10 +2,9 @@ import typer
 import sys
 import os
 import json
-import importlib
 from typing import Callable
-from pathlib import Path
 
+from arbiter.utils import find_python_files_in_path, find_registered_services
 from arbiter.cli.utils import AsyncTyper
 from arbiter.cli.utils import (
     read_config,
@@ -25,26 +24,6 @@ filtered_plan_cmd: Callable[[str, str], str] = lambda cmd, var: cmd.format(var=v
 filtered_apply_cmd: Callable[[str, str, str], str] = lambda cmd, var, module: cmd.format(
     var=var if var else '', module=module)
 
-def _find_python_files_in_path(dir_path: str = './'):
-    service_file_name_suffix = '_service'
-    current_path = Path(dir_path)
-    python_files = [str(p).split('.py')[0] for p in current_path.iterdir()
-                    if p.is_file() and p.suffix == '.py' and service_file_name_suffix in str(p).split('.py')[0]]
-    return python_files
-
-
-def _register_services():
-    registered_services = []
-    python_files_in_root = _find_python_files_in_path()
-    # 서비스 파일(root아래)들을 import
-    for python_file in python_files_in_root:
-        importlib.import_module(python_file)
-    # import 되었으므로 AbstractService의 subclasses로 접근 가능
-    for service in AbstractService.__subclasses__():
-        if service.__name__ == 'RedisService': continue
-        registered_services.append(service)
-    return registered_services
-
 
 @app.command(help="build local kubernetes deployment enviroment")
 def local():
@@ -58,7 +37,8 @@ def cloud():
     try:
         # rewrite command by inputing value
         # get available service and main app
-        registered_services = _register_services()
+        python_files_in_root = find_python_files_in_path()
+        registered_services = find_registered_services(python_files_in_root, AbstractService)
         service_list = json.dumps(
             {
                 service.__module__: service.__name__
