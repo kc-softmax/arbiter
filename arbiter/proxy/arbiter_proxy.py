@@ -23,6 +23,12 @@ class TargetResponse(BaseModel):
 
 
 class ArbiterProxy:
+
+    """
+    This object manage routing target.
+    You can add target or release target using proxy server
+    """
+
     def __init__(self) -> None:
         self.targets: list[str] = []
         self.count = 0
@@ -45,6 +51,7 @@ arbiter_proxy = ArbiterProxy()
 
 @app.post("/register/target", response_model=TargetResponse)
 async def add_target(request: TargetRequest):
+    # target을 등록한다
     if arbiter_proxy.find_target(request.target):
         message = 'already registered'
     else:
@@ -58,6 +65,7 @@ async def add_target(request: TargetRequest):
 
 @app.post("/release/target", response_model=TargetResponse)
 async def release_target(request: TargetRequest):
+    # target을 제거한다
     if arbiter_proxy.find_target(request.target):
         arbiter_proxy.remove_target(request.target)
         message = "released target"
@@ -71,6 +79,8 @@ async def release_target(request: TargetRequest):
 
 @app.post("/{full_path:path}")
 async def stateless_connection(request: Request):
+    # 다른 사람이 작성한 예제를 참고하였는데 큰 데이터에 대한 처리목적으로 사용되었다.
+    # aiohttp가 가장 빠르다고 한다
     base_url = random.choice(arbiter_proxy.get_targets())
     client = httpx.AsyncClient(base_url=base_url)
     url = httpx.URL(path=request.url.path,
@@ -99,6 +109,8 @@ async def send_to_client(client: WebSocket, server: aiohttp.ClientWebSocketRespo
 
 @app.websocket("/{full_path:path}")
 async def stateful_connection(client_websocket: WebSocket, full_path: str):
+    # arbiter에 또 다시 비동기 task가 많아져서 좋은 방법은 아닌것같다
+    # websocket client to server와 server to client를 처리한다
     await client_websocket.accept()
     if targets := arbiter_proxy.get_targets():
         base_url = random.choice(targets)
