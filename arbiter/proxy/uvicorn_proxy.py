@@ -58,7 +58,18 @@ async def send_to_client(send, server: aiohttp.ClientWebSocketResponse):
 
 
 async def app(scope, receive, send):
-    if scope['type'] == 'http':
+    arbiter_proxy.count += 1
+    if scope['type'] == 'lifespan':
+        while True:
+            message = await receive()
+            if message['type'] == 'lifespan.startup':
+                ... # Do some startup here!
+                await send({'type': 'lifespan.startup.complete'})
+            elif message['type'] == 'lifespan.shutdown':
+                ... # Do some shutdown here!
+                await send({'type': 'lifespan.shutdown.complete'})
+                return
+    elif scope['type'] == 'http':
         await send({
             'type': 'http.response.start',
             'status': 200,
@@ -66,29 +77,35 @@ async def app(scope, receive, send):
                 [b'content-type', b'application/json'],
             ],
         })
-        async with aiohttp.ClientSession() as session:
-            if scope['method'] == 'POST':
-                message = await receive()
-                async with session.post(
-                    url=f'{random.choice(arbiter_proxy.targets)}{scope["path"]}',
-                    data=message['body'].decode(),
-                    headers={'content-type': 'application/json'}
-                ) as response:
-                    res = await response.text()
-            else:
-                async with session.get(
-                    url=f'{random.choice(arbiter_proxy.targets)}{scope["path"]}',
-                    headers={'content-type': 'application/json'}
-                ) as response:
-                    res = await response.text()
-        await send({
-            'type': 'http.response.body',
-            'body': res.encode(),
-        })
+        if targets := arbiter_proxy.get_targets():
+            async with aiohttp.ClientSession() as session:
+                if scope['method'] == 'POST':
+                    message = await receive()
+                    async with session.post(
+                        url=f'{targets[arbiter_proxy.count % 2]}{scope["path"]}',
+                        data=message['body'].decode(),
+                        headers={'content-type': 'application/json'}
+                    ) as response:
+                        res = await response.text()
+                else:
+                    async with session.get(
+                        url=f'{targets[arbiter_proxy.count % 2]}{scope["path"]}',
+                        headers={'content-type': 'application/json'}
+                    ) as response:
+                        res = await response.text()
+            await send({
+                'type': 'http.response.body',
+                'body': res.encode(),
+            })
+        else:
+            await send({
+                'type': 'http.response.body',
+                'body': b'Not valid arbiter',
+            })
     else:
         await send({'type': 'websocket.accept'})
         if targets := arbiter_proxy.get_targets():
-            base_url = random.choice(targets)
+            base_url = targets[arbiter_proxy.count % 2]
             session = aiohttp.ClientSession()
             async with session.ws_connect(f"{base_url}{scope['path']}") as server_websocket:
                 task1 = asyncio.create_task(send_to_server(server_websocket, receive))
@@ -100,4 +117,4 @@ async def app(scope, receive, send):
         
 
 if __name__ == "__main__":
-    uvicorn.run("arbiter.proxy.uvicorn_proxy:app", host='0.0.0.0', port=8000, log_level="info", reload=True)
+    uvicorn.run("proxy_server:app", host='0.0.0.0', port=8000, log_level="info", reload=True)
