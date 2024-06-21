@@ -27,3 +27,11 @@ def get_running_command(module_name: str, service_name: str):
     # init에서 파라미터를 받으면 안됨..
     # call에서 실행할 경우 run 없어도됨
     return f'import asyncio; from {module_name} import {service_name}; asyncio.run({service_name}.launch());'
+
+
+def get_all_subclasses(cls) -> list[type]:
+    subclasses = cls.__subclasses__()
+    all_subclasses = list(subclasses)
+    for subclass in subclasses:
+        all_subclasses.extend(get_all_subclasses(subclass))
+    return all_subclasses

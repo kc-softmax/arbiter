@@ -1,12 +1,24 @@
 from enum import IntEnum
 
 
+class ServiceState(IntEnum):
+    PENDING = 1
+    ACTIVE = 2
+    INACTIVE = 3
+
+
+class WebProtocolType(IntEnum):
+    REST = 1
+    WEBSOCKET = 2
+    WEBRTC = 3
+
+
 class ArbiterMessageType(IntEnum):
     # General messages
-    PING = 0
-    PONG = 1
+    PING = 1
+    PONG = 2
 
-    SHUTDOWN = 2
+    SHUTDOWN = 3
     # Arbiter messages
     ARBITER_SERVICE_REGISTER = 10
     ARBITER_SERVICE_REGISTER_ACK = 11
@@ -15,6 +27,10 @@ class ArbiterMessageType(IntEnum):
     ARBITER_SERVICE_STOP = 14
     ARBITER_SERVICE_STOP_ACK = 15
 
+    API_ROUTE_REGISTER = 16
+    API_ROUTE_REGISTER_ACK = 17
+    API_ROUTE_UNREGISTER = 18
+    API_ROUTE_UNREGISTER_ACK = 19
     # Worker messages
     WORKER_REGISTER = 20
     WORKER_REGISTER_ACK = 21
