@@ -9,7 +9,6 @@ from typing import Optional
 from typing_extensions import Annotated
 from mako.template import Template
 from contextlib import asynccontextmanager
-from arbiter import arbiter
 from arbiter.cli.utils import (
     Commands,
     popen_command,
@@ -176,18 +175,9 @@ def dev(
 ):
     # 특정 조건에서만 실행가능하게 해야할까?
     # 임시로 선언 나중에 바꿔보자
-    from arbiter.database import PrismaClientWrapper
-    try:
-        PrismaClientWrapper.get_instance()
-    except Exception as e:
-        package_path = os.path.dirname(os.path.abspath(__file__))
-        root_path = pathlib.Path(package_path)
-        pwd = f'{str(root_path.parent)}/database'
-        popen_command(Commands.PRISMA_PUSH, pwd=pwd)
-        popen_command(Commands.PRISMA_GENERATE, pwd=pwd)
-
+    from arbiter import Arbiter
     # You add your execute path for starting uvicorn app
-
+    arbiter = Arbiter()
     arbiter_task: asyncio.Task = None
     interact_task: asyncio.Task = None
     sys.path.insert(0, os.getcwd())
@@ -273,7 +263,7 @@ def dev(
                         # TODO get function
                         services = await arbiter.services
                         for service in services:
-                            if arbiter.validate_service(service.name):
+                            if not arbiter.validate_service(service.name):
                                 typer.echo(
                                     typer.style(
                                         f"{service.id}. {service.name} (unregistered)",
@@ -294,7 +284,7 @@ def dev(
                         for idx, active_service in enumerate(active_services, start=1):
                             typer.echo(
                                 typer.style(
-                                    f"{idx}: {active_service.service.name} ({active_service.id})",
+                                    f"{idx}: {active_service.service_meta.name} ({active_service.id})",
                                     fg=typer.colors.YELLOW,
                                     bold=True))
                     case Shortcut.KILL_SERVICE:
@@ -305,7 +295,7 @@ def dev(
                         for idx, active_service in enumerate(active_services, start=1):
                             typer.echo(
                                 typer.style(
-                                    f"{idx}: {active_service.service.name} ({active_service.id})",
+                                    f"{idx}: {active_service.service_meta.name} ({active_service.id})",
                                     fg=typer.colors.YELLOW,
                                     bold=True))
                         encoded_option = await reader.read(100)
@@ -317,7 +307,7 @@ def dev(
                                                fg=typer.colors.WHITE, bold=True))
                         services = await arbiter.services
                         for idx, service in enumerate(services, start=1):
-                            if arbiter.validate_service(service.name):
+                            if not arbiter.validate_service(service.name):
                                 typer.echo(
                                     typer.style(
                                         f"{idx}. {service.name} (unregistered)",
@@ -334,7 +324,7 @@ def dev(
                         encoded_option = await reader.read(100)
                         option = int(encoded_option.decode())
                         service = services[option - 1]
-                        if arbiter.validate_service(service.name):
+                        if not arbiter.validate_service(service.name):
                             typer.echo(
                                 typer.style(
                                     f"{service.name} is unregistered",
