@@ -1,14 +1,13 @@
+import typing
 from enum import StrEnum
 from aiortc import (
     RTCIceServer,
     RTCPeerConnection,
-    RTCSessionDescription,
     RTCConfiguration,
     RTCDataChannel,
-    RTCIceCandidate,
 )
-from pyee import AsyncIOEventEmitter
 from fastapi import WebSocket
+from starlette._utils import is_async_callable
 from arbiter.api.stream.connections.webrtc.signaling import ArbiterSignaling
 from arbiter.api.auth.schemas import UserSchema
 from arbiter.api.stream.connections.abstract_connection import ArbiterConnection
@@ -25,6 +24,7 @@ class RTCDataChannelEvent(StrEnum):
 class ArbiterWebRTCEvent(StrEnum):
     CONNECTED = "connected"
     CLOSEED = "closed"
+    DATA_CHANNEL_OPENED = "data_channel_opened"
     MESSAGE = "message"
 
 class RTCDataChannelLabel(StrEnum):
@@ -37,7 +37,7 @@ ice_servers = [
     # RTCIceServer(urls="stun:stun.l.google.com:19302"),
 ]
 
-class ArbiterWebRTC(ArbiterConnection, AsyncIOEventEmitter):
+class ArbiterWebRTC(ArbiterConnection):
 
     def __init__(
         self,
@@ -45,7 +45,6 @@ class ArbiterWebRTC(ArbiterConnection, AsyncIOEventEmitter):
         user: UserSchema,
     ):
         super(ArbiterConnection, self).__init__()
-        super(AsyncIOEventEmitter, self).__init__()
         
         self.websocket = websocket
         self.user = user
@@ -54,8 +53,13 @@ class ArbiterWebRTC(ArbiterConnection, AsyncIOEventEmitter):
         # 데이터 채널이 여러개 있을 때 어떻게 해야할까?
         self.chat_data_channel: RTCDataChannel = self.peer_connection.createDataChannel(label='chat', negotiated=False)
         self.signaling: ArbiterSignaling = ArbiterSignaling(websocket, self.peer_connection)
+        # arbiter web rtc 이벤트 핸들러
+        self.on_connect: list[typing.Callable] = []
+        self.on_message: list[typing.Callable[[str], None]] = []
+        self.on_data_channel_open: list[typing.Callable] = []
+        self.on_close: list[typing.Callable] = []
 
-        # 이벤트 핸들러 등록
+        # aiortc 이벤트 핸들러 등록
         @self.peer_connection.on(RTCStateChangeEvent.PEER_CONNECTION)
         async def peer_connection_state_changed():
             print(f"connection state {self.peer_connection.connectionState}")
@@ -63,20 +67,19 @@ class ArbiterWebRTC(ArbiterConnection, AsyncIOEventEmitter):
                 case "failed":
                     await self.close()
                 case "connected":
-                    self.emit(ArbiterWebRTCEvent.CONNECTED)
+                    await self.emit(ArbiterWebRTCEvent.CONNECTED)
                 case "closed":
-                    self.emit(ArbiterWebRTCEvent.CLOSEED)
+                    await self.emit(ArbiterWebRTCEvent.CLOSEED)
 
         @self.chat_data_channel.on(RTCDataChannelEvent.OPEN)
         async def chat_data_channel_opened():
             print("create data channel")
-            # temp pong
-            self.chat_data_channel.send("hi iam arbiter")
+            await self.emit(ArbiterWebRTCEvent.DATA_CHANNEL_OPENED)
 
         @self.chat_data_channel.on(RTCDataChannelEvent.MESSAGE)
         async def chat_data_channel_message_received(message: str):
             # callback(StreamMessage(message, self.user))
-            self.emit(ArbiterWebRTCEvent.MESSAGE, message)
+            await self.emit(ArbiterWebRTCEvent.MESSAGE, message)
 
         @self.chat_data_channel.on(RTCDataChannelEvent.ERROR)
         async def chat_data_channel_error_raised(error: str):
@@ -86,17 +89,57 @@ class ArbiterWebRTC(ArbiterConnection, AsyncIOEventEmitter):
     async def run(self):
         await self.signaling.start()
  
-    async def send_message(self, bytes: bytes):
-        pass
+    async def send_message(self, message: str):
+        self.chat_data_channel.send(message)
         # await self.data_channel and await self.data_channel.send(bytes)
     
     def clear(self):
         pass
         
     async def close(self):
-        await self.chat_data_channel.close()
-        await self.peer_connection.close()
         self.clear()
+        self.chat_data_channel.close()
+        await self.peer_connection.close()
     
-    def error(self, reason: str | None):
-        return super().error(reason)
+    async def error(self, reason: str | None):
+        pass
+
+    async def emit(self, event_type: str, *args, **kwagrs) -> None:
+        handlers: list[typing.Callable] = None
+        match event_type:
+            case ArbiterWebRTCEvent.CONNECTED:
+                handlers = self.on_connect
+            case ArbiterWebRTCEvent.MESSAGE:
+                handlers = self.on_message
+            case ArbiterWebRTCEvent.CLOSEED:
+                handlers = self.on_close
+            case ArbiterWebRTCEvent.DATA_CHANNEL_OPENED:
+                handlers = self.on_data_channel_open
+            
+        for handler in handlers:
+            if is_async_callable(handler):
+                await handler(*args, **kwagrs)
+            else:
+                handler(*args, **kwagrs)
+
+    def add_event_handler(
+        self, 
+        event_type: str, 
+        func: typing.Callable
+    ) -> None: 
+        assert event_type in [item.value for item in ArbiterWebRTCEvent]
+        match event_type:
+            case ArbiterWebRTCEvent.CONNECTED:
+                self.on_connect.append(func)
+            case ArbiterWebRTCEvent.MESSAGE:
+                self.on_message.append(func)
+            case ArbiterWebRTCEvent.CLOSEED:
+                self.on_close.append(func)
+            case ArbiterWebRTCEvent.DATA_CHANNEL_OPENED:
+                self.on_data_channel_open.append(func)
+
+    def on_event(self, event_type: str) -> typing.Callable:
+        def decorator(func: typing.Callable) -> typing.Callable:
+            self.add_event_handler(event_type, func)
+            return func
+        return decorator

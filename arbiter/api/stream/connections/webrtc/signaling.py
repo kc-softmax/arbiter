@@ -7,9 +7,10 @@ from aiortc import (
 from aiortc.contrib.signaling import BYE, object_from_string, object_to_string
 
 class ArbiterSignaling():
-    def __init__(self, 
-                 websocket: WebSocket, 
-                 peer_connection: RTCPeerConnection) -> None:
+    def __init__(
+            self, 
+            websocket: WebSocket, 
+            peer_connection: RTCPeerConnection) -> None:
         self.websocket: WebSocket = websocket
         self.peer_connection: RTCPeerConnection = peer_connection
 
