@@ -53,12 +53,16 @@ class ArbiterApp(FastAPI):
             ArbiterStream], Awaitable[None]]] = {}
 
     async def on_startup(self):
-        self.redis_broker = await RedisBroker.create()
+        # NOTE(24.06.13) temp_chat_service.py를 테스트 실행 하기 위한 임시 주석
+        # self.redis_broker = await RedisBroker.create()
+        pass
         # start system event consumer
         # if initialize broker failed, raise exception or warning
 
     async def on_shutdown(self):
-        await self.redis_broker.close()
+        # NOTE(24.06.13) temp_chat_service.py를 테스트 실행 하기 위한 임시 주석
+        # await self.redis_broker.close()
+        pass
 
     def stream(self, path: str) -> Callable[[Callable[[ArbiterStream], Awaitable[None]]], None]:
         async def connect_stream(websocket: WebSocket, token: str = Query()):

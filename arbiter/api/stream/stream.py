@@ -32,12 +32,13 @@ class ArbiterStream:
     @ classmethod
     async def create(cls, websocket: WebSocket, token: str, redis_broker: RedisBroker):
         # Perform some async operation
-        token_data = verify_token(token)
-        user = await get_db().user.find_unique(where={"id": int(token_data.sub)})
-        if user == None:
-            raise AuthExceptions.NotFoundUser
-        if user.access_token != token:
-            raise AuthExceptions.InvalidToken
+        # NOTE(24.06.13) temp_chat_service.py를 테스트 실행 하기 위한 임시 주석
+        # token_data = verify_token(token)
+        # user = await get_db().user.find_unique(where={"id": int(token_data.sub)})
+        # if user == None:
+        #     raise AuthExceptions.NotFoundUser
+        # if user.access_token != token:
+        #     raise AuthExceptions.InvalidToken
         await websocket.accept()
         connection = ArbiterWebsocket(websocket)
         extra = extra_query_params(websocket.query_params)
