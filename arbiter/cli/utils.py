@@ -8,15 +8,6 @@ from typer import Typer
 from enum import StrEnum
 
 
-class Shortcut(StrEnum):
-    SHOW_SERVICE_LIST = "a"
-    SHOW_ACTIVE_SERVICES = "r"
-    START_SERVICE = "s"
-    KILL_SERVICE = "k"
-    SHOW_SHORTCUT = "h"
-    EXIT = "q"
-
-
 class Providers(StrEnum):
     AWS = "aws"
     DEV = "dev"
@@ -75,6 +66,23 @@ def write_config(config: configparser.ConfigParser, config_file: str):
     return None
 
 
+def get_running_command(
+    module_name: str,
+    service_name: str,
+    service_id: str,
+    node_id: str,
+):
+    # init에서 파라미터를 받으면 안됨..
+    # call에서 실행할 경우 run 없어도됨
+    return (
+        f"""
+import asyncio;
+from {module_name} import {service_name};
+asyncio.run({service_name}.launch('{node_id}', '{service_id}'));
+        """
+    )
+
+
 def refresh_output(pwd: str = None):
     terraform_refresh_plan = subprocess.Popen(
         args=["terraform plan -refresh-only"],
@@ -113,27 +121,6 @@ def popen_command(
     if isinstance(stderr, bytes):
         stderr = stderr.decode()
     return (stdout, stderr)
-
-
-async def check_db_server(drivername: str, username: str, password: str, hostname: str, port: int) -> bool:
-    from sqlalchemy.ext.asyncio import create_async_engine
-    from sqlalchemy.engine import URL
-    from sqlalchemy.exc import OperationalError
-    status = True
-    url = URL.create(
-        drivername=drivername,
-        username=username if username else None,
-        password=password if password else None,
-        host=hostname if hostname else None,
-        port=port if port else None
-    )
-    engine = create_async_engine(url)
-    try:
-        conn = await engine.connect()
-        await conn.close()
-    except OperationalError:
-        status = False
-    return status
 
 
 def check_cache_server(url: str) -> bool:

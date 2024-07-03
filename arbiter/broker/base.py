@@ -27,7 +27,24 @@ class MessageBrokerInterface(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def send_message(self, target: str, message: bytes):
+    async def send_message(
+        self,
+        target: str,
+        raw_message: str | bytes,
+        timeout: int,
+    ):
+        raise NotImplementedError
+
+    @abstractmethod
+    async def async_send_message(
+        self,
+        target: str,
+        raw_message: str | bytes,
+    ):
+        raise NotImplementedError
+
+    @abstractmethod
+    async def push_message(self, target: str, message: bytes):
         raise NotImplementedError
 
     @abstractmethod
@@ -44,8 +61,4 @@ class MessageBrokerInterface(ABC):
         channel: str,
         period: float = 1
     ) -> AsyncGenerator[list[bytes], None]:
-        raise NotImplementedError
-
-    @abstractmethod
-    async def notify(self, target: str, message: bytes):
         raise NotImplementedError

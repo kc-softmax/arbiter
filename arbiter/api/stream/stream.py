@@ -9,7 +9,6 @@ from arbiter.api.auth.schemas import UserSchema
 from arbiter.api.stream.common import extra_query_params
 from arbiter.api.stream.connections import ArbiterConnection, ArbiterWebsocket
 from arbiter.broker import RedisBroker
-from arbiter.database import get_db, Prisma
 
 
 class ArbiterStream:

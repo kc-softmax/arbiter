@@ -1,7 +1,6 @@
 from __future__ import annotations
 import json
 import pickle
-import uuid
 from typing import Optional, Type
 from dataclasses import dataclass, field
 from arbiter.constants.enums import ArbiterMessageType
@@ -53,11 +52,11 @@ class ArbiterMessage:
 
     def __init__(
         self,
-        id: str = str(uuid.uuid4()),
-        data: bytes = None,
+        data: bytes,
+        id: str | None = None,
     ):
-        self.i = id
         self.d = data
+        self.i = id
 
     @property
     def id(self) -> str:
@@ -71,8 +70,8 @@ class ArbiterMessage:
         # Convert the dataclass to a dictionary
         data_dict = {}
         # change readable using properties
-        self.i and data_dict.update({"i": self.i})
         self.d and data_dict.update({"d": self.d})
+        self.i and data_dict.update({"i": self.i})
         # Serialize the filtered dictionary using pickle
         return pickle.dumps(data_dict)
 
