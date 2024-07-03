@@ -1,8 +1,31 @@
+import re
 import importlib
+from inspect import Parameter
 from pathlib import Path
+from typing import Union, get_origin, get_args
 
 
+def extract_annotation(param: Parameter) -> str:
+    # Optional[int]는 Union[int, None]과 동일합니다.
+    if get_origin(param.annotation) is Union:
+        args = get_args(param.annotation)
+        # NoneType이 아닌 첫 번째 타입을 반환합니다.
+        if len(args) == 2 and type(None) == args[1]:
+            # Optional의 경우
+            return f"Optional[{[arg for arg in args if arg is not type(None)][0].__name__}]"
+        else:
+            union_args = ", ".join(arg.__name__ for arg in args)
+            return f"Union[{union_args}]"
+    else:
+        return param.annotation.__name__
+
+
+def to_snake_case(name: str) -> str:
+    # Convert CamelCase or PascalCase to snake_case
+    s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
+    return re.sub('([a-z0-9])([A-Z])', r'\1_\2', s1).lower()
 # NOTE _new_service로 찾는 것은 루트 경로 내에서 서비스 파일을 찾기 위한 임시 조치
+
 
 def find_python_files_in_path(dir_path: str = './'):
     service_file_name_suffix = '_service'
@@ -21,12 +44,6 @@ def find_registered_services(python_files_in_root: list[str], abstract_service: 
     for service in abstract_service.__subclasses__():
         registered_services.append(service)
     return registered_services
-
-
-def get_running_command(module_name: str, service_name: str):
-    # init에서 파라미터를 받으면 안됨..
-    # call에서 실행할 경우 run 없어도됨
-    return f'import asyncio; from {module_name} import {service_name}; asyncio.run({service_name}.launch());'
 
 
 def get_all_subclasses(cls) -> list[type]:

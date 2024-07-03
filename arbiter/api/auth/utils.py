@@ -1,13 +1,11 @@
 import hashlib
+import bcrypt
 from datetime import datetime, timedelta, timezone
 from jose import jwt, JWTError
-from passlib.context import CryptContext
 from pydantic import ValidationError
 from arbiter.api.auth.constants import TOKEN_GENERATE_ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_MINUTES
 from arbiter.api.auth.schemas import TokenDataSchema
 from arbiter.api.auth.exceptions import InvalidToken
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def generate_hash_tag(email: str) -> str:
@@ -21,12 +19,12 @@ def generate_numeric_hash_tag(email: str) -> int:
     return int_hash_tag
 
 
-def get_password_hash(password):
-    return pwd_context.hash(password)
+def verify_password(plain_password: str, hashed_password: str):
+    return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
 
 
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
+def get_password_hash(password: str):
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
 
 
 def create_token(subject: str, is_refresh_token: bool = False):

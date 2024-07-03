@@ -26,11 +26,11 @@ model ServiceMeta {
   description         String?
   created_at          DateTime      @default(now())
   updated_at          DateTime      @updatedAt
-  rpc_functions       RpcFunction[]
+  task_functions       TaskFunction[]
   registered_services Service[]
 }
 
-model RpcFunction {
+model TaskFunction {
   id              Int         @id @default(autoincrement())
   name            String      @unique
   description     String?

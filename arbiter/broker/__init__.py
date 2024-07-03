@@ -1,3 +1,6 @@
 from .base import MessageBrokerInterface
 from .redis_broker import RedisBroker
-from .decorator import subscribe_task, rpc_task, periodic_task
+from .tasks import HttpTask as http_task
+from .tasks import PeriodicTask as periodic_task
+from .tasks import SubscribeTask as subscribe_task
+from .tasks import StreamTask as stream_task

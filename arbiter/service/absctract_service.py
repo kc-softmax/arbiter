@@ -1,13 +1,12 @@
-import time
+import inspect
 import asyncio
-from typing import Generic, TypeVar
-from typing import Generic, TypeVar
+from typing import Generic, TypeVar, Any
 from arbiter.constants import (
     ARBITER_SERVICE_HEALTH_CHECK_INTERVAL,
     ARBITER_SERVICE_TIMEOUT,
     ARBITER_SYSTEM_CHANNEL,
-    ARBITER_SYSTEM_QUEUE
 )
+from arbiter.constants.protocols import TaskProtocol
 from arbiter.constants.enums import ArbiterMessageType
 from arbiter.constants.data import ArbiterSystemMessage, ArbiterSystemRequestMessage
 from arbiter.broker import MessageBrokerInterface, subscribe_task, periodic_task
@@ -17,14 +16,13 @@ T = TypeVar('T', bound=MessageBrokerInterface)
 
 class ServiceMeta(type):
 
-    def __new__(cls, name, bases, dct):
-        new_cls = super().__new__(cls, name, bases, dct)
+    def __new__(cls, name: str, bases: tuple, class_dict: dict[str, Any]):
 
-        subscribe_funcs = []
-        periodic_funcs = []
-        rpc_funcs = []
+        new_cls = super().__new__(cls, name, bases, class_dict)
 
-        combined_attrs = set(dct.keys())
+        tasks: list[TaskProtocol] = []
+
+        combined_attrs = set(class_dict.keys())
         for base in bases:
             combined_attrs.update(dir(base))
             # 부모 클래스에서 decorator 수집
@@ -32,46 +30,17 @@ class ServiceMeta(type):
                 if (
                     callable(getattr(base, attr_name)) and
                     getattr(getattr(base, attr_name),
-                            'is_subscribe_decorated', False)
+                            'is_task_function', False)
                 ):
-                    subscribe_funcs.append(
-                        getattr(base, attr_name))
-
-                if (
-                    callable(getattr(base, attr_name)) and
-                    getattr(getattr(base, attr_name),
-                            'is_periodic_decorated', False)
-                ):
-                    periodic_funcs.append(
-                        getattr(base, attr_name))
-
-                if (
-                    callable(getattr(base, attr_name)) and
-                    getattr(getattr(base, attr_name),
-                            'is_rpc_decorated', False)
-                ):
-
-                    rpc_funcs.append(
-                        getattr(base, attr_name))
+                    tasks.append(getattr(base, attr_name))
 
         # 현재 클래스에서 decorator 수집
-        for attr_name, attr_value in dct.items():
+        for attr_name, attr_value in class_dict.items():
             if (
-                callable(attr_value) and
-                getattr(attr_value, 'is_subscribe_decorated', False)
+                callable(attr_value) and getattr(
+                    attr_value, 'is_task_function', False)
             ):
-                subscribe_funcs.append(attr_value)
-            if (
-                callable(attr_value) and
-                getattr(attr_value, 'is_periodic_decorated', False)
-            ):
-                periodic_funcs.append(attr_value)
-
-            if (
-                callable(attr_value) and
-                getattr(attr_value, 'is_rpc_decorated', False)
-            ):
-                rpc_funcs.append(attr_value)
+                tasks.append(attr_value)
 
         # 각각이 중복되지 않는지 확인
 
@@ -84,11 +53,30 @@ class ServiceMeta(type):
             raise AttributeError(
                 f"The class {name} must have a shutdown attribute.")
 
-        setattr(new_cls, 'rpc_funcs', rpc_funcs)
-        setattr(new_cls, 'periodic_funcs', periodic_funcs)
-        setattr(new_cls, 'subscribe_funcs', subscribe_funcs)
-        setattr(new_cls, 'depth', len(new_cls.mro()) - 3)  # TODO enum
+        # parameter type check
+        for task in tasks:
+            signature = inspect.signature(task)
+            # Print the parameters of the function
+            for index, param in enumerate(signature.parameters.values()):
+                if param.name == 'self':
+                    continue
+                param_type = param.annotation
+                # Ensure the parameter has a type hint
+                if param_type is inspect._empty:
+                    raise TypeError(
+                        "No type hint provided, Task function must have a type hint")
+                else:
+                    # Example check if the first argument is User instance
+                    # if task.auth and index == 1:
+                    #     if param_type is not User:
+                    #         raise TypeError(
+                    #             f"if auth is True,\n{
+                    #                 name} - {rpc_func.__name__} function must have a User instance as the second argument"
+                    #         )
+                    pass
 
+        setattr(new_cls, 'tasks', tasks)
+        setattr(new_cls, 'depth', len(new_cls.mro()) - 3)  # TODO enum
         return new_cls
 
 
@@ -101,16 +89,20 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
         서비스는 instance화시 broker를 통해 consuming_task를 생성하고, start()를 호출하여 동작을 시작한다.
     """
     # set by metaclass
-    periodic_funcs = []
-    rpc_funcs = []
-    subscribe_funcs = []
+    decorator_exceptions = []
+    tasks = []
     depth = 0
+
+    # set by launch
+    node_id: str = None
+    service_id: str = None
+
+    initial_processes = 1
 
     def __init__(
         self,
         broker_type: type[T],
     ):
-        self.service_id = None  # 등록 이 완료된 후 생성된다.
         self.force_stop = False
         self.broker_type = broker_type
         self.broker = broker_type()
@@ -119,11 +111,16 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
         self.health_check_time = 0
 
     @classmethod
-    async def launch(cls, **kwargs):
+    async def launch(cls, node_id: str, service_id: str):
         instance = cls()
+        setattr(instance, 'node_id', node_id)
+        setattr(instance, 'service_id', service_id)
         service = asyncio.create_task(instance.start())
         result = await service
         return result
+
+    async def get_service(self):
+        return self
 
     async def health_check_func(self) -> str:
         if not self.health_check_time:
@@ -133,19 +130,21 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
             if start_time - self.health_check_time > ARBITER_SERVICE_TIMEOUT:
                 break
             if start_time - self.health_check_time > ARBITER_SERVICE_HEALTH_CHECK_INTERVAL:
-                self.health_check_time = start_time
                 response = await self.broker.send_message(
-                    ARBITER_SYSTEM_QUEUE,
+                    self.node_id,
                     ArbiterSystemRequestMessage(
                         from_id=self.service_id,
                         type=ArbiterMessageType.PING,
                     ).encode()
                 )
+
                 if response:
-                    self.health_check_time = start_time
+                    self.health_check_time = asyncio.get_event_loop().time()
                 else:
+                    print(
+                        f"{self.__class__.__name__} Response Empty, Health Check Failed")
                     break
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.5)
         if self.force_stop:
             return 'Force Stop from System'
         return 'Health Check Finished'
@@ -158,17 +157,13 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
             dynamic_task and dynamic_task.cancel()
 
         self.health_check_task and self.health_check_task.cancel()
-        response = await self.broker.send_message(
-            ARBITER_SYSTEM_QUEUE,
+        await self.broker.send_message(
+            self.node_id,
             ArbiterSystemRequestMessage(
                 from_id=self.service_id,
                 type=ArbiterMessageType.ARBITER_SERVICE_UNREGISTER,
-            ).encode(),
+            ).encode(), None,
         )
-        if not response:
-            # cleanup
-            print("Failed to unregister service")
-            await self.broker.delete_message(self.service_id)
         await self.broker.disconnect()
 
     async def start(self):
@@ -176,45 +171,45 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
         서비스가 시작되면, manage_task를 통해 initialize 하는 과정을 진행하고,
         initialize가 완료되면 consuming_task와 start_task를 실행합니다.
         """
+        assert self.service_id, "Service ID is not set"
         await self.broker.connect()
-        temporary_service_id = f"{self.__class__.__name__}_{time.time()}"
-        response = await self.broker.send_message(
-            ARBITER_SYSTEM_QUEUE,
-            ArbiterSystemRequestMessage(
-                from_id=temporary_service_id,
-                type=ArbiterMessageType.ARBITER_SERVICE_REGISTER,
-            ).encode()
-        )
-        if not response:
-            raise Exception("Failed to register service")
-        response = ArbiterSystemMessage.decode(response)
-        if response.type != ArbiterMessageType.ARBITER_SERVICE_REGISTER_ACK:
-            raise Exception("message type is not correct")
-
-        # TODO udpate service_id
-        self.service_id = response.data
-        self.health_check_task = asyncio.create_task(self.health_check_func())
-
         dynamic_tasks: list[asyncio.Task] = []
-
-        for subscribe_func in self.subscribe_funcs:
-            dynamic_tasks.append(
-                asyncio.create_task(subscribe_func(self))
+        try:
+            response = await self.broker.send_message(
+                self.node_id,
+                ArbiterSystemRequestMessage(
+                    from_id=self.service_id,
+                    type=ArbiterMessageType.ARBITER_SERVICE_REGISTER,
+                ).encode()
             )
-        for rpc_func in self.rpc_funcs:
-            dynamic_tasks.append(
-                asyncio.create_task(rpc_func(self))
-            )
+            if not response:
+                raise Exception("Failed to register service")
+            response = ArbiterSystemMessage.decode(response)
 
-        for periodic_func in self.periodic_funcs:
-            dynamic_tasks.append(
-                asyncio.create_task(periodic_func(self))
-            )
+            if response.type != ArbiterMessageType.ARBITER_SERVICE_REGISTER_ACK:
+                raise Exception("message type is not correct")
 
-        result = await self.health_check_task
+            # TODO udpate service_id
+            self.health_check_task = asyncio.create_task(
+                self.health_check_func())
 
-        print(f"{self.service_id} {self.__class__.__name__} service close - {result}")
-        await self.shutdown(dynamic_tasks)
+            for task in self.tasks:
+                dynamic_tasks.append(
+                    asyncio.create_task(task(self))
+                )
+            # TODO change log
+            # print(
+            #     f"{self.service_id} {self.__class__.__name__} {self.node_id} service start")
+
+            result = await self.health_check_task
+
+            # print(
+            #     f"{self.service_id} {self.__class__.__name__} service close - {result}")
+
+        except Exception as e:
+            print(e)
+        finally:
+            await self.shutdown(dynamic_tasks)
 
     @subscribe_task(channel=ARBITER_SYSTEM_CHANNEL)
     async def get_system_message(self, message: bytes):
@@ -224,8 +219,6 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
                 self.force_stop = True
                 # main arbiter가 비정상적으로 종료되었을때 온다.
                 # 정상적으로 종료되면, arbiter가 모든 서비스에게 stop 메세지를 보내고 종료한다.
-            case ArbiterMessageType.ARBITER_SERVICE_UNREGISTER:
-                await self.handle_service_unregistered(system_message.data)
 
     @periodic_task(period=1)
     async def service_handler(self, messages: list[bytes]):
@@ -234,6 +227,3 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
             for raw_message in messages:
                 message = ArbiterSystemMessage.decode(raw_message)
                 # print(message)
-
-    async def handle_service_unregistered(self, service_id: str):
-        pass

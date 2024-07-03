@@ -4,28 +4,31 @@ import typer
 import asyncio
 import sys
 import signal
+from rich import print as rprint
 from io import TextIOWrapper
 from typing import Optional
 from typing_extensions import Annotated
 from mako.template import Template
 from contextlib import asynccontextmanager
 from arbiter.cli.utils import (
-    Commands,
-    popen_command,
+    get_running_command,
     read_config,
-    Shortcut,
 )
 from arbiter.cli.commands.build import app as build_app
-from arbiter.cli.commands.database import app as database_app
 from arbiter.cli import PROJECT_NAME, CONFIG_FILE
+from arbiter.constants.enums import (
+    ArbiterCliCommand,
+    ArbiterInitTaskResult,
+    ArbiterShutdownTaskResult
+)
 
 
 app = typer.Typer()
-app.add_typer(database_app, name="db",
-              help="Execute commands for database creation and migration.")
-app.add_typer(build_app, name="build", rich_help_panel="build environment",
-              help="Configure build environment for deploying service"
-              )
+app.add_typer(
+    build_app,
+    name="build",
+    rich_help_panel="build environment",
+    help="Configure build environment for deploying service")
 
 
 @app.command()
@@ -37,9 +40,6 @@ def init(
     Creates a basic project structure with predefined files and directories.
     # """
     _create_project_structure(base_path)
-    """
-    initialize prisma db
-    """
     typer.echo(f"Project created successfully.")
 
 
@@ -56,7 +56,6 @@ def start(
 ):
 
     sys.path.insert(0, os.getcwd())
-
     """
     Read the config file.
     """
@@ -75,48 +74,6 @@ def start(
             "Set the port and host in 'arbiter.settings.ini' or give them as options.")
         return
 
-    """
-    Prisma
-    """
-
-    # asyncio.run(arbiter.start(app_path, host, port, reload))
-    # async def run_command(command: str):
-    #     print(f"Running command '{command}'...")
-    #     # Run subprocess shell command
-    #     proc = await asyncio.create_subprocess_shell(
-    #         command,
-    #         shell=True,
-    #     )
-    #     await proc.communicate()
-    #     print(f"Command '{command}' finished")
-
-    # async def run():
-    #     # Run subprocess shell command
-    #     uvicorn_command = f"uvicorn {app_path} --host {host} --port {port}"
-    #     mewbiter = Mewbiter()
-    #     print(f"Starting Arbiter...")
-    #     mewbiter_task = asyncio.create_task(mewbiter.start())
-    #     # ApiService
-    #     asyncio.create_task(
-    #         run_command(
-    #             'python -c "from arbiter.api.api_service import ApiService; ApiService.launch()"')
-    #     )
-
-    #     # asyncio.create_task(
-    #     #     run_command('python test_service.py')
-    #     # )
-    #     # asyncio.create_task(
-    #     #     run_command('python test_service2.py')
-    #     # )
-
-    #     # asyncio.create_task(run_command(uvicorn_command))
-    #     # Command to run Uvicorn with the FastAPI app
-    #     await mewbiter_task
-
-    # # Use subprocess to execute the command
-    # loop = asyncio.new_event_loop()
-    # loop.run_until_complete(run())
-
 
 def _create_project_structure(project_path='.'):
     """
@@ -130,7 +87,8 @@ def _create_project_structure(project_path='.'):
         f"{PROJECT_NAME}/migrations/versions": [],
         ".": [CONFIG_FILE],
     }
-    template_root_path = f'{os.path.abspath(os.path.dirname(__file__))}/templates'
+    template_root_path = f'{os.path.abspath(
+        os.path.dirname(__file__))}/templates'
     for directory, files in project_structure.items():
         dir_path = os.path.join(project_path, directory)
         os.makedirs(dir_path, exist_ok=True)
@@ -173,66 +131,7 @@ def dev(
     reload: bool = typer.Option(
         False, "--reload", help="Enable auto-reload for code changes.")
 ):
-    # 특정 조건에서만 실행가능하게 해야할까?
-    # 임시로 선언 나중에 바꿔보자
-    from arbiter import Arbiter
-    # You add your execute path for starting uvicorn app
-    arbiter = Arbiter()
-    arbiter_task: asyncio.Task = None
-    interact_task: asyncio.Task = None
-    sys.path.insert(0, os.getcwd())
-    """
-    Read the config file.
-    """
-
-    config = read_config(CONFIG_FILE)
-    if (config is None):
-        typer.echo("No config file path found. Please run 'init' first.")
-        return
-
-    """
-    Get the "host" and "port" from config file.
-    """
-    host = host or config.get("fastapi", "host", fallback=None)
-    port = port or config.get("fastapi", "port", fallback=None)
-    if (host is None or port is None):
-        typer.echo(
-            "Set the port and host in 'arbiter.settings.ini' or give them as options.")
-        return
-
-    """
-    Starts the Arbiter FastAPI app using Uvicorn.
-    """
-
-    def show_shortcut_info():
-        typer.echo(typer.style("Arbiter CLI Options",
-                   fg=typer.colors.WHITE, bold=True))
-        typer.echo(typer.style("Usage: ...", fg=typer.colors.WHITE, bold=True))
-        typer.echo(typer.style("  Commands:", fg=typer.colors.CYAN, bold=True))
-        typer.echo(typer.style("\th\tshow shortcut command",
-                   fg=typer.colors.WHITE, bold=True))
-        typer.echo(typer.style(
-            "\ta\tdisplay service list", fg=typer.colors.WHITE, bold=True))
-        typer.echo(typer.style(
-            "\tr\tdisplay active services", fg=typer.colors.WHITE, bold=True))
-        typer.echo(typer.style(
-            "\tk\tstop service", fg=typer.colors.WHITE, bold=True))
-        typer.echo(typer.style(
-            "\ts\tstart service", fg=typer.colors.WHITE, bold=True))
-        typer.echo(typer.style("\tq\texit",
-                   fg=typer.colors.WHITE, bold=True))
-
-    @asynccontextmanager
-    async def raw_mode(file: TextIOWrapper):
-        import termios
-        old_attrs = termios.tcgetattr(file.fileno())
-        new_attrs = old_attrs[:]
-        new_attrs[3] = new_attrs[3] & ~(termios.ECHO | termios.ICANON)
-        try:
-            termios.tcsetattr(file.fileno(), termios.TCSADRAIN, new_attrs)
-            yield
-        finally:
-            termios.tcsetattr(file.fileno(), termios.TCSADRAIN, old_attrs)
+    from arbiter import Arbiter, Service
 
     async def connect_stdin_stdout() -> asyncio.StreamReader:
         """stream stdin
@@ -247,191 +146,192 @@ def dev(
         await _loop.connect_read_pipe(lambda: protocol, sys.stdin)
         return reader
 
-    async def interact(reload: bool):
-        await asyncio.sleep(1)
+    @asynccontextmanager
+    async def raw_mode(file: TextIOWrapper):
+        import termios
+        old_attrs = termios.tcgetattr(file.fileno())
+        new_attrs = old_attrs[:]
+        new_attrs[3] = new_attrs[3] & ~(termios.ECHO | termios.ICANON)
+        try:
+            termios.tcsetattr(file.fileno(), termios.TCSADRAIN, new_attrs)
+            yield
+        finally:
+            termios.tcsetattr(file.fileno(), termios.TCSADRAIN, old_attrs)
 
-        show_shortcut_info()
-        reader = await connect_stdin_stdout()
-        async with raw_mode(sys.stdin):
+    @asynccontextmanager
+    async def interact(reader: asyncio.StreamReader):
+        async def generate_input(reader: asyncio.StreamReader):
             while True:
                 encoded_option = await reader.read(100)
-                option = encoded_option.decode()
+                option = encoded_option.decode().upper().strip()
                 match option:
-                    case Shortcut.SHOW_SERVICE_LIST:
-                        typer.echo(typer.style(f"services list",
-                                   fg=typer.colors.GREEN, bold=True))
-                        # TODO get function
-                        services = await arbiter.services
-                        for service in services:
-                            if not arbiter.validate_service(service.name):
-                                typer.echo(
-                                    typer.style(
-                                        f"{service.id}. {service.name} (unregistered)",
-                                        fg=typer.colors.RED,
-                                        overline=True
-                                    ))
-                            else:
-                                typer.echo(
-                                    typer.style(
-                                        f"{service.id}. {service.name}",
-                                        fg=typer.colors.YELLOW,
-                                        bold=True))
-                    case Shortcut.SHOW_ACTIVE_SERVICES:
-                        typer.echo(typer.style(f"active services",
-                                   fg=typer.colors.GREEN, bold=True))
-                        # TODO get function
-                        active_services = await arbiter.active_services
-                        for idx, active_service in enumerate(active_services, start=1):
-                            typer.echo(
-                                typer.style(
-                                    f"{idx}: {active_service.service_meta.name} ({active_service.id})",
-                                    fg=typer.colors.YELLOW,
-                                    bold=True))
-                    case Shortcut.KILL_SERVICE:
-                        typer.echo(typer.style(f"kill order of service(press number of service):",
-                                   fg=typer.colors.WHITE, bold=True))
-                        # TODO get function
-                        active_services = await arbiter.active_services
-                        for idx, active_service in enumerate(active_services, start=1):
-                            typer.echo(
-                                typer.style(
-                                    f"{idx}: {active_service.service_meta.name} ({active_service.id})",
-                                    fg=typer.colors.YELLOW,
-                                    bold=True))
-                        encoded_option = await reader.read(100)
-                        option = int(encoded_option.decode())
-                        service_id = active_services[option - 1].id
-                        await arbiter.stop_services([service_id])
-                    case Shortcut.START_SERVICE:
-                        typer.echo(typer.style(f"start order of service(press number of service):",
-                                               fg=typer.colors.WHITE, bold=True))
-                        services = await arbiter.services
-                        for idx, service in enumerate(services, start=1):
-                            if not arbiter.validate_service(service.name):
-                                typer.echo(
-                                    typer.style(
-                                        f"{idx}. {service.name} (unregistered)",
-                                        fg=typer.colors.RED,
-                                        overline=True
-                                    ))
-                            else:
-                                typer.echo(
-                                    typer.style(
-                                        f"{idx}. {service.name}",
-                                        fg=typer.colors.YELLOW,
-                                        bold=True))
-
-                        encoded_option = await reader.read(100)
-                        option = int(encoded_option.decode())
-                        service = services[option - 1]
-                        if not arbiter.validate_service(service.name):
-                            typer.echo(
-                                typer.style(
-                                    f"{service.name} is unregistered",
-                                    fg=typer.colors.RED,
-                                    bold=True))
-                            continue
-                        try:
-                            asyncio.create_task(
-                                arbiter.start_service(service.name))
-                            typer.echo(
-                                typer.style(
-                                    f"{service.name} is starting",
-                                    fg=typer.colors.GREEN,
-                                    bold=True))
-                        except Exception as e:
-                            typer.echo(
-                                typer.style(
-                                    f"Error: {e}",
-                                    fg=typer.colors.RED,
-                                    bold=True))
-
-                        # service_name = arbiter.services_number[option]
-                        # arbiter.stop_service(service_name)
-                        # typer.echo(typer.style(
-                        #     f"shutdown {arbiter.services_number[option]}.....", fg=typer.colors.RED, bold=True))
-
-                        # case Shortcut.SHOW_ALL_PROCESS:
-                        #     typer.echo(typer.style(f"All of Service",
-                        #                fg=typer.colors.GREEN, bold=True))
-                        #     for idx, service in enumerate(arbiter.registered_services, start=1):
-                        #         typer.echo(typer.style(
-                        #             f"{idx}. {service.__name__}", fg=typer.colors.YELLOW, bold=True))
-                        # case Shortcut.SHOW_RUNNING_PROCESS:
-                        #     typer.echo(typer.style(f"Running service",
-                        #                fg=typer.colors.GREEN, bold=True))
-                        #     # TODO get function
-                        #     for idx, service_name in enumerate(await arbiter.active_services, start=1):
-                        #         typer.echo(typer.style(
-                        #             f"{idx}. {service_name}", fg=typer.colors.YELLOW, bold=True))
-
-                        # case Shortcut.KILL_PROCESS:
-                        #     typer.echo(typer.style(f"kill order of service(press number of service):",
-                        #                fg=typer.colors.WHITE, bold=True))
-                        #     encoded_option = await reader.read(100)
-                        #     option = int(encoded_option.decode())
-                        #     # service_name = arbiter.services_number[option]
-                        #     # arbiter.stop_service(service_name)
-                        #     # typer.echo(typer.style(
-                        #     #     f"shutdown {arbiter.services_number[option]}.....", fg=typer.colors.RED, bold=True))
-                        # case Shortcut.START_PROCESS:
-                        #     typer.echo(typer.style(f"start order of service(press number of service):",
-                        #                            fg=typer.colors.WHITE, bold=True))
-                        #     encoded_option = await reader.read(100)
-                        #     option = int(encoded_option.decode())
-                    case Shortcut.SHOW_SHORTCUT:
-                        show_shortcut_info()
-                    case Shortcut.EXIT:
+                    case ArbiterCliCommand.Q.name:
                         break
                     case _:
+                        yield option
                         continue
 
+        async with raw_mode(sys.stdin):
+            try:
+                input_generator = generate_input(reader)
+                yield input_generator
+            except Exception as e:
+                typer.echo(
+                    typer.style(
+                        f"An error occurred while running interact mode..\n{
+                            e}",
+                        fg=typer.colors.YELLOW, bold=True))
+            finally:
+                pass
+                # typer.echo(
+                #     typer.style(
+                #         "Exiting interact mode...",
+                #         fg=typer.colors.YELLOW, bold=True))
+
+    async def service_stream_manager(aribter: Arbiter):
+        async def read_stream(stream: asyncio.StreamReader, stream_name: str, is_stderr: bool = False):
+            while True:
+                line = await stream.readline()
+                if not line:
+                    break
+                decoded_line = line.decode().strip()
+                if not decoded_line:
+                    continue
+                # decoded_line = decoded_line[:-4]
+                if is_stderr:
+                    rprint(
+                        f"[bold yellow][{stream_name}][/bold yellow] [bold red]{decoded_line}[/bold red]")
+                else:
+                    rprint(
+                        f"[bold yellow][{stream_name}][/bold yellow] {decoded_line}")
+        while True:
+            service = await aribter.pending_service_queue.get()
+            if service is None:
+                break
+            command = get_running_command(
+                service.service_meta.module_name,
+                service.service_meta.name,
+                service.id,
+                aribter.node_id
+            )
+            process = await asyncio.create_subprocess_shell(
+                f'{sys.executable} -c "{command}"',
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env={**os.environ, 'PYTHONUNBUFFERED': '1'},
+                shell=True
+            )
+            stream_name = f"{service.service_meta.name}: {service.id}"
+
+            asyncio.create_task(
+                read_stream(process.stdout, stream_name))
+            asyncio.create_task(
+                read_stream(process.stderr, stream_name, True))
+
     async def waiting_until_finish(reload: bool):
-        nonlocal arbiter_task
-        nonlocal interact_task
-        arbiter_task = asyncio.create_task(arbiter.start())
-        interact_task = asyncio.create_task(interact(reload))
+        def show_shortcut_info():
+            typer.echo(typer.style("Commands:",
+                       fg=typer.colors.CYAN, bold=True))
+            for shortcut in ArbiterCliCommand:
+                typer.echo(typer.style(
+                    shortcut.get_typer_text(),
+                    fg=typer.colors.WHITE, bold=True))
 
-        for signame in {'SIGINT', 'SIGTERM'}:
-            asyncio.get_running_loop().add_signal_handler(
-                getattr(signal, signame),
-                lambda: asyncio.ensure_future(signal_handler(signame)))
+        reader = await connect_stdin_stdout()
 
-        # arbiter_task가 먼저 끝날 경우가 있을까:? (time out 발생)
-        done, pending = await asyncio.wait(
-            [arbiter_task, interact_task], return_when=asyncio.FIRST_COMPLETED)
+        async with Arbiter().start() as arbiter:
+            # occur error when arbiter is started
+            if not isinstance(arbiter, Arbiter):
+                typer.echo(
+                    typer.style(
+                        f"{arbiter}.....",
+                        fg=typer.colors.BRIGHT_RED, bold=True))
+                return
+            # 이 부분에서 service와 같이 기다린다.
+            # 서비스가 중간에 추가되고 하니까 그것도 생각해야 한다.
+            async with interact(reader) as commands:
+                stream_task = asyncio.create_task(
+                    service_stream_manager(arbiter))
+                async for result, message in arbiter.initial_task():
+                    # print progress message
+                    match result:
+                        case ArbiterInitTaskResult.SUCCESS:
+                            typer.echo(
+                                typer.style(
+                                    f"All services are started successfully.",
+                                    fg=typer.colors.BRIGHT_GREEN, bold=True))
+                        case ArbiterInitTaskResult.FAIL:
+                            typer.echo(
+                                typer.style(
+                                    f"failed to start services {message}",
+                                    fg=typer.colors.RED, bold=True))
+                    show_shortcut_info()
+                    # 여기서 process queue를 구독하는 taskf를 만든다..?
+                    async for command in commands:
+                        if command.upper() not in ArbiterCliCommand.__members__:
+                            typer.echo(
+                                typer.style(
+                                    f"Invalid command {command}",
+                                    fg=typer.colors.RED, bold=True))
+                    # await stream_task
+            typer.echo(
+                typer.style(
+                    f"Arbiter is shutting down",
+                    fg=typer.colors.YELLOW, bold=True))
+            async for result, message in arbiter.shutdown_task():
+                match result:
+                    case ArbiterShutdownTaskResult.SUCCESS:
+                        typer.echo(
+                            typer.style(
+                                f"All services are stopped successfully.",
+                                fg=typer.colors.BRIGHT_GREEN, bold=True))
+                    case ArbiterShutdownTaskResult.WARNING:
+                        typer.echo(
+                            typer.style(
+                                f"In shutdown catch warning {message}",
+                                fg=typer.colors.YELLOW, bold=True))
 
-        for task in done:
-            if task == interact_task:
-                await arbiter.shutdown()
-                await arbiter_task
-            else:
-                interact_task.cancel()
         typer.echo(
             typer.style(
-                f"closing arbiter.....",
+                "shutdown is completed",
                 fg=typer.colors.YELLOW, bold=True))
 
-    async def signal_handler(signame: str):
-        """
-        Return without error on SIGINT or SIGTERM signals in interactive command mode.
+    """
+        1. initialize arbiter
+        2. start arbiter
+            2.1 register and start services
+            2.2 start api service
+            2.3 check all rpc function is fine
+            2.4 wait for the all service is activated
+        3. start interact task
+        
+        arbiter shutdown event is triggered by interact task or arbiter task
+    """
 
-        e.g. CTRL+C or kill <PID>
-        """
-        # nonlocal force_shutdown
-        # nonlocal shutdown_event
-        # force_shutdown = True
-        # print(f"Received signal {signame}")
-        # if interact_task:
-        #     interact_task.cancel()
-        # if arbiter_task:
-        #     arbiter_task.cancel()
+    typer.echo(
+        typer.style(
+            'Arbiter is starting...',
+            fg=typer.colors.BRIGHT_GREEN, bold=True))
 
-        # await asyncio.gather(interact_task, arbiter_task, return_exceptions=True)
-        # await arbiter.shutdown()
-        # print("Shutdown completed")
-        # shutdown_event.set()
+    sys.path.insert(0, os.getcwd())
+    """
+    Read the config file.
+    """
 
+    # config = read_config(CONFIG_FILE)
+    # if (config is None):
+    #     typer.echo("No config file path found. Please run 'init' first.")
+    #     return
+
+    # """
+    # Get the "host" and "port" from config file.
+    # """
+    # host = host or config.get("fastapi", "host", fallback=None)
+    # port = port or config.get("fastapi", "port", fallback=None)
+    # if (host is None or port is None):
+    #     typer.echo(
+    #         "Set the port and host in 'arbiter.settings.ini' or give them as options.")
+    #     return
     try:
         asyncio.run(waiting_until_finish(reload))
     except SystemExit as e:

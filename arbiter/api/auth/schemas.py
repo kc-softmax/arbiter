@@ -1,4 +1,3 @@
-from sqlalchemy import Column, String
 from pydantic import BaseModel, Field
 
 
@@ -10,6 +9,7 @@ from pydantic import BaseModel, Field
 #     STEAM = "steam"
 #     GOOGLE = "google"
 #     TESTER = "tester"
+
 
 class TokenSchema(BaseModel):
     access_token: str
@@ -29,9 +29,8 @@ class UserSchema(BaseModel):
     id: int
     email: str
     password: str
-    hash_tag: int
-    access_token: str | None = Field(sa_column=Column(String(128)))
-    refresh_token: str | None = Field(sa_column=Column(String(128)))
+    access_token: str | None
+    refresh_token: str | None
 
 
 class UserCreate(BaseModel):
@@ -41,5 +40,6 @@ class UserCreate(BaseModel):
 
 class UserResponse(BaseModel):
     email: str
-    access_token: str = Field(sa_column=Column(String(128)))
-    refresh_token: str = Field(sa_column=Column(String(128)))
+    description: str | None
+    access_token: str | None
+    refresh_token: str | None

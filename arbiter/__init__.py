@@ -1,3 +1,4 @@
+from __future__ import annotations
 import asyncio
 import sys
 import uuid
@@ -9,19 +10,23 @@ import time
 import ast
 import functools
 import inspect
+from asyncio.subprocess import Process
+from contextlib import asynccontextmanager
+from warnings import warn
 from collections import defaultdict
-from typing import Callable
+from typing import AsyncGenerator, Callable, Type, TypeVar, Generic
 from datetime import datetime
 from arbiter.broker import RedisBroker
 from arbiter.database import Database
-from arbiter.database.model import Service, ServiceMeta, RpcFunction
+from arbiter.database.model import Service, ServiceMeta, TaskFunction
 from arbiter.service import AbstractService
 from arbiter.constants import (
-    ARBITER_SERVICE_TIMEOUT,
+    ARBITER_SYSTEM_INITIAL_TIMEOUT,
+    ARBITER_SERVICE_PENDING_TIMEOUT,
+    ARBITER_SERVICE_ACTIVE_TIMEOUT,
     ARBITER_SYSTEM_TIMEOUT,
-    ARBITER_SYSTEM_SERVICE_ID,
+    ARBITER_SERVICE_SHUTDOWN_TIMEOUT,
     ARBITER_SYSTEM_CHANNEL,
-    ARBITER_SYSTEM_QUEUE,
 )
 from arbiter.constants.data import (
     ArbiterSystemRequestMessage,
@@ -29,14 +34,22 @@ from arbiter.constants.data import (
     ArbiterMessage,
 )
 from arbiter.constants.enums import (
+    ArbiterInitTaskResult,
+    ArbiterShutdownTaskResult,
     ArbiterMessageType,
     ServiceState
 )
 from arbiter.utils import (
     find_python_files_in_path,
-    get_running_command,
-    get_all_subclasses
+    get_all_subclasses,
+    to_snake_case
 )
+T = TypeVar('T')
+
+
+class TypedQueue(asyncio.Queue, Generic[T]):
+    async def get(self) -> T:
+        return await super().get()
 
 
 class Arbiter:
@@ -47,19 +60,20 @@ class Arbiter:
 
     @property
     async def active_services(self) -> list[Service]:
-        return await self.db.find_services(state=ServiceState.ACTIVE)
+        return await self.db.find_services(states=[ServiceState.ACTIVE])
 
     def __init__(self):
-        self.redis_broker: RedisBroker = None
+        self.node_id = str(uuid.uuid4())
+        self.broker: RedisBroker = None
         self.system_task: asyncio.Task = None
         self.health_check_task: asyncio.Task = None
-        self.current_services: list[Service] = []
-        self.registered_services: list[type[AbstractService]] = []
-        self.unregister_service_names: list[str] = []
+
+        self.pending_service_queue: TypedQueue[Service] = TypedQueue()
         # 동기화 한다.
+        self._initial_queue: asyncio.Queue = asyncio.Queue()
+        self._shutdown_queue: asyncio.Queue = asyncio.Queue()
         self.shutdown_code = str(uuid.uuid4())
-        self.health_map: dict[int, int] = {}
-        self.db = Database()
+        self.db = Database.get_db()
 
     async def clear(self):
         if self.system_task:
@@ -67,45 +81,55 @@ class Arbiter:
         if self.health_check_task:
             self.health_check_task.cancel()
         await self.db.disconnect()
-        await self.redis_broker.disconnect()
+        await self.broker.disconnect()
 
-    async def start(self, **kwargs):
-        await self.db.connect()
-        await self.db.initialize()
-        await self.register_services_meta()
+    async def register_services_meta(self, **kwargs) -> list[ServiceMeta]:
+        from arbiter.api.api_service import ApiService
+        python_files_in_root = find_python_files_in_path()
+        # 서비스 파일(root아래)들을 import
+        for python_file in python_files_in_root:
+            importlib.import_module(python_file)
 
-        self.redis_broker = RedisBroker()
-        await self.redis_broker.connect()
+        # import 되었으므로 AbstractService의 subclasses로 접근 가능
+        service_meta_list = []
+        for service in get_all_subclasses(AbstractService):
+            assert issubclass(service, AbstractService)
+            if service.depth < 2:
+                continue
+            service_meta = await self.db.create_service_meta(
+                service_name=service.__name__,
+                service_module_name=service.__module__,
+                tasks=service.tasks,
+                initial_processes=service.initial_processes)
+            service_meta_list.append(service_meta)
+        return service_meta_list
 
-        self.system_task = asyncio.create_task(self.system_task_func())
+    async def register_service(self, service_id: str):
+        if service := await self.db.get_data(service_id, Service):
+            await self.db.update_data(
+                service,
+                state=ServiceState.ACTIVE
+            )
+            return True
+        return False
 
-        self.health_check_task = asyncio.create_task(self.health_check_func())
+    async def unregister_service(
+        self,
+        service: Service,
+        description: str = None
+    ):
+        # cli 등에서 실행 가능
+        await self.db.update_data(
+            service,
+            state=ServiceState.INACTIVE,
+            description=description,
+        )
 
-        # 현재는 의미없는 코드이다.
-        # clear할때 전부 지우기 때문에,
-        if active_services := await self.active_services:
-            for active_service in active_services:
-                self.health_map[active_service.id] = active_service.updated_at.timestamp(
-                )
-
-        for service in self.registered_services:
-            asyncio.create_task(self.start_service(service.__name__))
-        await self.health_check_task
-
-        # broker를 통해 main이 shutdown 되었다고 알린다.
-        # # TODO 정상적이지 않은 shutdownd에 관해서 처리
-        # await self.redis_broker.broadcast(
-        #     ARBITER_SYSTEM_CHANNEL,
-        #     ArbiterSystemMessage(message_type=ArbiterMessageType.SHUTDOWN).encode())
-        await self.clear()
-
-    async def shutdown_task(self):
+    async def _setup_shutdown_task(self):
         # api, arbiter main task를 제외한 나머지 서비스들을 중단한다.
         # 다른 서비스 종료방법 1
-        # self.health_map.clear() 하면 main health_check_func은 올바르게 동작하지 않지만
         # 곧 종료될 것이므로 신경쓰지 않는다. 하지만 각 서비스들에의 health_check_func에서 예외가 발생하여 종료될 것이다.
-        # self.health_map.clear()
-        await self.redis_broker.broadcast(
+        await self.broker.broadcast(
             ARBITER_SYSTEM_CHANNEL,
             ArbiterSystemMessage(
                 type=ArbiterMessageType.SHUTDOWN,
@@ -113,165 +137,178 @@ class Arbiter:
         )
         start_time = time.time()
         while True:
-            if time.time() - start_time > 10:
+            if time.time() - start_time > ARBITER_SERVICE_SHUTDOWN_TIMEOUT:
                 # 서비스가 종료되지 않았기 때문에 확인하는 메세지를 보내야한다.
-                # 경고메세지 출력
-                print('Some services are not stopped yet...')
+                # 종료되지 않은 서비스들이 있기 때문에 확인해야 한다.
+                await self._shutdown_queue.put(
+                    (ArbiterShutdownTaskResult.WARNING, None)
+                )
                 break
             if not await self.active_services:
+                await self._shutdown_queue.put(
+                    (ArbiterShutdownTaskResult.SUCCESS, None)
+                )
                 break
+            await asyncio.sleep(0.5)
 
-            await asyncio.sleep(1)
+        await self._shutdown_queue.put(None)
 
-        # # 종료 메세지가 오지 않은 서비스들에 대한 처리
-        # 마찬가지로 현재는 처리할 필요가 없지만, 나중에는 처리해야 한다.
-        # for to_remove_service in await Database.find_services(state='active'):
-        #     await self.unregister_service(to_remove_service.id, 'stop_error')
-
-    async def shutdown(self):
+    async def shutdown_task(self) -> AsyncGenerator[tuple[ArbiterShutdownTaskResult, str], None]:
         """
             shout down
             1. unregister all services with arbiter, api
             2. stop api service
             3. wait for all tasks to finish
-            4. disconnect prisma
+            4. disconnect db
             5. disconnect broker
         """
-        print('shutdown.. please waiting for few seconds..')
-        stop_task = asyncio.create_task(self.shutdown_task())
-        await stop_task
-        print('all services are stopped')
-        # cancel system task nataurally
-
-        await self.redis_broker.send_message(
-            ARBITER_SYSTEM_QUEUE,
+        await self.pending_service_queue.put(None)
+        asyncio.create_task(self._setup_shutdown_task())
+        while True:
+            message = await self._shutdown_queue.get()
+            if message == None:
+                break
+            yield message
+        await self.broker.send_message(
+            self.node_id,
             ArbiterSystemRequestMessage(
                 from_id=self.shutdown_code,
                 type=ArbiterMessageType.SHUTDOWN
-            ).encode(), 0)
+            ).encode(),
+            None)
+
+        self.shutdown_code = None
         await self.system_task
         await self.health_check_task
 
-    async def register_services_meta(self, **kwargs):
-        from arbiter.api.api_service import ApiService
-        python_files_in_root = find_python_files_in_path()
-        # 서비스 파일(root아래)들을 import
-        for python_file in python_files_in_root:
-            importlib.import_module(python_file)
+    async def _setup_initial_task(self):
+        async def check_initial_services(timeout: int) -> list[Service]:
+            start_time = time.time()
+            while time.time() - start_time < timeout:
+                if not await self.db.find_services(states=[ServiceState.PENDING]):
+                    return []
+                await asyncio.sleep(0.5)
+            return await self.db.find_services(states=[ServiceState.PENDING])
 
-        # Already registered services
-        self.unregister_service_names = [
-            service.name
-            for service in await self.services
-        ]
+        if pending_services := await check_initial_services(ARBITER_SYSTEM_INITIAL_TIMEOUT):
+            # failed to start all services
+            # 실패한 서비스들을 어떻게 처리할 것인가? 쓰는사람에게 맡긴다.
+            pending_service_names = ', '.join(
+                [service.service_meta.name for service in pending_services])
+            await self._initial_queue.put(
+                (ArbiterInitTaskResult.FAIL, pending_service_names))
+        else:
+            await self._initial_queue.put(
+                (ArbiterInitTaskResult.SUCCESS, None))
 
-        # import 되었으므로 AbstractService의 subclasses로 접근 가능
-        for service in get_all_subclasses(AbstractService):
-            if service.depth < 2:
-                continue
-            service_name = service.__name__
-            await self.db.create_service_meta(service_name=service_name, rpc_funcs=service.rpc_funcs)
-            self.registered_services.append(service)
-            if service_name in self.unregister_service_names:
-                self.unregister_service_names.remove(service_name)
+        await self._initial_queue.put(None)
 
-        if self.unregister_service_names:
-            print(
-                'Warning: Unregistered services found, check the service name.. or remove the service db..')
-            # print(self.unregister_service_names)
+    async def initial_task(self) -> AsyncGenerator[tuple[ArbiterInitTaskResult, str], None]:
+        while True:
+            message = await self._initial_queue.get()
+            if message == None:
+                break
+            yield message
 
-    def validate_service(self, service_name: str) -> bool:
-        if service_name in self.unregister_service_names:
-            return False
-        return True
+    @asynccontextmanager
+    async def start(self) -> AsyncGenerator[Arbiter, Exception]:
+        await self.db.connect()
+        await self.db.initialize()
+        self.broker = RedisBroker()
+        await self.broker.connect()
+        try:
+            service_meta_list = await self.register_services_meta()
+        except Exception as e:
+            await self.clear()
+            yield e
+            return
 
-    async def register_service(self, temporary_service_id: str):
-        # service_id = f"{self.__class__.__name__}_{timeit.timeit()}"
-        service_name, _ = temporary_service_id.split('_')
-        service_meta = await self.db.get_service_meta(service_name)
-        new_service = await self.db.create_service(service_meta)
+        self.system_task = asyncio.create_task(self.system_task_func())
 
-        self.health_map[
-            new_service.id
-        ] = new_service.created_at.timestamp()
+        for service_meta in service_meta_list:
+            for _ in range(service_meta.initial_processes):
+                await self.pending_service_queue.put(
+                    await self.db.create_data(
+                        Service,
+                        state=ServiceState.PENDING,
+                        service_meta=service_meta
+                    )
+                )
+            # TODO 확인해야 한다, 서비스가 정상적으로 켜진건지 할 수  있다면
+            # 만약 켜지지 않았다면, new_service 객체를 바탕으로 조정해야 한다.
+            # process = asyncio.create_task(self.start_service(new_service))
+            # processes.append(process)
+        asyncio.create_task(self._setup_initial_task())
 
-        return new_service.id
+        self.health_check_task = asyncio.create_task(
+            self.health_check_func())
 
-    async def unregister_service(
-        self,
-        service_id: int,
-    ):
-        # cli 등에서 실행 가능
-        await self.db.update_service(service_id, ServiceState.INACTIVE)
-        await self.redis_broker.broadcast(
-            ARBITER_SYSTEM_CHANNEL,
-            ArbiterSystemMessage(
-                type=ArbiterMessageType.ARBITER_SERVICE_UNREGISTER,
-                data=service_id
-            ).encode()
-        )
-        self.health_map.pop(service_id, None)
+        yield self
 
-    async def start_service(self, service_name: str):
-        # 중복 실행 막기
-        # ...
-        # 실행
-        # 서비스 클래스 이름(eg)AchivementService)으로 서비스 찾기
-        service = next(
-            (service for service in self.registered_services if service.__name__ == service_name), None)
-        if service is None:
-            raise Exception('실행하려는 서비스가 등록되지 않았습니다.')
-        command = get_running_command(service.__module__, service_name)
-        proc = await asyncio.create_subprocess_shell(
-            f'{sys.executable} -c "{command}"',
-            stderr=asyncio.subprocess.PIPE,
-            shell=True
-        )
-        _, error = await proc.communicate()
-        error and print('error: ', error.decode())
+        await self.clear()
+
+    # @asynccontextmanager
+    # async def start_service(self, service: Service) -> AsyncGenerator[Process, None]:
+
+    #     command = get_running_command(
+    #         service.service_meta.module_name,
+    #         service.service_meta.name,
+    #         service.id,
+    #         self.node_id
+    #     )
+    #     proc = await asyncio.create_subprocess_shell(
+    #         f'{sys.executable} -c "{command}"',
+    #         stdout=asyncio.subprocess.PIPE,
+    #         stderr=asyncio.subprocess.PIPE,
+    #         shell=True
+    #     )
+    #     yield proc
+    #     await proc.wait()
 
     async def stop_services(self, service_ids: list[int]):
         for service_id in service_ids:
-            service = await self.db.get_service(service_id)
+            service = await self.db.get_data(service_id, Service)
             if service and service.state == ServiceState.ACTIVE:
-                target = service.service_meta.name.lower() + '_' + 'service_handler'
-                await self.redis_broker.send_message(
+                target = f"{to_snake_case(
+                    service.service_meta.name)}_service_handler"
+                await self.broker.send_message(
                     target,
                     ArbiterSystemMessage(
                         type=ArbiterMessageType.ARBITER_SERVICE_UNREGISTER,
-                    ).encode(),
-                    0
+                    ).encode(), None
                 )
 
     async def health_check_func(self):
         while not self.system_task.done():
             current_time = time.time()
-            removed_service_ids = []
-            for service_id, last_time in self.health_map.items():
-                if current_time - last_time > ARBITER_SERVICE_TIMEOUT:
-                    removed_service_ids.append(service_id)
-            for removed_service_id in removed_service_ids:
-                # 응답이 없는 테스크 이다, 어떻게 처리해야 할까?
-                # 경고  몇 번후 다른 서비스들에게 공지해볼까
-                await self.unregister_service(removed_service_id)
+            description = ''
+            removed_services = []
+            pending_or_active_services = await self.db.find_services(
+                states=[ServiceState.PENDING, ServiceState.ACTIVE])
+            for service in pending_or_active_services:
+                elapsed_time = current_time - service.updated_at.timestamp()
+                if service.state == ServiceState.ACTIVE:
+                    description = 'Service is not responding.'
+                    timeout = ARBITER_SERVICE_ACTIVE_TIMEOUT
+                elif service.state == ServiceState.PENDING:
+                    description = f'Service is not started within {
+                        elapsed_time} seconds.'
+                    timeout = ARBITER_SERVICE_PENDING_TIMEOUT
+                else:
+                    raise ValueError('Invalid Service State')
+                if elapsed_time > timeout:
+                    removed_services.append((service, description))
 
-            await asyncio.sleep(1)
-        # 마찬가지로 현재는 사용하지 않는다.
-        # update last health check time
-        # async with PrismaClientWrapper.get_instance().batch_() as batcher:
-        #     for service_id, last_time in self.health_map.items():
-        #         batcher.serviceregistry.update(
-        #             where={
-        #                 'id': service_id
-        #             },
-        #             data={
-        #                 'updated_at': datetime.fromtimestamp(last_time)
-        #             })
+            for removed_service in removed_services:
+                await self.unregister_service(*removed_service)
+
+            await asyncio.sleep(0.5)
 
     async def system_task_func(self):
         while True:
-            request_json = await self.redis_broker.client.blpop(
-                ARBITER_SYSTEM_QUEUE, timeout=ARBITER_SYSTEM_TIMEOUT)
+
+            request_json = await self.broker.client.blpop(
+                self.node_id, timeout=ARBITER_SYSTEM_TIMEOUT)
             if request_json:
                 try:
                     message = ArbiterMessage.decode(request_json[1])
@@ -281,32 +318,47 @@ class Arbiter:
                     response = None
                     match requset_message.type:
                         case ArbiterMessageType.PING:
-                            if from_service_id in self.health_map:
-                                self.health_map[from_service_id] = time.time()
-                                response = ArbiterSystemMessage(
-                                    type=ArbiterMessageType.PONG
-                                )
+                            # health check의 경우 한번에 모아서 업데이트 하는 경우를 생각해봐야한다.
+                            if service := await self.db.get_data(from_service_id, Service):
+                                if service.state == ServiceState.PENDING:
+                                    warn('Service is not registered yet.')
+                                elif service.state == ServiceState.INACTIVE:
+                                    warn(
+                                        """
+                                        Service is inactive, but service try
+                                        to send ping message.
+                                        please check the service and
+                                        service shutdown process.
+                                        """)
+                                else:
+                                    await self.db.update_data(service)
+                                    response = ArbiterSystemMessage(
+                                        type=ArbiterMessageType.PONG
+                                    )
                         case ArbiterMessageType.ARBITER_SERVICE_REGISTER:
-                            if registed_service_id := await self.register_service(from_service_id):
+                            if await self.register_service(from_service_id):
                                 response = ArbiterSystemMessage(
-                                    type=ArbiterMessageType.ARBITER_SERVICE_REGISTER_ACK,
-                                    data=registed_service_id
+                                    type=ArbiterMessageType.ARBITER_SERVICE_REGISTER_ACK
                                 )
                         case ArbiterMessageType.ARBITER_SERVICE_UNREGISTER:
-                            await self.unregister_service(from_service_id)
-                            response = ArbiterSystemMessage(
-                                type=ArbiterMessageType.ARBITER_SERVICE_UNREGISTER_ACK,
-                            )
+                            if unregistered_service := await self.db.get_data(from_service_id, Service):
+                                await self.unregister_service(unregistered_service)
+                                response = ArbiterSystemMessage(
+                                    type=ArbiterMessageType.ARBITER_SERVICE_UNREGISTER_ACK,
+                                )
                         case ArbiterMessageType.SHUTDOWN:
                             if self.shutdown_code == from_service_id:
                                 break
                 except Exception as e:
                     print('Error: ', e)
+                    print('Request: ', request_json)
+                    print('Message: ', message)
+                    print("Request Message: ", requset_message)
                     response = ArbiterSystemMessage(
                         message_type=ArbiterMessageType.ERROR,
                         data=str(e)
                     )
-                response and await self.redis_broker.notify(
+                message.id and response and await self.broker.push_message(
                     message.id,
                     response.encode()
                 )
@@ -316,6 +368,10 @@ class Arbiter:
                 # Arbiter Shutdown
                 print('Timeout break, Arbiter Shutdown')
                 break
+        if self.shutdown_code:
+            # pending_service_queue에 None을 넣어서
+            # cli의 종료를 유도하여 shutdown_task를 실행한다.
+            await self.pending_service_queue.put(None)
 
 
 # atexit.register(arbiter.clear)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 import asyncio
+from contextlib import asynccontextmanager
+import uuid
 import time
 import redis.asyncio as aioredis
 from warnings import warn
@@ -30,28 +32,31 @@ class RedisBroker(MessageBrokerInterface):
         self,
         target: str,
         raw_message: str | bytes,
+        response_ch: str = str(uuid.uuid4()),
         timeout: int = ARIBTER_DEFAULT_RPC_TIMEOUT
     ) -> bytes | None:
-        message = ArbiterMessage(data=raw_message)
+        assert timeout > 0, "Timeout must be greater than 0"
+        message = ArbiterMessage(data=raw_message, id=response_ch)
         await self.client.rpush(target, message.encode())
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            response = await self.client.get(message.id)
-            if response:
-                await self.client.delete(message.id)
-                return response
-            time.sleep(0.1)
-        # check overflow
-        await self.client.set(message.id, b'0')
+        if response_ch is None:
+            return None
+        response = await self.client.blpop(message.id, timeout=timeout)
+        if response:
+            return response[1]
+        await self.client.delete(message.id)
         return None
 
-    async def notify(self, target: str, message: bytes):
-        if ex_message := await self.client.get(target):
-            if ex_message != b'0':
-                warn(f"Overwriting message {ex_message} in {target}")
-            await self.client.delete(target)
-        else:
-            await self.client.set(target, message)
+    async def async_send_message(
+        self,
+        target: str,
+        raw_message: str | bytes,
+        response_ch: str = str(uuid.uuid4()),
+    ) -> bytes | None:
+        message = ArbiterMessage(data=raw_message, id=response_ch)
+        await self.client.rpush(target, message.encode())
+
+    async def push_message(self, target: str, message: bytes):
+        await self.client.rpush(target, message)
 
     async def delete_message(self, message_id: str):
         await self.client.delete(message_id)
@@ -76,10 +81,13 @@ class RedisBroker(MessageBrokerInterface):
         self,
         channel: str
     ) -> AsyncGenerator[bytes, None]:
-        while True:
-            request_json = await self.client.blpop(channel)
-            if request_json:
-                yield request_json[1]
+        try:
+            while True:
+                _, message = await self.client.blpop(channel)
+                if message:
+                    yield message
+        except Exception as e:
+            print('listen: ', e)
 
     async def periodic_listen(
         self,
@@ -96,10 +104,10 @@ class RedisBroker(MessageBrokerInterface):
                 if timeout <= 0:
                     break
                 # 비동기적으로 메시지를 가져옴
-                message = await self.client.blpop(channel, timeout=timeout)
+                _, message = await self.client.lpop(channel, timeout=timeout)
                 if message:
                     # 메시지가 있으면 수집하고 continue로 다시 시도
-                    collected_messages.append(message[1])
+                    collected_messages.append(message)
                     continue
 
             if collected_messages:
