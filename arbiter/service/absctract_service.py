@@ -29,8 +29,9 @@ class ServiceMeta(type):
             for attr_name in dir(base):
                 if (
                     callable(getattr(base, attr_name)) and
-                    getattr(getattr(base, attr_name),
-                            'is_task_function', False)
+                    getattr(
+                        getattr(base, attr_name),
+                        'is_task_function', False)
                 ):
                     tasks.append(getattr(base, attr_name))
 
@@ -98,6 +99,7 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
     service_id: str = None
 
     initial_processes = 1
+    auto_start = True
 
     def __init__(
         self,
@@ -126,25 +128,27 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
         if not self.health_check_time:
             self.health_check_time = asyncio.get_event_loop().time()
         while True and not self.force_stop:
-            start_time = asyncio.get_event_loop().time()
-            if start_time - self.health_check_time > ARBITER_SERVICE_TIMEOUT:
-                break
-            if start_time - self.health_check_time > ARBITER_SERVICE_HEALTH_CHECK_INTERVAL:
-                response = await self.broker.send_message(
-                    self.node_id,
-                    ArbiterSystemRequestMessage(
-                        from_id=self.service_id,
-                        type=ArbiterMessageType.PING,
-                    ).encode()
-                )
-
-                if response:
-                    self.health_check_time = asyncio.get_event_loop().time()
-                else:
-                    print(
-                        f"{self.__class__.__name__} Response Empty, Health Check Failed")
+            try:
+                start_time = asyncio.get_event_loop().time()
+                if start_time - self.health_check_time > ARBITER_SERVICE_TIMEOUT:
                     break
-            await asyncio.sleep(0.5)
+                if start_time - self.health_check_time > ARBITER_SERVICE_HEALTH_CHECK_INTERVAL:
+                    response = await self.broker.send_message(
+                        self.node_id,
+                        ArbiterSystemRequestMessage(
+                            from_id=self.service_id,
+                            type=ArbiterMessageType.PING,
+                        ).encode()
+                    )
+                    if response:
+                        self.health_check_time = asyncio.get_event_loop().time()
+                    else:
+                        print(
+                            f"{self.__class__.__name__} Response Empty, Health Check Failed")
+                        break
+                await asyncio.sleep(0.5)
+            except asyncio.CancelledError:
+                return "Health Check Cancelled"
         if self.force_stop:
             return 'Force Stop from System'
         return 'Health Check Finished'
@@ -188,7 +192,6 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
 
             if response.type != ArbiterMessageType.ARBITER_SERVICE_REGISTER_ACK:
                 raise Exception("message type is not correct")
-
             # TODO udpate service_id
             self.health_check_task = asyncio.create_task(
                 self.health_check_func())
@@ -197,21 +200,15 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
                 dynamic_tasks.append(
                     asyncio.create_task(task(self))
                 )
-            # TODO change log
-            # print(
-            #     f"{self.service_id} {self.__class__.__name__} {self.node_id} service start")
-
-            result = await self.health_check_task
-
-            # print(
-            #     f"{self.service_id} {self.__class__.__name__} service close - {result}")
+            await self.health_check_task
 
         except Exception as e:
             print(e)
         finally:
             await self.shutdown(dynamic_tasks)
 
-    @subscribe_task(channel=ARBITER_SYSTEM_CHANNEL)
+    # 구독을 동적으로 해야한다....
+    @subscribe_task(channel=ARBITER_SYSTEM_CHANNEL) # Master Channel 인데 바꿔야 한다
     async def get_system_message(self, message: bytes):
         system_message = ArbiterSystemMessage.decode(message)
         match system_message.type:
@@ -221,7 +218,7 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
                 # 정상적으로 종료되면, arbiter가 모든 서비스에게 stop 메세지를 보내고 종료한다.
 
     @periodic_task(period=1)
-    async def service_handler(self, messages: list[bytes]):
+    async def listener(self, messages: list[bytes]):
         if messages:
             self.force_stop = True
             for raw_message in messages:

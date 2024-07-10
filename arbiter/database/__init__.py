@@ -1,5 +1,6 @@
 from __future__ import annotations
 import inspect
+import json
 import redis.asyncio as aioredis
 from typing import Callable, Optional, TypeVar, Type
 from datetime import datetime, UTC
@@ -14,9 +15,11 @@ from arbiter.constants.protocols import (
 from arbiter.database.model import (
     DefaultModel,
     User,
+    Node,
     Service,
-    TaskFunction,
-    ServiceMeta)
+    ServiceMeta,
+    TaskFunction
+)
 
 T = TypeVar('T', bound=DefaultModel)
 
@@ -39,7 +42,9 @@ class Database:
 
     async def connect(self):
         async_redis_connection_pool = aioredis.ConnectionPool(
-            host='localhost', port=6379)
+            host='localhost',
+            decode_responses=True,
+            port=6379)
         self.client = aioredis.Redis.from_pool(async_redis_connection_pool)
 
     async def disconnect(self):
@@ -52,7 +57,11 @@ class Database:
         await self.client.flushdb()
 
     ################ generic management ################
-    async def get_data(self, id: int, model_class: Type[T]) -> Optional[T]:
+    async def get_next_id(self, table_name: str) -> int:
+        # Redis INCR 명령을 사용하여 auto_increment 구현
+        return await self.client.incr(f'{table_name}:id_counter')
+    
+    async def get_data(self, model_class: Type[T], id: int) -> Optional[T]:
         table_name = to_snake_case(model_class.__name__)
         data = await self.client.get(f'{table_name}:{id}')
         if data:
@@ -61,7 +70,9 @@ class Database:
 
     async def create_data(self, model_class: Type[T], **kwargs) -> T:
         table_name = to_snake_case(model_class.__name__)
+        new_id = await self.get_next_id(table_name)
         data = model_class(
+            id=new_id,
             created_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
             **kwargs,
@@ -79,9 +90,31 @@ class Database:
             if hasattr(data, k):
                 setattr(data, k, v)
         if hasattr(data, 'updated_at'):
-            data.updated_at = datetime.now(UTC)
+            setattr(data, 'updated_at', datetime.now(UTC))
         await self.client.set(f'{table_name}:{data.id}', data.json())
         return data
+
+    async def search_data(self, model_class: Type[T], **kwargs) -> list[T]:
+        table_name = to_snake_case(model_class.__name__)
+        results = []
+        keys = [
+            key
+            for key in await self.client.keys(f"{table_name}:*")
+            if 'id_counter' not in key
+        ]
+        for key in keys:
+            data = await self.client.get(key)
+            if data:
+                model_data = model_class.parse_raw(data)
+                conditions: list[bool] = []
+                for index_field, value in kwargs.items():
+                    conditions.append(
+                        hasattr(model_data, index_field) and getattr(model_data, index_field) == value
+                    )                        
+                # if all conditions is true then append to results
+                if all(conditions):
+                    results.append(model_data)
+        return results
 
     ################ user management ################
     async def get_user_from_email(self, email: str) -> User | None:
@@ -93,73 +126,3 @@ class Database:
                 if user.email == email:
                     return user
         return None
-    ################ service management ################
-
-    async def fetch_service_meta(self, name: str = '') -> list[ServiceMeta]:
-        keys = await self.client.keys(f'service_meta:{name}*')
-        service_metas = []
-        for key in keys:
-            data = await self.client.get(key)
-            if data:
-                service_metas.append(ServiceMeta.parse_raw(data))
-        return service_metas
-
-    async def find_services(self, states: list[ServiceState]) -> list[Service]:
-        keys = await self.client.keys(f'service:*')
-        services = []
-        for key in keys:
-            data = await self.client.get(key)
-            if data:
-                service = Service.parse_raw(data)
-                if not states:
-                    services.append(service)
-                elif service.state in states:
-                    services.append(service)
-        return services
-
-    async def fetch_task_functions(self, service: ServiceMeta = None) -> list[TaskFunction]:
-        keys = await self.client.keys(f'task_function:*')
-        task_functions = []
-        for key in keys:
-            data = await self.client.get(key)
-            if data:
-                task_function = TaskFunction.parse_raw(data)
-                if service is None or task_function.service_meta.id == service.id:
-                    task_functions.append(task_function)
-        return task_functions
-
-    async def create_service_meta(
-        self,
-        service_name: str,
-        service_module_name: str,
-        tasks: list[HttpTaskProtocol | StreamTaskProtocol],
-        initial_processes: int,
-    ) -> ServiceMeta:
-        service_meta = ServiceMeta(
-            name=service_name,
-            module_name=service_module_name,
-            initial_processes=initial_processes
-        )
-        await self.client.set(f'service_meta:{service_meta.name}', service_meta.json())
-        for task in tasks:
-            queue_name = f'{to_snake_case(
-                service_name)}_{task.__name__}'
-            signature = inspect.signature(task)
-            # Print the parameters of the function
-            # check if the first argument is User instance
-            parameters = [
-                (param.name, extract_annotation(param))
-                for param in signature.parameters.values()
-                if param.name != 'self'
-            ]
-            task_function = TaskFunction(
-                name=task.__name__,
-                queue_name=queue_name,
-                service_meta=service_meta,
-                parameters=parameters,
-                auth=getattr(task, 'auth', False),
-                method=getattr(task, 'method', None),
-                connection=getattr(task, 'connection', None),
-            )
-            await self.client.set(f'task_function:{task_function.id}', task_function.json())
-        return service_meta

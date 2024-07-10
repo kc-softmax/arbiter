@@ -70,7 +70,7 @@ def get_running_command(
     module_name: str,
     service_name: str,
     service_id: str,
-    node_id: str,
+    node: str,
 ):
     # init에서 파라미터를 받으면 안됨..
     # call에서 실행할 경우 run 없어도됨
@@ -78,7 +78,7 @@ def get_running_command(
         f"""
 import asyncio;
 from {module_name} import {service_name};
-asyncio.run({service_name}.launch('{node_id}', '{service_id}'));
+asyncio.run({service_name}.launch('{node}', '{service_id}'));
         """
     )
 

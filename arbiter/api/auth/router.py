@@ -19,17 +19,6 @@ router = APIRouter(
     prefix="/auth",
 )
 
-
-@router.post(
-    "/token/temp",
-    tags=[AuthRouterTag.TOKEN],
-)
-async def refresh_token(
-    user: User = Depends(get_user)
-):
-    return 'hi'
-
-
 @router.post(
     "/token/refresh",
     tags=[AuthRouterTag.TOKEN],
@@ -41,7 +30,7 @@ async def refresh_token(
 ):
     token_data = verify_token_util(data.refresh_token, True)
     # DB에 저장된 토큰과 같은 토큰인 지 확인
-    user = await db.get_data(int(token_data.sub), User)
+    user = await db.get_data(User, int(token_data.sub))
     if user == None or data.access_token != user.access_token or data.refresh_token != user.refresh_token:
         raise AuthExceptions.InvalidToken
 

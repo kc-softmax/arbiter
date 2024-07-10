@@ -3,12 +3,17 @@ from typing import Any
 import functools
 import asyncio
 from arbiter.constants.data import ArbiterMessage
-from arbiter.constants.enums import HttpMethod, StreamMethod
 from arbiter.broker.base import MessageBrokerInterface
 from arbiter.utils import to_snake_case
+from arbiter.constants.enums import (
+    HttpMethod,
+    StreamMethod,
+    StreamCommunicationType,
+)
 from arbiter.constants.protocols import (
     TaskProtocol,
     HttpTaskProtocol,
+    StreamTaskProtocol,
     PeriodicTaskProtocol,
     SubscribeTaskProtocol,
 )
@@ -19,33 +24,40 @@ class Task:
         func.is_task_function = True
         for attribute, value in self.__dict__.items():
             setattr(func, attribute, value)
-
+        return func
 
 class StreamTask(Task):
     def __init__(
         self,
         connection: StreamMethod,
-        auth: bool,
+        communication_type: StreamCommunicationType,
+        auth: bool = False,
     ):
         self.auth = auth
         self.connection = connection
+        self.communication_type = communication_type
+        self.routing = True
 
-    def __call__(self, func: HttpTaskProtocol) -> HttpTaskProtocol:
+    def __call__(self, func: StreamTaskProtocol) -> StreamTaskProtocol:
         super().__call__(func)
-
         @functools.wraps(func)
         async def wrapper(self, *args: Any, **kwargs: Any):
-            channel = f'{to_snake_case(
-                self.__class__.__name__)}_{func.__name__}'
+            channel = f'{to_snake_case(self.__class__.__name__)}_{func.__name__}'
             broker = getattr(self, "broker", None)
             assert isinstance(broker, MessageBrokerInterface)
             async for message in broker.listen(channel):
                 try:
                     decoded_message = ArbiterMessage.decode(message)
                     data = pickle.loads(decoded_message.data)
-                    async for result in func(self, *data.values()):
-                        await broker.push_message(
-                            decoded_message.id, result)
+                    match func.communication_type:
+                        case StreamCommunicationType.SYNC_UNICAST:
+                            result = await func(self, *data.values())
+                            await broker.push_message(
+                                decoded_message.id, result)
+                        case StreamCommunicationType.ASYNC_UNICAST:
+                            async for result in func(self, *data.values()):
+                                await broker.push_message(
+                                    decoded_message.id, result)
                     # results = await func(self, decoded_message.data)
                     # await broker.push_message(
                     #     decoded_message.id, results)
@@ -59,18 +71,17 @@ class HttpTask(Task):
     def __init__(
         self,
         method: HttpMethod,
-        auth: bool,
+        auth: bool = False,
     ):
         self.auth = auth
         self.method = method
+        self.routing = True
 
     def __call__(self, func: HttpTaskProtocol) -> HttpTaskProtocol:
         super().__call__(func)
-
         @functools.wraps(func)
         async def wrapper(self, *args: Any, **kwargs: Any):
-            channel = f'{to_snake_case(
-                self.__class__.__name__)}_{func.__name__}'
+            channel = f'{to_snake_case(self.__class__.__name__)}_{func.__name__}'
             broker = getattr(self, "broker", None)
             assert isinstance(broker, MessageBrokerInterface)
             async for message in broker.listen(channel):
@@ -97,8 +108,7 @@ class PeriodicTask(Task):
 
         @functools.wraps(func)
         async def wrapper(self, *args, **kwargs):
-            channel = f'{to_snake_case(
-                self.__class__.__name__)}_{func.__name__}'
+            channel = f'{to_snake_case(self.__class__.__name__)}_{func.__name__}'
             broker = getattr(self, "broker", None)
             assert isinstance(broker, MessageBrokerInterface)
             async for messages in broker.periodic_listen(channel, period):

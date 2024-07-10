@@ -1,5 +1,9 @@
 from typing import Any, Protocol
-from arbiter.constants.enums import StreamMethod, HttpMethod
+from arbiter.constants.enums import (
+    StreamCommunicationType,
+    StreamMethod, 
+    HttpMethod
+)
 
 
 class TaskProtocol(Protocol):
@@ -11,7 +15,9 @@ class TaskProtocol(Protocol):
 
 class StreamTaskProtocol(TaskProtocol):
     auth: bool
+    routing: bool
     connection: StreamMethod
+    communication_type: StreamCommunicationType
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         ...
@@ -19,6 +25,7 @@ class StreamTaskProtocol(TaskProtocol):
 
 class HttpTaskProtocol(TaskProtocol):
     auth: bool
+    routing: bool
     method: HttpMethod
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:

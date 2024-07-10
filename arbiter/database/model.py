@@ -1,28 +1,29 @@
 from typing import Optional
 from pydantic import BaseModel, Field, PrivateAttr
 from datetime import datetime
-from arbiter.constants.enums import ServiceState, HttpMethod, StreamMethod
+from arbiter.constants.enums import (
+    ServiceState, 
+    HttpMethod, 
+    StreamMethod,
+    StreamCommunicationType
+)
 
 
 class DefaultModel(BaseModel):
-    id: int = Field(
-        default_factory=lambda: DefaultModel._generate_id(), init=False)
+    id: int
+    name: Optional[str] = Field(default=None)
+    
+class Node(DefaultModel):
+    unique_id: str
+    is_master: bool
+    ip_address: str
+    shutdown_code: str
+    created_at: datetime
+    updated_at: datetime
 
-    _id_counter: int = PrivateAttr(default=0)
-
-    @classmethod
-    def _generate_id(cls):
-        cls._increment_id_counter()
-        return cls._id_counter
-
-    @classmethod
-    def _increment_id_counter(cls):
-        if isinstance(cls._id_counter, int):
-            cls._id_counter += 1
-        else:
-            cls._id_counter = 1
-
-
+    def __str__(self):
+        return self.unique_id
+        
 class User(DefaultModel):
     email: str
     password: str
@@ -34,10 +35,7 @@ class User(DefaultModel):
 
 
 class ServiceMeta(DefaultModel):
-    name: str
     module_name: str
-    initial_processes: int
-
 
 class Service(DefaultModel):
     state: ServiceState
@@ -46,12 +44,16 @@ class Service(DefaultModel):
     service_meta: ServiceMeta
     description: Optional[str] = Field(default=None)
 
-
 class TaskFunction(DefaultModel):
-    name: str
     queue_name: str
     parameters: list[tuple[str, str]]
     service_meta: ServiceMeta
+    channel: str = Field(default=None)
+    period: float = Field(default=None)
     auth: bool = Field(default=False)
+    routing: bool = Field(default=False)
     method: HttpMethod | None = Field(default=None)
+    timeout: int = Field(default=None)
     connection: StreamMethod | None = Field(default=None)
+    communication_type: StreamCommunicationType | None = Field(default=None)
+    
