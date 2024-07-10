@@ -1,15 +1,14 @@
 import os
-import pathlib
+import signal
 import typer
 import asyncio
 import sys
-import signal
-from rich import print as rprint
+import multiprocessing
+from rich.console import Console
 from io import TextIOWrapper
-from typing import Optional
 from typing_extensions import Annotated
 from mako.template import Template
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from arbiter.cli.utils import (
     get_running_command,
     read_config,
@@ -18,91 +17,39 @@ from arbiter.cli.commands.build import app as build_app
 from arbiter.cli import PROJECT_NAME, CONFIG_FILE
 from arbiter.constants.enums import (
     ArbiterCliCommand,
-    ArbiterInitTaskResult,
+    WarpInPhase,
+    WarpInTaskResult,
     ArbiterShutdownTaskResult
 )
 
 
 app = typer.Typer()
+console = Console()
 app.add_typer(
     build_app,
     name="build",
     rich_help_panel="build environment",
     help="Configure build environment for deploying service")
 
+def calculate_workers():
+    return (2 * multiprocessing.cpu_count()) + 1
 
-@app.command()
-def init(
-    base_path: Optional[str] = typer.Option(
-        ".", "--path", "-p", help="The base path where to create the project.")
-):
+def create_config(project_path='.'):
     """
     Creates a basic project structure with predefined files and directories.
-    # """
-    _create_project_structure(base_path)
-    typer.echo(f"Project created successfully.")
-
-
-@app.command()
-def start(
-    app_path: Annotated[Optional[str], typer.Argument(
-        ..., help="The path to the FastAPI app, e.g., 'myapp.main:app'")] = f"{PROJECT_NAME}.main:arbiterApp",
-    host: str = typer.Option(None, "--host", "-h",
-                             help="The host of the Arbiter FastAPI app."),
-    port: int = typer.Option(None, "--port", "-p",
-                             help="The port of the Arbiter FastAPI app."),
-    reload: bool = typer.Option(
-        False, "--reload", help="Enable auto-reload for code changes.")
-):
-
-    sys.path.insert(0, os.getcwd())
-    """
-    Read the config file.
-    """
-    config = read_config(CONFIG_FILE)
-    if (config is None):
-        typer.echo("No config file path found. Please run 'init' first.")
-        return
-
-    """
-    Get the "host" and "port" from config file.
-    """
-    host = host or config.get("fastapi", "host", fallback=None)
-    port = port or config.get("fastapi", "port", fallback=None)
-    if (host is None or port is None):
-        typer.echo(
-            "Set the port and host in 'arbiter.settings.ini' or give them as options.")
-        return
-
-
-def _create_project_structure(project_path='.'):
-    """
-    Creates a basic project structure with predefined files and directories.
-
     :param project_path: Base path where the project will be created
     """
     project_structure = {
-        PROJECT_NAME: ["engine.py", "main.py", "model.py", "repository.py"],
-        f"{PROJECT_NAME}/migrations": ["env.py", "README", "script.py.mako"],
-        f"{PROJECT_NAME}/migrations/versions": [],
         ".": [CONFIG_FILE],
     }
-    template_root_path = f'{os.path.abspath(
-        os.path.dirname(__file__))}/templates'
+    template_root_path = f'{os.path.abspath(os.path.dirname(__file__))}/templates'
     for directory, files in project_structure.items():
         dir_path = os.path.join(project_path, directory)
         os.makedirs(dir_path, exist_ok=True)
 
         for file in files:
             file_path = os.path.join(dir_path, file)
-
-            if dir_path.find("migrations") != -1:
-                template_path = f'{template_root_path}/alembic'
-            elif dir_path.find(PROJECT_NAME) != -1:
-                template_path = f'{template_root_path}/arbiter'
-            else:
-                template_path = f'{template_root_path}'
-
+            template_path = f'{template_root_path}'
             if str(file).find('.mako') != -1:
                 template_file = os.path.join(template_path, file)
                 with open(template_file, 'r') as tf:
@@ -119,228 +66,306 @@ def _create_project_structure(project_path='.'):
                         else:
                             of.write(template.render())
 
+@asynccontextmanager
+async def raw_mode(file: TextIOWrapper):
+    import termios
+    old_attrs = termios.tcgetattr(file.fileno())
+    new_attrs = old_attrs[:]
+    new_attrs[3] = new_attrs[3] & ~(termios.ECHO | termios.ICANON)
+    try:
+        termios.tcsetattr(file.fileno(), termios.TCSADRAIN, new_attrs)
+        yield
+    finally:
+        termios.tcsetattr(file.fileno(), termios.TCSADRAIN, old_attrs)
+
+def show_shortcut_info(is_replica: bool = False):
+    console.print("[bold cyan]Commands[/bold cyan]")
+    for shortcut in ArbiterCliCommand:
+        if is_replica and not shortcut == ArbiterCliCommand.Q:
+            continue
+        console.print(shortcut.get_typer_text())               
+
+
+async def connect_stdin_stdout() -> asyncio.StreamReader:
+    """stream stdin
+    This function help stdin as async
+
+    Returns:
+        asyncio.StreamReader: stream
+    """
+    _loop = asyncio.get_event_loop()
+    reader = asyncio.StreamReader()
+    protocol = asyncio.StreamReaderProtocol(reader)
+    await _loop.connect_read_pipe(lambda: protocol, sys.stdin)
+    return reader
+
+async def check_redis_running(redis_url: str):
+    from redis.asyncio import ConnectionPool, Redis, ConnectionError
+    try:
+        redis_pool = ConnectionPool(
+            host=redis_url, 
+            socket_timeout=5)
+        redis = Redis(connection_pool=redis_pool)
+        await redis.ping()
+        await redis.close()
+        await redis_pool.disconnect()
+        return True
+    except ConnectionError:
+        return False
+
+@asynccontextmanager
+async def interact(command_queue: asyncio.Queue[Annotated[str, "command"]]):
+    async def read_input(reader: asyncio.StreamReader):
+        while True:
+            input = await reader.read(100)
+            input = input.decode().upper().strip()
+            await command_queue.put(input)
+    reader = await connect_stdin_stdout()
+    task = asyncio.create_task(read_input(reader))
+    try:
+        yield command_queue
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+async def start_process(command: str, process_name:str, shell: bool = True):
+    async def read_stream(
+        stream: asyncio.StreamReader,
+        stream_name: str,
+        header_color='yellow',
+        content_color='white',
+    ):
+        while True:
+            line = await stream.readline()
+            if not line:
+                break
+            decoded_line = line.decode().strip()
+            if not decoded_line:
+                continue
+            console.print(f"[bold {header_color}][{stream_name}][/bold {header_color}] [{content_color}]{decoded_line}[/{content_color}]")
+
+    process = await asyncio.create_subprocess_shell(
+        command,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env={**os.environ, 'PYTHONUNBUFFERED': '1'},
+        shell=shell
+    )
+    asyncio.create_task(
+            read_stream(process.stdout, process_name))
+    asyncio.create_task(
+            read_stream(process.stderr, process_name, 'red'))
+    return process
+
 
 @app.command()
 def dev(
-    app_path: Annotated[Optional[str], typer.Argument(
-        ..., help="The path to the FastAPI app, e.g., 'myapp.main:app'")] = f"{PROJECT_NAME}.main:arbiterApp",
-    host: str = typer.Option(None, "--host", "-h",
-                             help="The host of the Arbiter FastAPI app."),
-    port: int = typer.Option(8080, "--port", "-p",
-                             help="The port of the Arbiter FastAPI app."),
+    name: str = typer.Option(
+        "Danimoth", "--name", help="Name of the arbiter to run."),
     reload: bool = typer.Option(
         False, "--reload", help="Enable auto-reload for code changes.")
 ):
-    from arbiter import Arbiter, Service
-
-    async def connect_stdin_stdout() -> asyncio.StreamReader:
-        """stream stdin
-        This function help stdin as async
-
-        Returns:
-            asyncio.StreamReader: stream
-        """
-        _loop = asyncio.get_event_loop()
-        reader = asyncio.StreamReader()
-        protocol = asyncio.StreamReaderProtocol(reader)
-        await _loop.connect_read_pipe(lambda: protocol, sys.stdin)
-        return reader
-
-    @asynccontextmanager
-    async def raw_mode(file: TextIOWrapper):
-        import termios
-        old_attrs = termios.tcgetattr(file.fileno())
-        new_attrs = old_attrs[:]
-        new_attrs[3] = new_attrs[3] & ~(termios.ECHO | termios.ICANON)
-        try:
-            termios.tcsetattr(file.fileno(), termios.TCSADRAIN, new_attrs)
-            yield
-        finally:
-            termios.tcsetattr(file.fileno(), termios.TCSADRAIN, old_attrs)
-
-    @asynccontextmanager
-    async def interact(reader: asyncio.StreamReader):
-        async def generate_input(reader: asyncio.StreamReader):
-            while True:
-                encoded_option = await reader.read(100)
-                option = encoded_option.decode().upper().strip()
-                match option:
-                    case ArbiterCliCommand.Q.name:
-                        break
-                    case _:
-                        yield option
-                        continue
-
-        async with raw_mode(sys.stdin):
-            try:
-                input_generator = generate_input(reader)
-                yield input_generator
-            except Exception as e:
-                typer.echo(
-                    typer.style(
-                        f"An error occurred while running interact mode..\n{
-                            e}",
-                        fg=typer.colors.YELLOW, bold=True))
-            finally:
-                pass
-                # typer.echo(
-                #     typer.style(
-                #         "Exiting interact mode...",
-                #         fg=typer.colors.YELLOW, bold=True))
-
-    async def service_stream_manager(aribter: Arbiter):
-        async def read_stream(stream: asyncio.StreamReader, stream_name: str, is_stderr: bool = False):
-            while True:
-                line = await stream.readline()
-                if not line:
-                    break
-                decoded_line = line.decode().strip()
-                if not decoded_line:
-                    continue
-                # decoded_line = decoded_line[:-4]
-                if is_stderr:
-                    rprint(
-                        f"[bold yellow][{stream_name}][/bold yellow] [bold red]{decoded_line}[/bold red]")
-                else:
-                    rprint(
-                        f"[bold yellow][{stream_name}][/bold yellow] {decoded_line}")
+    from arbiter import Arbiter, TypedQueue, Service
+    command_queue: asyncio.Queue[Annotated[str, "command"]] = asyncio.Queue()
+    processes: list[asyncio.subprocess.Process] = []
+    async def arbiter_manager(
+        arbiter: Arbiter,
+        service_queue: TypedQueue[Service],
+        command_queue: asyncio.Queue[Annotated[str, "command"]]
+    ):
+        nonlocal processes
         while True:
-            service = await aribter.pending_service_queue.get()
+            service = await service_queue.get()
             if service is None:
+                await command_queue.put(None)
                 break
             command = get_running_command(
                 service.service_meta.module_name,
                 service.service_meta.name,
                 service.id,
-                aribter.node_id
+                arbiter.node.unique_id,
             )
-            process = await asyncio.create_subprocess_shell(
+            process = await start_process(
                 f'{sys.executable} -c "{command}"',
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                env={**os.environ, 'PYTHONUNBUFFERED': '1'},
-                shell=True
-            )
-            stream_name = f"{service.service_meta.name}: {service.id}"
+                f"{service.service_meta.name}: {service.id}")
+            processes.append(process)
+            # start service success message
+            console.print(
+                f"[bold green]{arbiter.name}[/bold green]'s [bold yellow]{service.service_meta.name}[/bold yellow] has warped in.")
 
-            asyncio.create_task(
-                read_stream(process.stdout, stream_name))
-            asyncio.create_task(
-                read_stream(process.stderr, stream_name, True))
+       
+    async def arbiter_run(
+        name: str,
+        config: dict[str, str],
+        command_queue: asyncio.Queue[Annotated[str, "command"]],
+        reload: bool
+    ):          
+        """
+        Get the configure parameters from config file.
+        """
+        host = config.get("api", "host", fallback=None)
+        port = config.get("api", "port", fallback=None)
+        redis_url=config.get("redis", "url", fallback='localhost')
+        worker_count = config.get("api", "worker_count", fallback=calculate_workers())
+        
+        console.print(f"[bold green]Warp In [bold yellow]Arbiter[/bold yellow] [bold green]{name}...[/bold green]")
 
-    async def waiting_until_finish(reload: bool):
-        def show_shortcut_info():
-            typer.echo(typer.style("Commands:",
-                       fg=typer.colors.CYAN, bold=True))
-            for shortcut in ArbiterCliCommand:
-                typer.echo(typer.style(
-                    shortcut.get_typer_text(),
-                    fg=typer.colors.WHITE, bold=True))
+        if not await check_redis_running(redis_url):
+            console.print("[bold red]Failed to start, connect redis issue.[/bold red]")
+            console.print("[bold yellow]Check redis connection configuration in 'arbiter.settings.ini'[/bold yellow]")            
+            console.print("[bold yellow]or Check if the Redis server is running.  [/bold yellow]")
+            return
+        
+        if (host is None or port is None):
+            console.print(
+                "[bold red]Set the port and host in 'arbiter.settings.ini' or give them as options.[/bold red]")
+            return
+        
+        try:
+            manager_task = None
+            failed_to_warp_in = False
+            async with Arbiter(name=name).start(config) as arbiter:
+                async for result, message in arbiter.warp_in(WarpInPhase.INITIATION):
+                    match result:
+                        # Danimoth is the warp-in master.
+                        case WarpInTaskResult.IS_MASTER:
+                            console.print(f"[bold green]{arbiter.name}[/bold green] is the [bold green]Master[/bold green].")
+                        case WarpInTaskResult.IS_REPLICA:
+                            console.print(f"[bold green]{arbiter.name}[/bold green] is the [bold blue]Replica[/bold blue].")
+                        case WarpInTaskResult.FAIL:
+                            console.print(f"[bold red]Failed to warp in[/bold red] {message}")
+                            failed_to_warp_in = True
+                if failed_to_warp_in:
+                    return
+                gunicorn_process = None
+                if not arbiter.is_replica:
+                    # env에 넣어야 한다.
+                    # start gunicorn process, and check it is running
+                    gunicorn_command = ' '.join([
+                        'gunicorn',
+                        '-w', f"{worker_count}",  # Number of workers
+                        '--bind', f"{host}:{port}",  # Bind to port 8080
+                        '-k', 'arbiter.api.ArbiterUvicornWorker',  # Uvicorn worker class
+                        '--log-level', 'error',  # Log level
+                        'arbiter.api:get_app'  # Application module and variable
+                    ])
+                    gunicorn_process = await start_process(gunicorn_command, 'gunicorn')
+                    processes.append(gunicorn_process)
+                
+                    registered_gunicorn_worker_count = 0
 
-        reader = await connect_stdin_stdout()
-
-        async with Arbiter().start() as arbiter:
-            # occur error when arbiter is started
-            if not isinstance(arbiter, Arbiter):
-                typer.echo(
-                    typer.style(
-                        f"{arbiter}.....",
-                        fg=typer.colors.BRIGHT_RED, bold=True))
-                return
-            # 이 부분에서 service와 같이 기다린다.
-            # 서비스가 중간에 추가되고 하니까 그것도 생각해야 한다.
-            async with interact(reader) as commands:
-                stream_task = asyncio.create_task(
-                    service_stream_manager(arbiter))
-                async for result, message in arbiter.initial_task():
+                    # must be set timeout
+                    async for result, message in arbiter.warp_in(WarpInPhase.CHANNELING):
+                        match result:
+                            case WarpInTaskResult.API_REGISTER_SUCCESS:
+                                registered_gunicorn_worker_count += 1
+                            case WarpInTaskResult.FAIL:
+                                console.print(f"[bold red]Failed to warp in[/bold red] {message}")
+                                return
+                            # has warped in.
+                        if int(worker_count) == registered_gunicorn_worker_count:
+                            console.print(f"[bold green]{arbiter.name}[/bold green]'s [bold yellow]WebServer[/bold yellow] has warped in with [bold green]{worker_count}[/bold green] workwers.")
+                            break                            
+                            
+                manager_task = asyncio.create_task(
+                    arbiter_manager(
+                        arbiter, 
+                        arbiter.pending_service_queue,
+                        command_queue
+                    ))
+                
+                # process manager? task 를 실행한다.
+                async for result, message in arbiter.warp_in(WarpInPhase.MATERIALIZATION):
                     # print progress message
                     match result:
-                        case ArbiterInitTaskResult.SUCCESS:
-                            typer.echo(
-                                typer.style(
-                                    f"All services are started successfully.",
-                                    fg=typer.colors.BRIGHT_GREEN, bold=True))
-                        case ArbiterInitTaskResult.FAIL:
-                            typer.echo(
-                                typer.style(
-                                    f"failed to start services {message}",
-                                    fg=typer.colors.RED, bold=True))
-                    show_shortcut_info()
-                    # 여기서 process queue를 구독하는 taskf를 만든다..?
-                    async for command in commands:
-                        if command.upper() not in ArbiterCliCommand.__members__:
-                            typer.echo(
-                                typer.style(
-                                    f"Invalid command {command}",
-                                    fg=typer.colors.RED, bold=True))
-                    # await stream_task
-            typer.echo(
-                typer.style(
-                    f"Arbiter is shutting down",
-                    fg=typer.colors.YELLOW, bold=True))
-            async for result, message in arbiter.shutdown_task():
-                match result:
-                    case ArbiterShutdownTaskResult.SUCCESS:
-                        typer.echo(
-                            typer.style(
-                                f"All services are stopped successfully.",
-                                fg=typer.colors.BRIGHT_GREEN, bold=True))
-                    case ArbiterShutdownTaskResult.WARNING:
-                        typer.echo(
-                            typer.style(
-                                f"In shutdown catch warning {message}",
-                                fg=typer.colors.YELLOW, bold=True))
+                        case WarpInTaskResult.SUCCESS:
+                            console.print(
+                                f"[bold green]{arbiter.name}[/bold green]'s warp-in [bold green]Completed[bold green].")
+                            break
+                        case WarpInTaskResult.FAIL:
+                            console.print(f"[bold red]Failed to warp in[/bold red] {message}")
+                            break
+                
+                # 함수등록의 경우 어떻게 해야할까? 내일 고민해보자
+                
+                ## MARK 레플리카의 경우 마스터의 명령이나 로그를 출력해준다.
+                ## 공통적으로 시스템 로그를 출력해주는 queue가 필요할까?
+                async with raw_mode(sys.stdin):
+                    async with interact(command_queue=command_queue):
+                        # replica의 경우 마스터의 명령을 받아야한다.
+                        # 종료메세지만 알려주도록 하자,
+                        show_shortcut_info(arbiter.is_replica)
+                        while True:
+                            command = await command_queue.get()
+                            if command is None:
+                                break
+                            match command:
+                                case ArbiterCliCommand.Q.name:
+                                    break
+                                case _:
+                                    console.print(
+                                        f"[bold red]Invalid command {command}[/bold red]")
+                
+                console.print(f"[bold red]{arbiter.name}[/bold red] is warp out...")
+               
+                if gunicorn_process:
+                    try:
+                        gunicorn_process.terminate()
+                        await asyncio.wait_for(gunicorn_process.wait(), timeout=5)
+                    except Exception as e:
+                        print(e)
+                
+                async for result, message in arbiter.shutdown_task():
+                    match result:
+                        case ArbiterShutdownTaskResult.SUCCESS:
+                            # Danimoth's warp-out completed.
+                            console.print(f"[bold green]{arbiter.name}[/bold green]'s warp-out [bold green]Completed[bold green].")
+                        case ArbiterShutdownTaskResult.WARNING:
+                            console.log(f"[bold yellow]{arbiter.name}[/bold yellow]'s warp-out catch warning {message}")
+        except Exception as e:
+            console.print("[bold red]An error occurred while running the arbiter[/bold red]")
+        manager_task and manager_task.cancel()
 
-        typer.echo(
-            typer.style(
-                "shutdown is completed",
-                fg=typer.colors.YELLOW, bold=True))
+    async def async_shutdown_signal_handler():
+        await command_queue.put(None)
 
-    """
-        1. initialize arbiter
-        2. start arbiter
-            2.1 register and start services
-            2.2 start api service
-            2.3 check all rpc function is fine
-            2.4 wait for the all service is activated
-        3. start interact task
+    def shutdown_signal_handler():
+        asyncio.ensure_future(async_shutdown_signal_handler())
         
-        arbiter shutdown event is triggered by interact task or arbiter task
-    """
-
-    typer.echo(
-        typer.style(
-            'Arbiter is starting...',
-            fg=typer.colors.BRIGHT_GREEN, bold=True))
-
     sys.path.insert(0, os.getcwd())
     """
     Read the config file.
     """
 
-    # config = read_config(CONFIG_FILE)
-    # if (config is None):
-    #     typer.echo("No config file path found. Please run 'init' first.")
-    #     return
+    config = read_config(CONFIG_FILE)
+    if config is None:
+        create_config()
+        config = read_config(CONFIG_FILE)
 
-    # """
-    # Get the "host" and "port" from config file.
-    # """
-    # host = host or config.get("fastapi", "host", fallback=None)
-    # port = port or config.get("fastapi", "port", fallback=None)
-    # if (host is None or port is None):
-    #     typer.echo(
-    #         "Set the port and host in 'arbiter.settings.ini' or give them as options.")
-    #     return
     try:
-        asyncio.run(waiting_until_finish(reload))
+        # Register signal handlers for graceful shutdown
+        signal.signal(signal.SIGINT, lambda s, f: shutdown_signal_handler())
+        signal.signal(signal.SIGTERM, lambda s, f: shutdown_signal_handler())
+    
+        asyncio.run(
+            arbiter_run(name, config, command_queue, reload))
     except SystemExit as e:
-        print(f"SystemExit caught in main: {e.code}")
+        console.print(f"SystemExit caught in main: {e.code}")
+    except KeyboardInterrupt:
+        console.print("KeyboardInterrupt caught in main")
     except Exception as e:
-        print(f"Unhandled exception in main: {e}")
+        console.print(f"Unhandled exception in main: {e}")
     finally:
-        # asyncio.run(shutdown_event.wait())
-        import time
+        for process in processes:
+            try:
+                process.terminate()
+            except ProcessLookupError as e:
+                pass
+            except asyncio.TimeoutError:
+                process.kill()
+            except Exception as e:
+                console.print(f"Error during termination: {e}")
 
 
 if __name__ == "__main__":

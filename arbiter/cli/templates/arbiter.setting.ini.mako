@@ -3,7 +3,6 @@ name = arbiter
 port = 5432
 hostname = localhost
 credentials = arbiter:arbiter
-<%text>sqlalchemy.url = postgresql+asyncpg://${credentials}@${hostname}:${port}/${name}</%text>
 
 [cache]
 redis.url = localhost
@@ -13,27 +12,13 @@ app_env = local
 access_token_key = access
 refresh_token_key = refresh
 
-[fastapi]
+[gunicorn]
 host = 0.0.0.0
-port = 9991
+port = 8080
 allow_credentials = true
 allow_origins = *
 allow_methods = *
 allow_headers = *
-
-[gametester]
-developer_token = eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZDEiOiI2MzlhYmY4ODhjM2QyYzJjNjI1YmJiODYiLCJpZDIiOiI2NTM3MWI4MTM1NTdjZDQzODgzNWI0ZmIifQ.TXDzTOvbVHvOO-I2AoUEzL07Me5VrRKPfrc3dlLL85s
-playtime_minute = 30
-
-# A generic, single database configuration.
-
-[alembic]
-# path to migration scripts
-script_location = ${project_name}/migrations
-
-# template used to generate migration file names; The default value is %%(rev)s_%%(slug)s
-# Uncomment the line below if you want the files to be prepended with date and time
-# file_template = %%(year)d_%%(month).2d_%%(day).2d_%%(hour).2d%%(minute).2d-%%(rev)s_%%(slug)s
 
 # sys.path path, will be prepended to sys.path if present.
 # defaults to the current working directory.
@@ -105,9 +90,6 @@ version_path_separator = os  # Use os.pathsep. Default configuration used for ne
 # ruff.executable = %(here)s/.venv/bin/ruff
 # ruff.options = --fix REVISION_SCRIPT_FILENAME
 
-# Logging configuration
-[loggers]
-keys = root,sqlalchemy,alembic
 
 [handlers]
 keys = console

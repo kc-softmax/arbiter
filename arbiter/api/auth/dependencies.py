@@ -19,7 +19,7 @@ async def get_user(
     (저장된 토큰과 헤더에 담겨 온 토큰이 다르다는 것은 이미 deprecated된 토큰으로 요청을 보냈다는 뜻)
     '''
     token_data = verify_token(token)
-    user = await db.get_data(int(token_data.sub), User)
+    user = await db.get_data(User, int(token_data.sub))
     if user is None:
         raise NotFoundUser
     # 저장된 액세스토큰과 같은 토큰인지 확인

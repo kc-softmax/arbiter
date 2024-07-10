@@ -26,18 +26,20 @@ class RedisBroker(MessageBrokerInterface):
     async def disconnect(self):
         for pubsub in self.pubsub_map.values():
             await pubsub.close()
-        await self.client.close()
+        if self.client:
+            await self.client.close()
 
     async def send_message(
         self,
         target: str,
         raw_message: str | bytes,
-        response_ch: str = str(uuid.uuid4()),
+        response_ch: str = uuid.uuid4().hex,
         timeout: int = ARIBTER_DEFAULT_RPC_TIMEOUT
     ) -> bytes | None:
         assert timeout > 0, "Timeout must be greater than 0"
         message = ArbiterMessage(data=raw_message, id=response_ch)
         await self.client.rpush(target, message.encode())
+        # MARK 고민이 필요하다.
         if response_ch is None:
             return None
         response = await self.client.blpop(message.id, timeout=timeout)
@@ -50,7 +52,7 @@ class RedisBroker(MessageBrokerInterface):
         self,
         target: str,
         raw_message: str | bytes,
-        response_ch: str = str(uuid.uuid4()),
+        response_ch: str = uuid.uuid4().hex,
     ) -> bytes | None:
         message = ArbiterMessage(data=raw_message, id=response_ch)
         await self.client.rpush(target, message.encode())
