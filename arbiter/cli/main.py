@@ -1,9 +1,11 @@
+from asyncio.subprocess import Process
 import os
+import platform
+import psutil
 import signal
 import typer
 import asyncio
 import sys
-import multiprocessing
 from rich.console import Console
 from io import TextIOWrapper
 from typing_extensions import Annotated
@@ -31,8 +33,16 @@ app.add_typer(
     rich_help_panel="build environment",
     help="Configure build environment for deploying service")
 
-def calculate_workers():
-    return (2 * multiprocessing.cpu_count()) + 1
+
+def get_os():
+    system = platform.system()
+    if system == "Darwin":
+        return "OS X"
+    elif system == "Linux":
+        return "Linux"
+    else:
+        return "Other"
+
 
 def create_config(project_path='.'):
     """
@@ -129,6 +139,27 @@ async def interact(command_queue: asyncio.Queue[Annotated[str, "command"]]):
         with suppress(asyncio.CancelledError):
             await task
 
+
+async def terminate_process(process: Process):
+    try:
+        kill_signal = signal.SIGTERM
+        match get_os():
+            case "Linux":
+                kill_signal = signal.SIGKILL
+        parent = psutil.Process(process.pid)
+        children = parent.children(recursive=True)
+        for child in children:
+            child.send_signal(kill_signal)
+        parent.send_signal(kill_signal)
+        try:
+            await asyncio.wait_for(process.wait(), timeout=3)
+        except asyncio.TimeoutError:
+            for child in children:
+                child.kill()
+            parent.kill()
+    except psutil.NoSuchProcess:
+        pass
+
 async def start_process(command: str, process_name:str, shell: bool = True):
     async def read_stream(
         stream: asyncio.StreamReader,
@@ -207,7 +238,8 @@ def dev(
         host = config.get("api", "host", fallback=None)
         port = config.get("api", "port", fallback=None)
         redis_url=config.get("redis", "url", fallback='localhost')
-        worker_count = config.get("api", "worker_count", fallback=calculate_workers())
+        worker_count = config.get("api", "worker_count", fallback=4)
+        
         
         console.print(f"[bold green]Warp In [bold yellow]Arbiter[/bold yellow] [bold green]{name}...[/bold green]")
 
@@ -252,7 +284,6 @@ def dev(
                     ])
                     gunicorn_process = await start_process(gunicorn_command, 'gunicorn')
                     processes.append(gunicorn_process)
-                
                     registered_gunicorn_worker_count = 0
 
                     # must be set timeout
@@ -308,13 +339,12 @@ def dev(
                                         f"[bold red]Invalid command {command}[/bold red]")
                 
                 console.print(f"[bold red]{arbiter.name}[/bold red] is warp out...")
-               
+
                 if gunicorn_process:
                     try:
-                        gunicorn_process.terminate()
-                        await asyncio.wait_for(gunicorn_process.wait(), timeout=5)
+                        await terminate_process(gunicorn_process)               
                     except Exception as e:
-                        print(e)
+                        console.print(f"[bold red]{arbiter.name}[/bold red] {e}")
                 
                 async for result, message in arbiter.shutdown_task():
                     match result:
@@ -332,7 +362,17 @@ def dev(
 
     def shutdown_signal_handler():
         asyncio.ensure_future(async_shutdown_signal_handler())
+    
+    async def terminate_all_processes():
+        for process in processes:
+            try:
+                await terminate_process(process)               
+            except ProcessLookupError as e:
+                pass
+            except Exception as e:
+                console.print(f"Error during termination: {e}")
         
+    
     sys.path.insert(0, os.getcwd())
     """
     Read the config file.
@@ -357,16 +397,7 @@ def dev(
     except Exception as e:
         console.print(f"Unhandled exception in main: {e}")
     finally:
-        for process in processes:
-            try:
-                process.terminate()
-            except ProcessLookupError as e:
-                pass
-            except asyncio.TimeoutError:
-                process.kill()
-            except Exception as e:
-                console.print(f"Error during termination: {e}")
-
+        asyncio.run(terminate_all_processes())
 
 if __name__ == "__main__":
     app()

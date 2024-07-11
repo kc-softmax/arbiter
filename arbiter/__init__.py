@@ -197,7 +197,6 @@ class Arbiter:
                 [service.service_meta.name for service in pending_services])
             await self._warp_in_queue.put(
                 (WarpInTaskResult.FAIL, pending_service_names))
-            print('Failed to start services: ', pending_service_names)
         else:
             await self._warp_in_queue.put(
                 (WarpInTaskResult.SUCCESS, None))
@@ -278,6 +277,8 @@ class Arbiter:
                 
                 if tasks := service_class.tasks:
                     for task in tasks:
+                        if getattr(task, 'routing', False):
+                            continue
                         signature = inspect.signature(task)
                         # Print the parameters of the function
                         # check if the first argument is User instance
@@ -293,12 +294,9 @@ class Arbiter:
                             parameters=parameters,
                             service_meta=service_meta,
                             auth=getattr(task, 'auth', False),
-                            routing=getattr(task, 'routing', False),
                             method=getattr(task, 'method', None),
                             connection=getattr(task, 'connection', None),
                             communication_type=getattr(task, 'communication_type', None),
-                            period=getattr(task, 'period', None),
-                            channel=getattr(task, 'channel', None),                            
                         )
                         await self.db.create_data(TaskFunction, **data)
                         

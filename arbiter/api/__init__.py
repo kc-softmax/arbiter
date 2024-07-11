@@ -13,7 +13,6 @@ from fastapi.responses import JSONResponse
 from fastapi.websockets import WebSocketState
 from arbiter.api.auth.router import router as auth_router
 from arbiter.api.exceptions import BadRequest
-from arbiter.api.stream import ArbiterStream
 from arbiter.api.auth.dependencies import get_user
 from arbiter.broker import RedisBroker, MessageBrokerInterface
 from arbiter.constants.data import ArbiterSystemRequestMessage
@@ -84,8 +83,6 @@ class ArbiterApiApp(FastAPI):
         
         self.broker: RedisBroker = RedisBroker()
         
-        self.stream_handlers: dict[str, Callable[[
-            ArbiterStream], Awaitable[None]]] = {}
 
     def get_app(self) -> ArbiterApiApp:
         return self
