@@ -48,12 +48,8 @@ class TaskFunction(DefaultModel):
     queue_name: str
     parameters: list[tuple[str, str]]
     service_meta: ServiceMeta
-    channel: str = Field(default=None)
-    period: float = Field(default=None)
     auth: bool = Field(default=False)
-    routing: bool = Field(default=False)
     method: HttpMethod | None = Field(default=None)
-    timeout: int = Field(default=None)
     connection: StreamMethod | None = Field(default=None)
     communication_type: StreamCommunicationType | None = Field(default=None)
     

@@ -12,7 +12,7 @@ app_env = local
 access_token_key = access
 refresh_token_key = refresh
 
-[gunicorn]
+[api]
 host = 0.0.0.0
 port = 8080
 allow_credentials = true
