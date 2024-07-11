@@ -218,7 +218,7 @@ class Arbiter:
     async def start(self, config: dict[str, str]={}) -> AsyncGenerator[Arbiter, Exception]:
         try:
             await self.db.connect()
-            # await self.db.initialize()
+            await self.db.initialize()
             node_data = dict(
                 name=self.name,
                 unique_id=uuid.uuid4().hex,
