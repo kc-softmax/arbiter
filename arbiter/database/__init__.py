@@ -6,6 +6,8 @@ from arbiter.utils import to_snake_case
 from arbiter.database.model import (
     DefaultModel,
     User,
+    TaskFunction,
+    Node
 )
 
 T = TypeVar('T', bound=DefaultModel)
