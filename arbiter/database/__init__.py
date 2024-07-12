@@ -1,24 +1,11 @@
 from __future__ import annotations
-import inspect
-import json
 import redis.asyncio as aioredis
-from typing import Callable, Optional, TypeVar, Type
-from datetime import datetime, UTC
-from arbiter.utils import to_snake_case, extract_annotation
-from arbiter.constants.enums import ServiceState, HttpMethod, StreamMethod
-from arbiter.constants.protocols import (
-    HttpTaskProtocol,
-    StreamTaskProtocol,
-    SubscribeTaskProtocol,
-    PeriodicTaskProtocol,
-)
+from typing import Optional, TypeVar, Type
+from datetime import datetime, timezone
+from arbiter.utils import to_snake_case
 from arbiter.database.model import (
     DefaultModel,
     User,
-    Node,
-    Service,
-    ServiceMeta,
-    TaskFunction
 )
 
 T = TypeVar('T', bound=DefaultModel)
@@ -73,8 +60,8 @@ class Database:
         new_id = await self.get_next_id(table_name)
         data = model_class(
             id=new_id,
-            created_at=datetime.now(UTC),
-            updated_at=datetime.now(UTC),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             **kwargs,
         )
         await self.client.set(f'{table_name}:{data.id}', data.json())
@@ -90,7 +77,7 @@ class Database:
             if hasattr(data, k):
                 setattr(data, k, v)
         if hasattr(data, 'updated_at'):
-            setattr(data, 'updated_at', datetime.now(UTC))
+            setattr(data, 'updated_at', datetime.now(timezone.utc))
         await self.client.set(f'{table_name}:{data.id}', data.json())
         return data
 
