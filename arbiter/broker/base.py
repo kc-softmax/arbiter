@@ -27,19 +27,21 @@ class MessageBrokerInterface(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def send_message(
+    async def send_arbiter_message(
         self,
         target: str,
         raw_message: str | bytes,
+        response: bool,
         timeout: int,
     ):
         raise NotImplementedError
 
     @abstractmethod
-    async def async_send_message(
+    async def async_send_arbiter_message(
         self,
         target: str,
         raw_message: str | bytes,
+        response_channel: str,
     ):
         raise NotImplementedError
 

@@ -133,7 +133,7 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
                 if start_time - self.health_check_time > ARBITER_SERVICE_TIMEOUT:
                     break
                 if start_time - self.health_check_time > ARBITER_SERVICE_HEALTH_CHECK_INTERVAL:
-                    response = await self.broker.send_message(
+                    response = await self.broker.send_arbiter_message(
                         self.node_id,
                         ArbiterSystemRequestMessage(
                             from_id=self.service_id,
@@ -167,12 +167,13 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
             dynamic_task and dynamic_task.cancel()
 
         self.health_check_task and self.health_check_task.cancel()
-        await self.broker.send_message(
+        await self.broker.send_arbiter_message(
             self.node_id,
             ArbiterSystemRequestMessage(
                 from_id=self.service_id,
                 type=ArbiterMessageType.ARBITER_SERVICE_UNREGISTER,
-            ).encode(), None,
+            ).encode(), 
+            False,
         )
         await self.broker.disconnect()
         await self.on_shutdown()
@@ -186,7 +187,7 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
         await self.broker.connect()
         dynamic_tasks: list[asyncio.Task] = []
         try:
-            response = await self.broker.send_message(
+            response = await self.broker.send_arbiter_message(
                 self.node_id,
                 ArbiterSystemRequestMessage(
                     from_id=self.service_id,

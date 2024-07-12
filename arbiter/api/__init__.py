@@ -92,13 +92,13 @@ class ArbiterApiApp(FastAPI):
         master_nodes = await self.db.search_data(Node, is_master=True)
         assert len(master_nodes) == 1, "There must be only one master node"
         
-        await self.broker.send_message(
+        await self.broker.send_arbiter_message(
             master_nodes[0].unique_id,
             ArbiterSystemRequestMessage(
                 from_id=self.app_id,
                 type=ArbiterMessageType.API_REGISTER,
-                ).encode(),
-            None)
+            ).encode(),
+            False)
 
     async def on_shutdown(self):
         self.router_task and self.router_task.cancel()
@@ -176,7 +176,7 @@ class ArbiterApiApp(FastAPI):
         ):
             params = data.dict()
             serialized_params = pickle.dumps(params)
-            response = await app.broker.send_message(
+            response = await app.broker.send_arbiter_message(
                 task_function.queue_name,
                 serialized_params
             )
@@ -193,7 +193,7 @@ class ArbiterApiApp(FastAPI):
             params: dict = data.dict()
             params.update({"user": user.id})
             serialized_params = pickle.dumps(params)
-            response = await app.broker.send_message(
+            response = await app.broker.send_arbiter_message(
                 task_function.queue_name,
                 serialized_params
             )
@@ -261,7 +261,7 @@ class ArbiterApiApp(FastAPI):
                     }
                     if user_id:
                         data["user_id"] = user_id
-                    await self.broker.async_send_message(
+                    await self.broker.async_send_arbiter_message(
                         task_function.queue_name,
                         pickle.dumps(data),
                         websocket_response_ch,
@@ -287,7 +287,7 @@ class ArbiterApiApp(FastAPI):
                     }
                     if user_id:
                         data["user_id"] = user_id
-                    response = await self.broker.send_message(
+                    response = await self.broker.send_arbiter_message(
                         task_function.queue_name,
                         pickle.dumps(data),
                     )
@@ -320,7 +320,7 @@ class ArbiterApiApp(FastAPI):
                     }
                     if user_id:
                         data["user_id"] = user_id
-                    await self.broker.async_send_message(
+                    await self.broker.async_send_arbiter_message(
                         task_function.queue_name,
                         pickle.dumps(data),
                         websocket_response_ch,

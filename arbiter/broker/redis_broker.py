@@ -29,32 +29,33 @@ class RedisBroker(MessageBrokerInterface):
         if self.client:
             await self.client.close()
 
-    async def send_message(
+    async def send_arbiter_message(
         self,
         target: str,
         raw_message: str | bytes,
-        response_ch: str = uuid.uuid4().hex,
+        response: bool = True,
         timeout: int = ARIBTER_DEFAULT_RPC_TIMEOUT
     ) -> bytes | None:
         assert timeout > 0, "Timeout must be greater than 0"
-        message = ArbiterMessage(data=raw_message, id=response_ch)
+        id = uuid.uuid4().hex if response else None
+        message = ArbiterMessage(data=raw_message, id=id)
         await self.client.rpush(target, message.encode())
-        # MARK 고민이 필요하다.
-        if response_ch is None:
+        if not response:
             return None
-        response = await self.client.blpop(message.id, timeout=timeout)
-        if response:
-            return response[1]
+        results = await self.client.blpop(message.id, timeout=timeout)
+        if results:
+            return results[1]
         await self.client.delete(message.id)
         return None
 
-    async def async_send_message(
+    async def async_send_arbiter_message(
         self,
         target: str,
         raw_message: str | bytes,
-        response_ch: str = uuid.uuid4().hex,
+        response_channel: str = None,
     ) -> bytes | None:
-        message = ArbiterMessage(data=raw_message, id=response_ch)
+        id = response_channel if response_channel else uuid.uuid4().hex
+        message = ArbiterMessage(data=raw_message, id=id)
         await self.client.rpush(target, message.encode())
 
     async def push_message(self, target: str, message: bytes):

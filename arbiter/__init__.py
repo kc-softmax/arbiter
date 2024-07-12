@@ -129,13 +129,13 @@ class Arbiter:
         )
         if replica_nodes := await self.db.search_data(Node, name=self.name, is_master=False):
             for replica_node in replica_nodes:
-                await self.broker.send_message(
+                await self.broker.send_arbiter_message(
                     replica_node.unique_id,
                     ArbiterSystemRequestMessage(
                         from_id=replica_node.shutdown_code,
                         type=ArbiterMessageType.SHUTDOWN
                     ).encode(),
-                    None)
+                    False)
         start_time = time.time()
         while True:
             if time.time() - start_time > ARBITER_SERVICE_SHUTDOWN_TIMEOUT:
@@ -170,13 +170,13 @@ class Arbiter:
             if message == None:
                 break
             yield message
-        await self.broker.send_message(
+        await self.broker.send_arbiter_message(
             self.node.unique_id,
             ArbiterSystemRequestMessage(
                 from_id=self.node.shutdown_code,
                 type=ArbiterMessageType.SHUTDOWN
             ).encode(),
-            None)
+            False)
         self.shutdown_flag = True
         await self.system_task
         await self.health_check_task
@@ -333,11 +333,12 @@ class Arbiter:
             service = await self.db.get_data(Service, service_id)
             if service and service.state == ServiceState.ACTIVE:
                 target = f"{to_snake_case(service.service_meta.name)}_listener"
-                await self.broker.send_message(
+                await self.broker.send_arbiter_message(
                     target,
                     ArbiterSystemMessage(
                         type=ArbiterMessageType.ARBITER_SERVICE_UNREGISTER,
-                    ).encode(), None
+                    ).encode(), 
+                    False
                 )
 
     async def health_check_func(self):
