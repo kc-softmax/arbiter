@@ -99,19 +99,21 @@ class RedisBroker(MessageBrokerInterface):
         while True:
             collected_messages = []
             start_time = time.monotonic()
-
             while (time.monotonic() - start_time) < period:
                 # 현재 시간과 시작 시간의 차이를 계산하여 timeout을 조정
                 timeout = period - (time.monotonic() - start_time)
                 if timeout <= 0:
                     break
                 # 비동기적으로 메시지를 가져옴
-                _, message = await self.client.lpop(queue, timeout=timeout)
+                response = await self.client.blpop(queue, timeout=1)
+                if response:
+                    _, message = response
+                else:
+                    message = None
                 if message:
                     # 메시지가 있으면 수집하고 continue로 다시 시도
                     collected_messages.append(message)
                     continue
-
             if collected_messages:
                 yield collected_messages
             else:

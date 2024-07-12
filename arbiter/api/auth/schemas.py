@@ -10,6 +10,8 @@ from pydantic import BaseModel, Field
 #     GOOGLE = "google"
 #     TESTER = "tester"
 
+class OAuthRequest(BaseModel):
+    code: str
 
 class TokenSchema(BaseModel):
     access_token: str

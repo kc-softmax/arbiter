@@ -111,7 +111,7 @@ class PeriodicTask(Task):
         
         @functools.wraps(func)
         async def wrapper(self, *args, **kwargs):
-            if not queue:
+            if queue:
                 periodic_queue = queue
             else:
                 periodic_queue = f'{to_snake_case(self.__class__.__name__)}_{func.__name__}'
