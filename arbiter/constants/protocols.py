@@ -34,6 +34,7 @@ class HttpTaskProtocol(TaskProtocol):
 
 class PeriodicTaskProtocol(TaskProtocol):
     period: float
+    queue: str
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         ...

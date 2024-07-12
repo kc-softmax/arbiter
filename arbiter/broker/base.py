@@ -58,7 +58,7 @@ class MessageBrokerInterface(ABC):
     @abstractmethod
     async def periodic_listen(
         self,
-        channel: str,
+        queue: str,
         period: float = 1
     ) -> AsyncGenerator[list[bytes], None]:
         raise NotImplementedError

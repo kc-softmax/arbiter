@@ -99,19 +99,25 @@ class PeriodicTask(Task):
     def __init__(
         self,
         period: float,
+        queue: str = '',
     ):
         self.period = period
+        self.queue = queue
 
     def __call__(self, func: PeriodicTaskProtocol) -> PeriodicTaskProtocol:
         super().__call__(func)
         period = self.period
-
+        queue = self.queue
+        
         @functools.wraps(func)
         async def wrapper(self, *args, **kwargs):
-            channel = f'{to_snake_case(self.__class__.__name__)}_{func.__name__}'
+            if not queue:
+                periodic_queue = queue
+            else:
+                periodic_queue = f'{to_snake_case(self.__class__.__name__)}_{func.__name__}'
             broker = getattr(self, "broker", None)
             assert isinstance(broker, MessageBrokerInterface)
-            async for messages in broker.periodic_listen(channel, period):
+            async for messages in broker.periodic_listen(periodic_queue, period):
                 try:
                     await func(self, messages)
                 except Exception as e:
