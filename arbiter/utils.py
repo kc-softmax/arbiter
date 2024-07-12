@@ -6,9 +6,10 @@ from typing import Union, get_origin, get_args
 
 
 def extract_annotation(param: Parameter) -> str:
+    annotation = param.annotation
     # Optional[int]는 Union[int, None]과 동일합니다.
-    if get_origin(param.annotation) is Union:
-        args = get_args(param.annotation)
+    if get_origin(annotation) is Union:
+        args = get_args(annotation)
         # NoneType이 아닌 첫 번째 타입을 반환합니다.
         if len(args) == 2 and type(None) == args[1]:
             # Optional의 경우
@@ -16,8 +17,10 @@ def extract_annotation(param: Parameter) -> str:
         else:
             union_args = ", ".join(arg.__name__ for arg in args)
             return f"Union[{union_args}]"
-    else:
-        return param.annotation.__name__
+    elif hasattr(annotation, "__module__"):
+        return f"{annotation.__module__}.{annotation.__name__}"
+    else:    
+        return annotation.__name__
 
 
 def to_snake_case(name: str) -> str:
@@ -28,10 +31,10 @@ def to_snake_case(name: str) -> str:
 
 
 def find_python_files_in_path(dir_path: str = './'):
-    service_file_name_suffix = '_service'
+    # service_file_name_suffix = '_service'
     current_path = Path(dir_path)
     python_files = [str(p).split('.py')[0] for p in current_path.iterdir()
-                    if p.is_file() and p.suffix == '.py' and str(p).split('.py')[0].find(service_file_name_suffix) > 0]
+                    if p.is_file() and p.suffix == '.py']
     return python_files
 
 

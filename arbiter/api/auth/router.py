@@ -63,7 +63,6 @@ async def signup_email(
         email=data.email,
         password=hashed_password
     )
-
     new_token = AuthSchemas.TokenSchema(
         access_token=create_token(new_user.id),
         refresh_token=create_token(new_user.id, True)
@@ -85,10 +84,10 @@ async def login_with_email(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Database = Depends(Database.get_db)
 ):
-    user = await db.get_user_from_email(form_data.username)
-    if not user:
+    users = await db.search_data(User, email=form_data.username)
+    if not users:
         raise AuthExceptions.NotFoundUser
-
+    user = users[0]
     if not verify_password(form_data.password, user.password):
         raise AuthExceptions.InvalidCredentials
 

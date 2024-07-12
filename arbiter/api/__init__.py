@@ -1,12 +1,14 @@
 from __future__ import annotations
+import importlib
 import uuid
 import asyncio
 import pickle
+from pydantic import create_model, BaseModel
 from configparser import ConfigParser
 from fastapi.routing import APIRoute
 from uvicorn.workers import UvicornWorker
-from typing import Awaitable, Callable, Optional, Union
-from fastapi import APIRouter, FastAPI, Query, WebSocket, Depends, WebSocketDisconnect
+from typing import Optional, Union
+from fastapi import FastAPI, Query, WebSocket, Depends, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -20,10 +22,10 @@ from arbiter.constants.enums import ArbiterMessageType
 from arbiter.api.auth.utils import verify_token
 from arbiter.utils import to_snake_case
 from arbiter.database import (
+    User,
     Database,
     Node,
-    TaskFunction,
-    User
+    TaskFunction
 )
 from arbiter.constants.enums import (
     HttpMethod,
@@ -82,11 +84,7 @@ class ArbiterApiApp(FastAPI):
         self.router_task: asyncio.Task = None
         
         self.broker: RedisBroker = RedisBroker()
-        
-
-    def get_app(self) -> ArbiterApiApp:
-        return self
-
+    
     async def on_startup(self):
         await self.db.connect()
         await self.broker.connect()
@@ -148,58 +146,70 @@ class ArbiterApiApp(FastAPI):
     def generate_post_function(
         self,
         service_name: str,
-        task_fuction: TaskFunction,
+        task_function: TaskFunction,
     ):
-        def get_task_fuction() -> TaskFunction:
-            return task_fuction
-        parameters = ""
-        auth_dependency = ""
-        for name, type_name in task_fuction.parameters:
-            if type_name == "User":
-                if not task_fuction.auth:
-                    # error 동작 안함
-                    raise Exception(
-                        "User type parameter is not allowed without auth=True")
-                auth_dependency = f"{name}: {type_name} = Depends(get_user), "
+        # https://errors.pydantic.dev/2.8/u/undefined-annotation
+        def get_task_function() -> TaskFunction:
+            return task_function
+        def get_app() -> ArbiterApiApp:
+            return self
+        parameters = {}
+        
+        for name, type_name in task_function.parameters:
+            if isinstance(type_name, str):
+                module_name, class_name = type_name.rsplit(".", 1)
+                module = importlib.import_module(module_name)
+                type_class = getattr(module, class_name)
+                if type_class != User:
+                    parameters[name] = (type_class, ...)
             else:
-                parameters += f"{name}: {type_name}, "
-        if auth_dependency:
-            parameters += auth_dependency
-        parameters += "app: ArbiterApiApp = Depends(self.get_app), "
-        parameters += "task_function: TaskFunction = Depends(get_task_fuction), "
+                type_class = type_name
+                parameters[name] = (type_class, ...)
+            
         # Define the function dynamically
-        function_definition = f"""
-async def {task_fuction.name}({parameters}):
-    params = locals()  # Capture the local variables as a dictionary
-    params.pop('app')  # Remove the service parameter
-    params.pop('task_function')  # Remove the task parameter
-    # # Serialize the parameters to bytes
-    serialized_params = pickle.dumps(params)
-    response = await app.broker.send_message(
-        task_function.queue_name,
-        serialized_params # Use the serialized bytes
-    )
-    if not response:
-        return {{"message": "Failed to get response"}}
-    return {{"message": f"{{response}}"}}
-"""
-        local_context = {
-            'get_user': get_user,
-            'get_task_fuction': get_task_fuction,
-            'Depends': Depends,
-            'Union': Union,
-            'User': User,
-            'Optional': Optional,
-            'self': self
-        }
-        # Execute the dynamic function definition
-        exec(function_definition, globals(), local_context)
-        # Retrieve the dynamically defined function
-        dynamic_function = local_context[task_fuction.name]
+        # 동적으로 Pydantic 모델 생성
+        DynamicModel = create_model(task_function.name + "Model", **parameters)
+        async def dynamic_function(
+            data: type[BaseModel] = Depends(DynamicModel),  # 동적으로 생성된 Pydantic 모델 사용 # type: ignore
+            app: ArbiterApiApp = Depends(get_app),
+            task_function: TaskFunction = Depends(get_task_function),
+        ):
+            params = data.dict()
+            serialized_params = pickle.dumps(params)
+            response = await app.broker.send_message(
+                task_function.queue_name,
+                serialized_params
+            )
+            if not response:
+                return {"message": "Failed to get response"}
+            return {"message": f"{response}"}
+
+        async def dynamic_auth_function(
+            data: type[BaseModel] = Depends(DynamicModel),  # 동적으로 생성된 Pydantic 모델 사용 # type: ignore
+            user: User = Depends(get_user),
+            app: ArbiterApiApp = Depends(get_app),
+            task_function: TaskFunction = Depends(get_task_function),
+        ):
+            params: dict = data.dict()
+            params.update({"user": user.id})
+            serialized_params = pickle.dumps(params)
+            response = await app.broker.send_message(
+                task_function.queue_name,
+                serialized_params
+            )
+            if not response:
+                return {"message": "Failed to get response"}
+            return {"message": f"{response}"}
+
+        if task_function.auth:
+            end_point = dynamic_auth_function
+        else:
+            end_point = dynamic_function        
+
         self.router.post(
-            f'/{to_snake_case(service_name)}/{task_fuction.name}',
+            f'/{to_snake_case(service_name)}/{task_function.name}',
             tags=[service_name]
-        )(dynamic_function)
+        )(end_point)
         
     def generate_websocket_function(
         self,
