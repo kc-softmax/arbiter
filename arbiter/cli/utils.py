@@ -8,20 +8,20 @@ from typer import Typer
 from enum import Enum
 
 
-class Providers(Enum, str):
+class Providers(Enum):
     AWS = "aws"
     DEV = "dev"
     LOCAL = "local"
 
 
-class Communication(Enum, str):
+class Communication(Enum):
     RETURN_OUT = "RETURN_OUT"
     TERMINAL_OUT = "TERMINAL_OUT"
     RETURN_ERR = "RETURN_ERR"
     TERMINAL_ERR = "TERMINAL_ERR"
 
 
-class Commands(Enum, str):
+class Commands(Enum):
     TERRAFORM_INIT = "terraform init"
     TERRAFORM_PLAN = "terraform plan {var}"
     TERRAFORM_APPLY = "terraform apply {var} -target={module} -auto-approve"
@@ -31,7 +31,7 @@ class Commands(Enum, str):
     PRISMA_GENERATE = "prisma generate"
 
 
-class SupportedModules(Enum, str):
+class SupportedModules(Enum):
     CACHE = "module.infra.module.service.module.cache"
     COMPUTE = "module.infra.module.service.module.compute"
     CONTAINER = "module.infra.module.service.module.container"
