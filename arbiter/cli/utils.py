@@ -5,23 +5,23 @@ import inspect
 import subprocess
 from functools import wraps, partial
 from typer import Typer
-from enum import StrEnum
+from enum import Enum
 
 
-class Providers(StrEnum):
+class Providers(Enum, str):
     AWS = "aws"
     DEV = "dev"
     LOCAL = "local"
 
 
-class Communication(StrEnum):
+class Communication(Enum, str):
     RETURN_OUT = "RETURN_OUT"
     TERMINAL_OUT = "TERMINAL_OUT"
     RETURN_ERR = "RETURN_ERR"
     TERMINAL_ERR = "TERMINAL_ERR"
 
 
-class Commands(StrEnum):
+class Commands(Enum, str):
     TERRAFORM_INIT = "terraform init"
     TERRAFORM_PLAN = "terraform plan {var}"
     TERRAFORM_APPLY = "terraform apply {var} -target={module} -auto-approve"
@@ -31,7 +31,7 @@ class Commands(StrEnum):
     PRISMA_GENERATE = "prisma generate"
 
 
-class SupportedModules(StrEnum):
+class SupportedModules(Enum, str):
     CACHE = "module.infra.module.service.module.cache"
     COMPUTE = "module.infra.module.service.module.compute"
     CONTAINER = "module.infra.module.service.module.container"
