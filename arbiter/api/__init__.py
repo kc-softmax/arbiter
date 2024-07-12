@@ -328,6 +328,7 @@ class ArbiterApiApp(FastAPI):
                 pass
             if not response_task.done():
                 response_task.cancel()
+            await websocket.close()
 
         handle_websocket_functions = {
             StreamCommunicationType.ASYNC_UNICAST: handle_async_unicast_websocket,
