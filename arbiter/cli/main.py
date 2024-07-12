@@ -240,7 +240,6 @@ def dev(
         redis_url=config.get("redis", "url", fallback='localhost')
         worker_count = config.get("api", "worker_count", fallback=4)
         
-        
         console.print(f"[bold green]Warp In [bold yellow]Arbiter[/bold yellow] [bold green]{name}...[/bold green]")
 
         if not await check_redis_running(redis_url):
@@ -296,7 +295,7 @@ def dev(
                                 return
                             # has warped in.
                         if int(worker_count) == registered_gunicorn_worker_count:
-                            console.print(f"[bold green]{arbiter.name}[/bold green]'s [bold yellow]WebServer[/bold yellow] has warped in with [bold green]{worker_count}[/bold green] workwers.")
+                            console.print(f"[bold green]{arbiter.name}[/bold green]'s [bold yellow]WebServer[/bold yellow] has warped in with [bold green]{worker_count}[/bold green] workers.")
                             break                            
                             
                 manager_task = asyncio.create_task(

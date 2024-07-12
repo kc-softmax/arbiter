@@ -153,6 +153,12 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
             return 'Force Stop from System'
         return 'Health Check Finished'
 
+    async def on_start(self):
+        pass
+    
+    async def on_shutdown(self):
+        pass
+
     async def shutdown(
         self,
         dynamic_tasks: list[asyncio.Task]
@@ -169,6 +175,7 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
             ).encode(), None,
         )
         await self.broker.disconnect()
+        await self.on_shutdown()
 
     async def start(self):
         """
@@ -200,6 +207,7 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
                 dynamic_tasks.append(
                     asyncio.create_task(task(self))
                 )
+            await self.on_start()
             await self.health_check_task
 
         except Exception as e:

@@ -200,7 +200,7 @@ class Arbiter:
         else:
             await self._warp_in_queue.put(
                 (WarpInTaskResult.SUCCESS, None))
-
+        
     async def warp_in(self, phase: WarpInPhase) -> AsyncGenerator[tuple[WarpInTaskResult, str], None]:
         while True:
             try:
@@ -260,7 +260,6 @@ class Arbiter:
             python_files_in_root = find_python_files_in_path()
             # 프로젝트 root아래 있는 service.py 파일들을 import한다.
             for python_file in python_files_in_root:
-                # if python_file.endswith('service.py'):
                 importlib.import_module(python_file)
 
             # import 되었으므로 AbstractService의 subclasses로 접근 가능
@@ -277,7 +276,7 @@ class Arbiter:
                 
                 if tasks := service_class.tasks:
                     for task in tasks:
-                        if getattr(task, 'routing', False):
+                        if not getattr(task, 'routing', False):
                             continue
                         signature = inspect.signature(task)
                         # Print the parameters of the function
@@ -287,7 +286,6 @@ class Arbiter:
                             for param in signature.parameters.values()
                             if param.name != 'self'
                         ]
-                        
                         data = dict(
                             name=task.__name__,
                             queue_name=f"{to_snake_case(service_meta.name)}_{task.__name__}",
