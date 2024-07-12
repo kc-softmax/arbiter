@@ -163,6 +163,7 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
         self,
         dynamic_tasks: list[asyncio.Task]
     ):
+        await self.on_shutdown()
         for dynamic_task in dynamic_tasks:
             dynamic_task and dynamic_task.cancel()
 
@@ -176,7 +177,6 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
             False,
         )
         await self.broker.disconnect()
-        await self.on_shutdown()
 
     async def start(self):
         """
