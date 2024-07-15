@@ -127,8 +127,7 @@ class RedisBroker(MessageBrokerInterface):
         self,
         queue: str,
         period: float = 1
-    ) -> AsyncGenerator[list[bytes], None]:
-        # raw function without ArbiterMessage
+    ) -> AsyncGenerator[list[ArbiterMessage], None]:
         while True:
             collected_messages = []
             start_time = time.monotonic()
@@ -140,7 +139,7 @@ class RedisBroker(MessageBrokerInterface):
                 # 비동기적으로 메시지를 가져옴
                 response = await self.client.blpop(queue, timeout=1)
                 if response:
-                    _, message = response
+                    message = ArbiterMessage.model_validate_json(response[1])
                 else:
                     message = None
                 if message:
