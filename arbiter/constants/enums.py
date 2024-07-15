@@ -1,79 +1,79 @@
-from enum import Enum, auto
+from enum import IntEnum
 
 
-class ServiceState(Enum):
-    PENDING = auto()
-    ACTIVE = auto()
-    INACTIVE = auto()
+class ServiceState(IntEnum):
+    PENDING = 1
+    ACTIVE = 2
+    INACTIVE = 3
 
 
-class StreamMethod(Enum):
-    WEBSOCKET = auto()
+class StreamMethod(IntEnum):
+    WEBSOCKET = 10
     """WebSocket을 통한 스트림 전송 방식."""
     
-    WEBRTC = auto()
+    WEBRTC = 11
     """WebRTC를 통한 스트림 전송 방식."""
 
-class StreamCommunicationType(Enum):
-    SYNC_UNICAST = auto()
+class StreamCommunicationType(IntEnum):
+    SYNC_UNICAST = 1
     """Client가 메세지를 보내면, sync적으로 단일 클라이언트에게 답장하는 방식"""
     
-    ASYNC_UNICAST = auto()
+    ASYNC_UNICAST = 2
     """Client가 메세지를 보내면, 비동기적으로 단일 클라이언트에게 답장하는 방식"""
         
-    MULTICAST = auto()
+    MULTICAST = 3
     """특정 그룹의 클라이언트에게만 메세지를 보내는 방식"""
     
-    PUSH_NOTIFICATION = auto()
+    PUSH_NOTIFICATION = 4
     """서버가 특정 이벤트 발생 시 Client에게 push notification을 보내는 방식"""
 
-    BROADCAST = auto()
+    BROADCAST = 5
     """Client가 메세지를 보내면, 받고 처리 후 모든 클라이언트에게 broadcast 하는 방식"""  
 
-class HttpMethod(Enum):
-    GET = auto()
+class HttpMethod(IntEnum):
+    GET = 10
     """서버로부터 리소스를 조회하는 요청 메서드."""
     
-    POST = auto()
+    POST = 11
     """서버에 데이터를 제출하여 리소스를 생성하는 요청 메서드."""
     
-    PUT = auto()
+    PUT = 12
     """서버에 데이터를 제출하여 리소스를 업데이트하는 요청 메서드."""
     
-    DELETE = auto()
+    DELETE = 13
     """서버로부터 리소스를 삭제하는 요청 메서드."""
 
-class WarpInPhase(Enum):
-    INITIATION = auto()   
+class WarpInPhase(IntEnum):
+    INITIATION = 14
     """소환 시작 단계"""
     
-    CHANNELING = auto()
+    CHANNELING = 15
     """에너지를 모으는 단계"""
     
-    MATERIALIZATION = auto()
+    MATERIALIZATION = 16
     """건물이 구체화되는 단계"""
     
-    COMPLETION = auto()
+    COMPLETION = 17
     """건물이 완성되는 단계"""
 
-class WarpInTaskResult(Enum):
-    SUCCESS = auto()
-    FAIL = auto()
-    IS_MASTER = auto()
-    IS_REPLICA = auto()
-    API_REGISTER_SUCCESS = auto()
+class WarpInTaskResult(IntEnum):
+    SUCCESS = 1
+    FAIL = 2
+    IS_MASTER = 3
+    IS_REPLICA = 4
+    API_REGISTER_SUCCESS = 5
 
-class ArbiterShutdownTaskResult(Enum):
-    SUCCESS = auto()
-    WARNING = auto()
+class ArbiterShutdownTaskResult(IntEnum):
+    SUCCESS = 10
+    WARNING = 11
 
 
-class ArbiterCliCommand(Enum):
-    R = auto()
-    S = auto()
-    K = auto()
-    L = auto()
-    Q = auto()
+class ArbiterCliCommand(IntEnum):
+    R = 100
+    S = 101
+    K = 102
+    L = 103
+    Q = 104
 
     def description(self):
         descriptions = {
@@ -89,29 +89,30 @@ class ArbiterCliCommand(Enum):
         return f"\t[bold yellow]{self.name.lower()}[/bold yellow]\t{self.description()}"
 
 
-class ArbiterMessageType(Enum):
+class ArbiterMessageType(IntEnum):
     # General messages
-    PING = auto()
-    PONG = auto()
+    PING = 1
+    PONG = 2
 
-    SHUTDOWN = auto()
-    MASTER_SHUTDOWN = auto()
+    SHUTDOWN = 3
+    MASTER_SHUTDOWN = 4
     # Arbiter messages
-    ARBITER_SERVICE_REGISTER = auto()
-    ARBITER_SERVICE_REGISTER_ACK = auto()
-    ARBITER_SERVICE_UNREGISTER = auto()
-    ARBITER_SERVICE_UNREGISTER_ACK = auto()
-    ARBITER_SERVICE_STOP = auto()
-    ARBITER_SERVICE_STOP_ACK = auto()
+    ARBITER_SERVICE_REGISTER = 5
+    ARBITER_SERVICE_REGISTER_ACK = 6
+    ARBITER_SERVICE_UNREGISTER = 7
+    ARBITER_SERVICE_UNREGISTER_ACK = 8
+    ARBITER_SERVICE_STOP = 9
+    ARBITER_SERVICE_STOP_ACK = 10
 
-    API_REGISTER = auto()
-    API_REGISTER_ACK = auto()
-    API_UNREGISTER = auto()
-    API_UNREGISTER_ACK = auto()
+    API_REGISTER = 11
+    API_REGISTER_ACK = 12
+    API_UNREGISTER = 13
+    API_UNREGISTER_ACK = 14
 
-    API_ROUTE_REGISTER = auto()
-    API_ROUTE_REGISTER_ACK = auto()
-    API_ROUTE_UNREGISTER = auto()
-    API_ROUTE_UNREGISTER_ACK = auto()
+    API_ROUTE_REGISTER = 15
+    API_ROUTE_REGISTER_ACK = 16
+    API_ROUTE_UNREGISTER = 17
+    API_ROUTE_UNREGISTER_ACK = 18
     # # Error messages
-    ERROR = auto()
+    ERROR = 100
+    

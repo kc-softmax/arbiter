@@ -1,7 +1,15 @@
+from __future__ import annotations
+from pydantic import BaseModel
+from .enums import *
+from .messages import *
+
+ALLOWED_TYPE = (BaseModel, int, str, float, bool)
+AUTH_PARAMETER = "user_id"
+
 WARP_IN_TIMEOUT = 10
 
 ARBITER_SERVICE_HEALTH_CHECK_INTERVAL = 4
-ARIBTER_DEFAULT_RPC_TIMEOUT = 5
+ARIBTER_DEFAULT_TASK_TIMEOUT = 5
 ARBITER_SERVICE_PENDING_TIMEOUT = 20
 ARBITER_SERVICE_ACTIVE_TIMEOUT = 30
 ARBITER_SERVICE_SHUTDOWN_TIMEOUT = 10

@@ -1,6 +1,8 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Type, Union
+from arbiter.constants import ArbiterMessage
+
 
 """
 잠시 구현을 위해 따로 만들어둔다.
@@ -27,21 +29,11 @@ class MessageBrokerInterface(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def send_arbiter_message(
+    async def send_message(
         self,
-        target: str,
-        raw_message: str | bytes,
-        response: bool,
-        timeout: int,
-    ):
-        raise NotImplementedError
-
-    @abstractmethod
-    async def async_send_arbiter_message(
-        self,
-        target: str,
-        raw_message: str | bytes,
-        response_channel: str,
+        receiver_id: str,
+        message: ArbiterMessage,
+        timeout: float
     ):
         raise NotImplementedError
 
@@ -54,7 +46,14 @@ class MessageBrokerInterface(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def listen(self, channel: str) -> AsyncGenerator[bytes, None]:
+    def listen(self, channel: str, timeout: int) -> AsyncGenerator[ArbiterMessage, None]:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def listen_bytes(self, channel: str, timeout: int = 0) -> AsyncGenerator[
+        bytes,
+        None
+    ]:
         raise NotImplementedError
 
     @abstractmethod

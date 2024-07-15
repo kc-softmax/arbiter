@@ -1,16 +1,18 @@
 from __future__ import annotations
-import asyncio
-from contextlib import asynccontextmanager
-import uuid
 import time
+import pickle
 import redis.asyncio as aioredis
 from warnings import warn
+from pydantic import BaseModel
 from redis.asyncio.client import PubSub
-from typing import AsyncGenerator
-from arbiter.constants import ARIBTER_DEFAULT_RPC_TIMEOUT
-from arbiter.constants.data import ArbiterMessage
+from typing import AsyncGenerator, Any
 from arbiter.broker.base import MessageBrokerInterface
-
+from arbiter.constants import (
+    ARIBTER_DEFAULT_TASK_TIMEOUT,
+)
+from arbiter.constants.messages import (
+    ArbiterMessage,
+)
 
 class RedisBroker(MessageBrokerInterface):
     def __init__(self):
@@ -29,42 +31,41 @@ class RedisBroker(MessageBrokerInterface):
         if self.client:
             await self.client.close()
 
-    async def send_arbiter_message(
+    async def send_message(
         self,
-        target: str,
-        raw_message: str | bytes,
-        response: bool = True,
-        timeout: int = ARIBTER_DEFAULT_RPC_TIMEOUT
-    ) -> bytes | None:
-        assert timeout > 0, "Timeout must be greater than 0"
-        id = uuid.uuid4().hex if response else None
-        message = ArbiterMessage(data=raw_message, id=id)
-        await self.client.rpush(target, message.encode())
-        if not response:
+        receiver_id: str,
+        message: ArbiterMessage,
+        timeout: float = ARIBTER_DEFAULT_TASK_TIMEOUT
+    ):
+        await self.client.rpush(receiver_id, message.model_dump_json())
+        if not message.response:
             return None
-        results = await self.client.blpop(message.id, timeout=timeout)
-        if results:
-            return results[1]
-        await self.client.delete(message.id)
-        return None
+        response_data = await self.client.blpop(message.id, timeout=timeout)
+        if response_data:
+            response_data = response_data[1]
+        else:
+            response_data = None
+        # TODO MARK Test ref check
+        await self.delete_message(message.id)
+        return response_data
 
-    async def async_send_arbiter_message(
-        self,
-        target: str,
-        raw_message: str | bytes,
-        response_channel: str = None,
-    ) -> bytes | None:
-        id = response_channel if response_channel else uuid.uuid4().hex
-        message = ArbiterMessage(data=raw_message, id=id)
-        await self.client.rpush(target, message.encode())
-
-    async def push_message(self, target: str, message: bytes):
+    async def push_message(self, target: str, message: Any):
         await self.client.rpush(target, message)
+
+    async def get_message(self, queue: str, timeout: int = ARIBTER_DEFAULT_TASK_TIMEOUT) -> bytes:
+        response_data = await self.client.blpop(queue, timeout=timeout)
+        if response_data:
+            return response_data[1]
+        raise TimeoutError(f"Timeout in getting message from {queue}")
 
     async def delete_message(self, message_id: str):
         await self.client.delete(message_id)
 
-    async def subscribe(self, channel: str) -> AsyncGenerator[str, None]:
+    async def subscribe(
+        self,
+        channel: str
+    ) -> AsyncGenerator[str, None]:
+        # raw function without ArbiterMessage
         if channel in self.pubsub_map:
             warn(f"Already subscribed to {channel}")
             return
@@ -77,26 +78,57 @@ class RedisBroker(MessageBrokerInterface):
         pubsub = self.pubsub_map.pop(channel)
         await pubsub.unsubscribe(channel)
 
-    async def broadcast(self, topic: str, message: bytes):
+    async def broadcast(
+        self,
+        topic: str, 
+        message: str | bytes,
+    ):
         await self.client.publish(topic, message)
+
+    async def listen_bytes(
+        self,
+        channel: str,
+        timeout: int = 0
+    ) -> AsyncGenerator[
+        bytes,
+        None
+    ]:
+        try:
+            while True:
+                message = await self.client.blpop(channel, timeout)
+                if message:
+                    yield message[1]
+                else:
+                    yield None
+        except Exception as e:
+            print('error in : ', e)
+            yield None
 
     async def listen(
         self,
-        channel: str
-    ) -> AsyncGenerator[bytes, None]:
+        channel: str,
+        timeout: int = 0
+    ) -> AsyncGenerator[
+        ArbiterMessage,
+        None
+    ]:
         try:
             while True:
-                _, message = await self.client.blpop(channel)
+                message = await self.client.blpop(channel, timeout)
                 if message:
-                    yield message
+                    yield ArbiterMessage.model_validate_json(message[1])
+                else:
+                    yield None
         except Exception as e:
-            print('listen: ', e)
+            print('error in : ', e)
+            yield None
 
     async def periodic_listen(
         self,
         queue: str,
         period: float = 1
     ) -> AsyncGenerator[list[bytes], None]:
+        # raw function without ArbiterMessage
         while True:
             collected_messages = []
             start_time = time.monotonic()

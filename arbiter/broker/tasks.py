@@ -1,14 +1,21 @@
+import inspect
 import pickle
-from typing import Any
+import json
+import uuid
 import functools
-import asyncio
-from arbiter.constants.data import ArbiterMessage
+from typing import Any, Type
+from pydantic import BaseModel
+from arbiter.constants.messages import ArbiterMessage
 from arbiter.broker.base import MessageBrokerInterface
 from arbiter.utils import to_snake_case
 from arbiter.constants.enums import (
     HttpMethod,
     StreamMethod,
     StreamCommunicationType,
+)
+from arbiter.constants import (
+    ALLOWED_TYPE,
+    AUTH_PARAMETER
 )
 from arbiter.constants.protocols import (
     TaskProtocol,
@@ -40,24 +47,40 @@ class StreamTask(Task):
 
     def __call__(self, func: StreamTaskProtocol) -> StreamTaskProtocol:
         super().__call__(func)
+        signature = inspect.signature(func)
+        request_type = None
+        for param in signature.parameters.values():
+            if param.name == 'self':
+                continue
+            if param.annotation not in [bytes, str]:
+                raise ValueError(f"Invalid parameter type: {param.annotation}, stream task only supports bytes and str")
+            if request_type:
+                raise ValueError("Stream task only supports one parameter")
+            request_type = param.annotation
+        
         @functools.wraps(func)
         async def wrapper(self, *args: Any, **kwargs: Any):
             channel = f'{to_snake_case(self.__class__.__name__)}_{func.__name__}'
             broker = getattr(self, "broker", None)
             assert isinstance(broker, MessageBrokerInterface)
-            async for message in broker.listen(channel):
+
+            # response_queue
+            async for message in broker.listen_bytes(channel):
                 try:
-                    decoded_message = ArbiterMessage.decode(message)
-                    data = pickle.loads(decoded_message.data)
+                    response_queue, receive_data = pickle.loads(message)
+                    if isinstance(receive_data, bytes) and request_type == str:
+                        receive_data = receive_data.decode()
+                    if isinstance(receive_data, str) and request_type == bytes:
+                        receive_data = receive_data.encode()
                     match func.communication_type:
                         case StreamCommunicationType.SYNC_UNICAST:
-                            result = await func(self, *data.values())
+                            result = await func(self, receive_data)
                             await broker.push_message(
-                                decoded_message.id, result)
+                                response_queue, result)
                         case StreamCommunicationType.ASYNC_UNICAST:
-                            async for result in func(self, *data.values()):
+                            async for result in func(self, receive_data):
                                 await broker.push_message(
-                                    decoded_message.id, result)
+                                    response_queue, result)
                     # results = await func(self, decoded_message.data)
                     # await broker.push_message(
                     #     decoded_message.id, results)
@@ -71,14 +94,24 @@ class HttpTask(Task):
     def __init__(
         self,
         method: HttpMethod,
+        response_model: Type[BaseModel] = None,
         auth: bool = False,
     ):
         self.auth = auth
         self.method = method
+        self.response_model = response_model
         self.routing = True
 
-    def __call__(self, func: HttpTaskProtocol) -> HttpTaskProtocol:
+    def __call__(self, func: HttpTaskProtocol) -> BaseModel | str | bytes:
         super().__call__(func)
+        func.response_model = self.response_model
+        signature = inspect.signature(func)
+        request_models = {}
+        for param in signature.parameters.values():
+            if param.name == 'self':
+                continue
+            request_models[param.name] = param.annotation
+        
         @functools.wraps(func)
         async def wrapper(self, *args: Any, **kwargs: Any):
             channel = f'{to_snake_case(self.__class__.__name__)}_{func.__name__}'
@@ -86,10 +119,21 @@ class HttpTask(Task):
             assert isinstance(broker, MessageBrokerInterface)
             async for message in broker.listen(channel):
                 try:
-                    decoded_message = ArbiterMessage.decode(message)
-                    request_params = pickle.loads(decoded_message.data)
+                    request_json = json.loads(message.data)
+                    request_params = {}
+                    for k, v in request_json.items():
+                        if k in request_models:
+                            model = request_models[k]
+                            if issubclass(model, BaseModel):
+                                request_params[k] = model.model_validate(v)
+                            else:
+                                request_params[k] = v
                     results = await func(self, **request_params)
-                    decoded_message.id and await broker.push_message(decoded_message.id, results)
+                    if isinstance(results, BaseModel):
+                        results = results.model_dump_json()
+                    message.id and await broker.push_message(
+                        message.id, 
+                        results)
                 except Exception as e:
                     print(e)
         return wrapper
@@ -141,5 +185,6 @@ class SubscribeTask(Task):
             broker = getattr(self, "broker", None)
             assert isinstance(broker, MessageBrokerInterface)
             async for message in broker.subscribe(channel):
+                # TODO MARK 
                 await func(self, message)
         return wrapper

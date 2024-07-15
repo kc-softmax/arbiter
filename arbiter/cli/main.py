@@ -159,6 +159,8 @@ async def terminate_process(process: Process):
             parent.kill()
     except psutil.NoSuchProcess:
         pass
+    except Exception as e:
+        print(e)
 
 async def start_process(command: str, process_name:str, shell: bool = True):
     async def read_stream(
@@ -208,9 +210,12 @@ def dev(
         nonlocal processes
         while True:
             service = await service_queue.get()
-            if service is None:
-                await command_queue.put(None)
-                break
+            try:
+                if service is None:
+                    await command_queue.put(None)
+                    break
+            except Exception as e:
+                print(e, ': manager')
             command = get_running_command(
                 service.service_meta.module_name,
                 service.service_meta.name,
@@ -224,7 +229,6 @@ def dev(
             # start service success message
             console.print(
                 f"[bold green]{arbiter.name}[/bold green]'s [bold yellow]{service.service_meta.name}[/bold yellow] has warped in.")
-
        
     async def arbiter_run(
         name: str,
@@ -238,7 +242,7 @@ def dev(
         host = config.get("api", "host", fallback=None)
         port = config.get("api", "port", fallback=None)
         redis_url=config.get("redis", "url", fallback='localhost')
-        worker_count = config.get("api", "worker_count", fallback=4)
+        worker_count = config.get("api", "worker_count", fallback=1)
         
         console.print(f"[bold green]Warp In [bold yellow]Arbiter[/bold yellow] [bold green]{name}...[/bold green]")
 
@@ -344,18 +348,20 @@ def dev(
                         await terminate_process(gunicorn_process)               
                     except Exception as e:
                         console.print(f"[bold red]{arbiter.name}[/bold red] {e}")
-                
-                async for result, message in arbiter.shutdown_task():
-                    match result:
-                        case ArbiterShutdownTaskResult.SUCCESS:
-                            # Danimoth's warp-out completed.
-                            console.print(f"[bold green]{arbiter.name}[/bold green]'s warp-out [bold green]Completed[bold green].")
-                        case ArbiterShutdownTaskResult.WARNING:
-                            console.log(f"[bold yellow]{arbiter.name}[/bold yellow]'s warp-out catch warning {message}")
+                try:
+                    async for result, message in arbiter.shutdown_task():
+                        match result:
+                            case ArbiterShutdownTaskResult.SUCCESS:
+                                # Danimoth's warp-out completed.
+                                console.print(f"[bold green]{arbiter.name}[/bold green]'s warp-out [bold green]Completed[bold green].")
+                            case ArbiterShutdownTaskResult.WARNING:
+                                console.log(f"[bold yellow]{arbiter.name}[/bold yellow]'s warp-out catch warning {message}")
+                except Exception as e:
+                    console.print(f"[bold red]{arbiter.name}[/bold red] e{e}")
         except Exception as e:
             console.print("[bold red]An error occurred while running the arbiter[/bold red]")
         manager_task and manager_task.cancel()
-
+        
     async def async_shutdown_signal_handler():
         await command_queue.put(None)
 

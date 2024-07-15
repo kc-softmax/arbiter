@@ -1,8 +1,10 @@
 from __future__ import annotations
 import importlib
+import json
 import uuid
 import asyncio
 import pickle
+import base64
 from pydantic import create_model, BaseModel
 from configparser import ConfigParser
 from fastapi.routing import APIRoute
@@ -17,7 +19,6 @@ from arbiter.api.auth.router import router as auth_router
 from arbiter.api.exceptions import BadRequest
 from arbiter.api.auth.dependencies import get_user
 from arbiter.broker import RedisBroker, MessageBrokerInterface
-from arbiter.constants.data import ArbiterSystemRequestMessage
 from arbiter.constants.enums import ArbiterMessageType
 from arbiter.api.auth.utils import verify_token
 from arbiter.utils import to_snake_case
@@ -33,6 +34,7 @@ from arbiter.constants.enums import (
     StreamCommunicationType
 )
 from arbiter.constants import (
+    ArbiterMessage,
     ARBITER_API_CHANNEL,
     ARBITER_API_SHUTDOWN_TIMEOUT,
 )
@@ -82,7 +84,6 @@ class ArbiterApiApp(FastAPI):
         self.include_router(auth_router)
         self.db = Database.get_db()
         self.router_task: asyncio.Task = None
-        
         self.broker: RedisBroker = RedisBroker()
     
     async def on_startup(self):
@@ -92,13 +93,14 @@ class ArbiterApiApp(FastAPI):
         master_nodes = await self.db.search_data(Node, is_master=True)
         assert len(master_nodes) == 1, "There must be only one master node"
         
-        await self.broker.send_arbiter_message(
+        # TODO FIX get master node
+        # DB를 Arbiter 이름으로 생성하면 하나밖에 검색이 안된다.
+        await self.broker.send_message(
             master_nodes[0].unique_id,
-            ArbiterSystemRequestMessage(
-                from_id=self.app_id,
-                type=ArbiterMessageType.API_REGISTER,
-            ).encode(),
-            False)
+            ArbiterMessage(
+                data=ArbiterMessageType.API_REGISTER,
+                sender_id=self.app_id
+            ))
 
     async def on_shutdown(self):
         self.router_task and self.router_task.cancel()
@@ -109,7 +111,7 @@ class ArbiterApiApp(FastAPI):
         # message 는 어떤 router로 등록해야 하는가?에 따른다?
         # TODO ADD router, remove Router?
         async for message in self.broker.subscribe(ARBITER_API_CHANNEL):
-            task_function = TaskFunction.parse_raw(message)
+            task_function = TaskFunction.model_validate_json(message)
             service_name = task_function.service_meta.name
             
             assert not (
@@ -148,68 +150,126 @@ class ArbiterApiApp(FastAPI):
         service_name: str,
         task_function: TaskFunction,
     ):
-        # https://errors.pydantic.dev/2.8/u/undefined-annotation
+        def create_model_from_schema(schema: dict) -> BaseModel:
+            type_mapping = {
+                'string': str,
+                'integer': int,
+                'number': float,
+                'boolean': bool
+            }
+            fields = {}
+            for name, details in schema['properties'].items():
+                field_type = type_mapping.get(details['type'], str)  # 기본 타입을 str로 설정
+                fields[name] = (field_type, ...)
+            return create_model(schema['title'], **fields)     
+
         def get_task_function() -> TaskFunction:
             return task_function
         def get_app() -> ArbiterApiApp:
             return self
-        parameters = {}
         
-        for name, type_name in task_function.parameters:
-            if isinstance(type_name, str):
-                module_name, class_name = type_name.rsplit(".", 1)
-                module = importlib.import_module(module_name)
-                type_class = getattr(module, class_name)
-                if type_class != User:
-                    parameters[name] = (type_class, ...)
+
+        DynamicRequestModel = None
+        DynamicResponseModel = None
+        
+        if task_function.response_model:
+            response_model = json.loads(task_function.response_model)
+            if isinstance(response_model, dict):
+                DynamicResponseModel = create_model_from_schema(response_model)
             else:
-                type_class = type_name
-                parameters[name] = (type_class, ...)
-            
-        # Define the function dynamically
-        # 동적으로 Pydantic 모델 생성
-        DynamicModel = create_model(task_function.name + "Model", **parameters)
-        async def dynamic_function(
-            data: type[BaseModel] = Depends(DynamicModel),  # 동적으로 생성된 Pydantic 모델 사용 # type: ignore
+                DynamicResponseModel = response_model
+        if task_function.request_models != '[]':
+            dynamic_request_params = {}
+            request_models = json.loads(task_function.request_models)
+            for name, annotation in request_models:
+                request_model = None
+                if isinstance(annotation, dict):
+                    request_model = create_model_from_schema(annotation)
+                else:
+                    request_model = annotation
+                dynamic_request_params[name] = (request_model, ...)
+            DynamicRequestModel = create_model(task_function.name + "Model", **dynamic_request_params)
+
+        async def dynamic_function_no_requset(
             app: ArbiterApiApp = Depends(get_app),
             task_function: TaskFunction = Depends(get_task_function),
         ):
-            params = data.dict()
-            serialized_params = pickle.dumps(params)
-            response = await app.broker.send_arbiter_message(
+            response = await app.broker.send_message(
                 task_function.queue_name,
-                serialized_params
-            )
+                ArbiterMessage(
+                    sender_id=self.app_id))
             if not response:
-                return {"message": "Failed to get response"}
-            return {"message": f"{response}"}
+                raise Exception("Failed to get response")
+            if not DynamicResponseModel:
+                return response
+            return DynamicResponseModel.model_validate_json(response)
 
-        async def dynamic_auth_function(
-            data: type[BaseModel] = Depends(DynamicModel),  # 동적으로 생성된 Pydantic 모델 사용 # type: ignore
+        async def dynamic_auth_function_no_requset(
             user: User = Depends(get_user),
             app: ArbiterApiApp = Depends(get_app),
             task_function: TaskFunction = Depends(get_task_function),
         ):
-            params: dict = data.dict()
-            params.update({"user": user.id})
-            serialized_params = pickle.dumps(params)
-            response = await app.broker.send_arbiter_message(
+            response = await app.broker.send_message(
                 task_function.queue_name,
-                serialized_params
-            )
+                ArbiterMessage(
+                    data=json.dumps(dict(user_id=user.id)),
+                    sender_id=self.app_id))
             if not response:
-                return {"message": "Failed to get response"}
-            return {"message": f"{response}"}
+                raise Exception("Failed to get response")
+            if not DynamicResponseModel:
+                return response
+            return DynamicResponseModel.model_validate_json(response)
 
+        async def dynamic_function(
+            data: type[BaseModel] = Depends(DynamicRequestModel),  # 동적으로 생성된 Pydantic 모델 사용 # type: ignore
+            app: ArbiterApiApp = Depends(get_app),
+            task_function: TaskFunction = Depends(get_task_function),
+        ):
+            response = await app.broker.send_message(
+                task_function.queue_name,
+                ArbiterMessage(
+                    data=data.model_dump_json(), 
+                    sender_id=self.app_id))
+            if not response:
+                raise Exception("Failed to get response")
+            if not DynamicResponseModel:
+                return response
+            return DynamicResponseModel.model_validate_json(response)
+
+        async def dynamic_auth_function(
+            data: type[BaseModel] = Depends(DynamicRequestModel),  # 동적으로 생성된 Pydantic 모델 사용 # type: ignore
+            user: User = Depends(get_user),
+            app: ArbiterApiApp = Depends(get_app),
+            task_function: TaskFunction = Depends(get_task_function),
+        ):
+            data_dict = data.model_dump()
+            data_dict["user_id"] = user.id
+            response = await app.broker.send_message(
+                task_function.queue_name,
+                ArbiterMessage(
+                    data=json.dumps(data_dict),
+                    sender_id=self.app_id))
+            if not response:
+                raise Exception("Failed to get response")
+            if not DynamicResponseModel:
+                return response
+            return DynamicResponseModel.model_validate_json(response)
         if task_function.auth:
-            end_point = dynamic_auth_function
+            end_point = dynamic_auth_function if DynamicRequestModel else dynamic_auth_function_no_requset
         else:
-            end_point = dynamic_function        
-
-        self.router.post(
-            f'/{to_snake_case(service_name)}/{task_function.name}',
-            tags=[service_name]
-        )(end_point)
+            end_point = dynamic_function if DynamicRequestModel else dynamic_function_no_requset
+            
+        if DynamicResponseModel:
+            self.router.post(
+                f'/{to_snake_case(service_name)}/{task_function.name}',
+                tags=[service_name],
+                response_model=DynamicResponseModel
+            )(end_point)
+        else:
+            self.router.post(
+                f'/{to_snake_case(service_name)}/{task_function.name}',
+                tags=[service_name]
+            )(end_point)
         
     def generate_websocket_function(
         self,
@@ -243,34 +303,31 @@ class ArbiterApiApp(FastAPI):
             user_id: str = None
         ):
             async def get_response(websocket: WebSocket, channel: str):
-                async for data in self.broker.listen(channel):
+                async for data in self.broker.listen_bytes(channel):
                     await websocket.send_text(data.decode())
                 
-            websocket_response_ch = uuid.uuid4().hex
             await websocket.accept()
-
-            response_task = asyncio.create_task(get_response(websocket, websocket_response_ch))
+            response_queue = uuid.uuid4().hex
+            response_task = asyncio.create_task(get_response(websocket, response_queue))
             
             try:
                 while not response_task.done():
                     receive_data = await websocket.receive_text()
                     if not receive_data:
                         continue
-                    data = {
-                        "data": receive_data,
-                    }
                     if user_id:
-                        data["user_id"] = user_id
-                    await self.broker.async_send_arbiter_message(
+                        # MARK: THINK ABOUT IT
+                        pass
+                    await self.broker.push_message(
                         task_function.queue_name,
-                        pickle.dumps(data),
-                        websocket_response_ch,
+                        pickle.dumps((response_queue, receive_data))
                     )
             except WebSocketDisconnect:
                 pass
             if not response_task.done():
                 response_task.cancel()
-            await websocket.close()
+            if not websocket.client_state == WebSocketState.DISCONNECTED:
+                await websocket.close()
 
         async def handle_sync_unicast_websocket(
             websocket: WebSocket,
@@ -278,23 +335,29 @@ class ArbiterApiApp(FastAPI):
         ):
             await websocket.accept()
             try:
+                response_queue = uuid.uuid4().hex
                 while True:
                     receive_data = await websocket.receive_text()
                     if not receive_data:
                         continue
-                    data = {
-                        "data": receive_data,
-                    }
                     if user_id:
-                        data["user_id"] = user_id
-                    response = await self.broker.send_arbiter_message(
-                        task_function.queue_name,
-                        pickle.dumps(data),
-                    )
-                    await websocket.send_text(response.decode())
+                        # MARK: THINK ABOUT IT
+                        pass
                     
+                    await self.broker.push_message(
+                        task_function.queue_name,
+                        pickle.dumps((response_queue, receive_data))
+                    )
+                    try:
+                        message = await self.broker.get_message(response_queue)
+                    except TimeoutError:
+                        break
+                    await websocket.send_text(message.decode())
             except WebSocketDisconnect:
                 pass
+            if not websocket.client_state == WebSocketState.DISCONNECTED:
+                await websocket.close()
+
 
         async def handle_websocket(
             websocket: WebSocket,

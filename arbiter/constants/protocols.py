@@ -1,4 +1,5 @@
 from typing import Any, Protocol
+from pydantic import BaseModel
 from arbiter.constants.enums import (
     StreamCommunicationType,
     StreamMethod, 
@@ -27,6 +28,7 @@ class HttpTaskProtocol(TaskProtocol):
     auth: bool
     routing: bool
     method: HttpMethod
+    response_model: BaseModel
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         ...

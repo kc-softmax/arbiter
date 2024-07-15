@@ -104,14 +104,3 @@ class Database:
                 if all(conditions):
                     results.append(model_data)
         return results
-
-    ################ user management ################
-    async def get_user_from_email(self, email: str) -> User | None:
-        keys = await self.client.keys(f'user:*')
-        for key in keys:
-            data = await self.client.get(key)
-            if data:
-                user = User.parse_raw(data)
-                if user.email == email:
-                    return user
-        return None

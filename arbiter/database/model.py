@@ -1,5 +1,5 @@
-from typing import Optional
-from pydantic import BaseModel, Field, PrivateAttr
+from typing import Optional, Type
+from pydantic import BaseModel, Field
 from datetime import datetime
 from arbiter.constants.enums import (
     ServiceState, 
@@ -46,9 +46,10 @@ class Service(DefaultModel):
 
 class TaskFunction(DefaultModel):
     queue_name: str
-    parameters: list[tuple[str, str]]
     service_meta: ServiceMeta
     auth: bool = Field(default=False)
+    request_models: str | None = Field(default=None)
+    response_model: str | None = Field(default=None)
     method: HttpMethod | None = Field(default=None)
     connection: StreamMethod | None = Field(default=None)
     communication_type: StreamCommunicationType | None = Field(default=None)

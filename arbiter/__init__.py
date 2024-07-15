@@ -3,11 +3,13 @@ import asyncio
 import uuid
 import importlib
 import time
+import json
 import inspect
 import pickle
+from pydantic import BaseModel
 from contextlib import asynccontextmanager
 from warnings import warn
-from typing import AsyncGenerator, TypeVar, Generic
+from typing import AsyncGenerator, TypeVar, Generic, get_type_hints
 from arbiter.broker import RedisBroker
 from arbiter.database import Database
 from arbiter.database.model import (
@@ -18,6 +20,8 @@ from arbiter.database.model import (
 )
 from arbiter.service import AbstractService
 from arbiter.constants import (
+    ArbiterMessage,
+    ArbiterBroadcastMessage,
     WARP_IN_TIMEOUT,
     ARBITER_SERVICE_PENDING_TIMEOUT,
     ARBITER_SERVICE_ACTIVE_TIMEOUT,
@@ -25,11 +29,8 @@ from arbiter.constants import (
     ARBITER_SERVICE_SHUTDOWN_TIMEOUT,
     ARBITER_SYSTEM_CHANNEL,
     ARBITER_API_CHANNEL,
-)
-from arbiter.constants.data import (
-    ArbiterSystemRequestMessage,
-    ArbiterSystemMessage,
-    ArbiterMessage,
+    ALLOWED_TYPE,
+    AUTH_PARAMETER,
 )
 from arbiter.constants.enums import (
     WarpInTaskResult,
@@ -104,7 +105,9 @@ class Arbiter:
             if routing_functions := await self.db.search_data(TaskFunction, service_meta=service_meta):
                 for routing_function in routing_functions:
                     # add route in arbiter
-                    await self.broker.broadcast(ARBITER_API_CHANNEL, routing_function.json())
+                    await self.broker.broadcast(
+                        ARBITER_API_CHANNEL, 
+                        routing_function.model_dump_json())
             return True
         return False
 
@@ -121,37 +124,36 @@ class Arbiter:
         )
 
     async def _setup_shutdown_task(self):
-        await self.broker.broadcast(
-            ARBITER_SYSTEM_CHANNEL,
-            ArbiterSystemMessage(
-                type=ArbiterMessageType.SHUTDOWN,
-            ).encode()
-        )
-        if replica_nodes := await self.db.search_data(Node, name=self.name, is_master=False):
-            for replica_node in replica_nodes:
-                await self.broker.send_arbiter_message(
-                    replica_node.unique_id,
-                    ArbiterSystemRequestMessage(
-                        from_id=replica_node.shutdown_code,
-                        type=ArbiterMessageType.SHUTDOWN
-                    ).encode(),
-                    False)
-        start_time = time.time()
-        while True:
-            if time.time() - start_time > ARBITER_SERVICE_SHUTDOWN_TIMEOUT:
-                # 서비스가 종료되지 않았기 때문에 확인하는 메세지를 보내야한다.
-                # 종료되지 않은 서비스들이 있기 때문에 확인해야 한다.
-                await self._shutdown_queue.put(
-                    (ArbiterShutdownTaskResult.WARNING, None)
-                )
-                break
-            if not await self.active_services:
-                await self._shutdown_queue.put(
-                    (ArbiterShutdownTaskResult.SUCCESS, None)
-                )
-                break
-            await asyncio.sleep(0.5)
-
+        try:
+            await self.broker.broadcast(
+                ARBITER_SYSTEM_CHANNEL,
+                ArbiterBroadcastMessage(
+                    type=ArbiterMessageType.MASTER_SHUTDOWN).model_dump_json()
+            )
+            if replica_nodes := await self.db.search_data(Node, name=self.name, is_master=False):
+                for replica_node in replica_nodes:
+                    await self.broker.send_message(
+                        replica_node.unique_id,
+                        ArbiterMessage(
+                            data=ArbiterMessageType.SHUTDOWN,
+                            sender_id=self.node.shutdown_code))
+            start_time = time.time()
+            while True:
+                if time.time() - start_time > ARBITER_SERVICE_SHUTDOWN_TIMEOUT:
+                    # 서비스가 종료되지 않았기 때문에 확인하는 메세지를 보내야한다.
+                    # 종료되지 않은 서비스들이 있기 때문에 확인해야 한다.
+                    await self._shutdown_queue.put(
+                        (ArbiterShutdownTaskResult.WARNING, None)
+                    )
+                    break
+                if not await self.active_services:
+                    await self._shutdown_queue.put(
+                        (ArbiterShutdownTaskResult.SUCCESS, None)
+                    )
+                    break
+                await asyncio.sleep(0.3)
+        except Exception as e:
+            print('Error: ', e)
         await self._shutdown_queue.put(None)
 
     async def shutdown_task(self) -> AsyncGenerator[tuple[ArbiterShutdownTaskResult, str], None]:
@@ -170,13 +172,12 @@ class Arbiter:
             if message == None:
                 break
             yield message
-        await self.broker.send_arbiter_message(
+        await self.broker.send_message(
             self.node.unique_id,
-            ArbiterSystemRequestMessage(
-                from_id=self.node.shutdown_code,
-                type=ArbiterMessageType.SHUTDOWN
-            ).encode(),
-            False)
+            ArbiterMessage(
+                data=ArbiterMessageType.SHUTDOWN,
+                sender_id=self.node.shutdown_code, 
+                response=False))
         self.shutdown_flag = True
         await self.system_task
         await self.health_check_task
@@ -248,7 +249,6 @@ class Arbiter:
             await self._warp_in_queue.put(None)
             yield self
             return
-
         await self._warp_in_queue.put(None)
         self.node = await self.db.create_data(
             Node,
@@ -275,28 +275,76 @@ class Arbiter:
                     module_name=service_class.__module__)
                 
                 if tasks := service_class.tasks:
+                    """
+                        model의 parameter를 확인할 수 있는 정보
+                        pydantic model의 type을 dict로 저장해야 한다.
+                    """
                     for task in tasks:
-                        if not getattr(task, 'routing', False):
-                            continue
-                        signature = inspect.signature(task)
-                        # Print the parameters of the function
-                        # check if the first argument is User instance
-                        parameters = [
-                            (param.name, extract_annotation(param))
-                            for param in signature.parameters.values()
-                            if param.name != 'self'
-                        ]
-                        data = dict(
-                            name=task.__name__,
-                            queue_name=f"{to_snake_case(service_meta.name)}_{task.__name__}",
-                            parameters=parameters,
-                            service_meta=service_meta,
-                            auth=getattr(task, 'auth', False),
-                            method=getattr(task, 'method', None),
-                            connection=getattr(task, 'connection', None),
-                            communication_type=getattr(task, 'communication_type', None),
-                        )
-                        await self.db.create_data(TaskFunction, **data)
+                        # task는 function 내용이다, 즉 response model이 없다
+                        try:
+                            if not getattr(task, 'routing', False):
+                                continue
+                            signature = inspect.signature(task)
+                            # deprecated, because of using dynamic pydantic model
+                            # Print the parameters of the function
+                            # check if the first argument is User instance
+                            # parameters = [
+                            #     (param.name, extract_annotation(param))
+                            #     for param in signature.parameters.values()
+                            #     if param.name != 'self'
+                            # ]
+
+                            data = dict(
+                                name=task.__name__,
+                                queue_name=f"{to_snake_case(service_meta.name)}_{task.__name__}",
+                                service_meta=service_meta,
+                                auth=getattr(task, 'auth', False),
+                                method=getattr(task, 'method', None),
+                                connection=getattr(task, 'connection', None),
+                                communication_type=getattr(task, 'communication_type', None),
+                            )
+                            request_models_params: list = []
+                            response_model_params = None
+                            
+                            for param in signature.parameters.values():
+                                annotation = param.annotation
+                                if param.name == 'self':
+                                    continue
+                                if param.name == AUTH_PARAMETER:
+                                    continue
+                                name = param.name
+                                annotation = param.annotation
+                                
+                                # 타입 힌트를 가져와서 허용된 타입 중 하나인지 확인
+                                if not isinstance(annotation, type):
+                                    annotation = get_type_hints(signature).get(param.name, None)
+                                
+                                assert annotation is not None, f"Parameter {param.name} should have a type annotation"
+                                assert isinstance(annotation, type), f"Parameter {param.name} annotation must be a type"
+                                assert issubclass(annotation, ALLOWED_TYPE), f"Parameter {param.name} should be one of {ALLOWED_TYPE}"
+                                
+                                if issubclass(annotation, BaseModel):
+                                    request_model_params = annotation.model_json_schema()
+                                else:
+                                    request_model_params = annotation.__name__
+                                
+                                request_models_params.append((name, request_model_params))
+
+                            if response_model := getattr(task, 'response_model', None):
+                                assert isinstance(response_model, type), f"{response_model} annotation must be a type"
+                                assert issubclass(response_model, ALLOWED_TYPE), f"{response_model} should be one of {ALLOWED_TYPE}"
+                                if issubclass(response_model, BaseModel):
+                                    response_model_params = response_model.model_json_schema()
+                                else:
+                                    response_model_params = response_model.__name__
+                                    
+                            data.update(
+                                request_models=json.dumps(request_models_params),
+                                response_model=json.dumps(response_model_params) if response_model_params else None,
+                            )
+                            await self.db.create_data(TaskFunction, **data)
+                        except Exception as e:
+                            print('ex: ', e)
                         
                 if service_class.auto_start:
                     for _ in range(service_class.initial_processes):
@@ -333,13 +381,11 @@ class Arbiter:
             service = await self.db.get_data(Service, service_id)
             if service and service.state == ServiceState.ACTIVE:
                 target = f"{to_snake_case(service.service_meta.name)}_listener"
-                await self.broker.send_arbiter_message(
-                    target,
-                    ArbiterSystemMessage(
-                        type=ArbiterMessageType.ARBITER_SERVICE_UNREGISTER,
-                    ).encode(), 
-                    False
-                )
+                print('stop service not working')
+                # await self.broker.send_message(
+                #     target,
+                    
+                #     ArbiterMessageType.ARBITER_SERVICE_UNREGISTER)
 
     async def health_check_func(self):
         while not self.system_task.done():
@@ -369,80 +415,60 @@ class Arbiter:
             await asyncio.sleep(0.5)
 
     async def system_task_func(self):
-        while True:
-            request_json = await self.broker.client.blpop(
-                self.node.unique_id,
-                timeout=ARBITER_SYSTEM_TIMEOUT)
-            if request_json:
-                try:
-                    message = ArbiterMessage.decode(request_json[1])
-                    requset_message = ArbiterSystemRequestMessage.decode(
-                        message.data)
-                    from_service_id = requset_message.from_id
-                    response = None
-                    match requset_message.type:
-                        case ArbiterMessageType.API_REGISTER:
-                            await self._warp_in_queue.put((
-                                WarpInTaskResult.API_REGISTER_SUCCESS,
-                                from_service_id))
-                        case ArbiterMessageType.API_UNREGISTER:
-                            await self._warp_in_queue.put((
-                                WarpInTaskResult.API_REGISTER_SUCCESS,
-                                from_service_id))
-                            
-                        case ArbiterMessageType.PING:
-                            # health check의 경우 한번에 모아서 업데이트 하는 경우를 생각해봐야한다.
-                            if service := await self.db.get_data(Service, from_service_id):
-                                if service.state == ServiceState.PENDING:
-                                    warn('Service is not registered yet.')
-                                elif service.state == ServiceState.INACTIVE:
-                                    warn(
-                                        """
-                                        Service is inactive, but service try
-                                        to send ping message.
-                                        please check the service and
-                                        service shutdown process.
-                                        """)
-                                else:
-                                    await self.db.update_data(service)
-                                    response = ArbiterSystemMessage(
-                                        type=ArbiterMessageType.PONG
-                                    )
-                        case ArbiterMessageType.ARBITER_SERVICE_REGISTER:
-                            if await self.register_service(from_service_id):
-                                response = ArbiterSystemMessage(
-                                    type=ArbiterMessageType.ARBITER_SERVICE_REGISTER_ACK
-                                )
-                        case ArbiterMessageType.ARBITER_SERVICE_UNREGISTER:
-                            if unregistered_service := await self.db.get_data(Service, from_service_id):
-                                await self.unregister_service(unregistered_service)
-                                response = ArbiterSystemMessage(
-                                    type=ArbiterMessageType.ARBITER_SERVICE_UNREGISTER_ACK,
-                                )
-                        
-                        case ArbiterMessageType.SHUTDOWN:
-                            if self.node.shutdown_code == from_service_id:
-                                break
-                except Exception as e:
-                    print('Error: ', e)
-                    print('Request: ', request_json)
-                    print('Message: ', message)
-                    print("Request Message: ", requset_message)
-                    response = ArbiterSystemMessage(
-                        message_type=ArbiterMessageType.ERROR,
-                        data=str(e)
+        async for message in self.broker.listen(
+            self.node.unique_id, 
+            ARBITER_SYSTEM_TIMEOUT
+        ):
+            try:
+                sender_id = message.sender_id
+                message_type = ArbiterMessageType(int(message.data))
+                response: ArbiterMessageType = None
+                match message_type:
+                    case ArbiterMessageType.API_REGISTER:
+                        await self._warp_in_queue.put((
+                            WarpInTaskResult.API_REGISTER_SUCCESS,
+                            sender_id))
+                    case ArbiterMessageType.API_UNREGISTER:
+                        await self._warp_in_queue.put((
+                            WarpInTaskResult.API_REGISTER_SUCCESS,
+                            sender_id))
+                    case ArbiterMessageType.PING:
+                        # health check의 경우 한번에 모아서 업데이트 하는 경우를 생각해봐야한다.
+                        if service := await self.db.get_data(Service, sender_id):
+                            if service.state == ServiceState.PENDING:
+                                warn('Service is not registered yet.')
+                            elif service.state == ServiceState.INACTIVE:
+                                warn(
+                                    """
+                                    Service is inactive, but service try
+                                    to send ping message.
+                                    please check the service and
+                                    service shutdown process.
+                                    """)
+                            else:
+                                await self.db.update_data(service)
+                                response = ArbiterMessageType.PONG
+                    case ArbiterMessageType.ARBITER_SERVICE_REGISTER:
+                        if await self.register_service(sender_id):
+                            response = ArbiterMessageType.ARBITER_SERVICE_REGISTER_ACK
+                    case ArbiterMessageType.ARBITER_SERVICE_UNREGISTER:
+                        if unregistered_service := await self.db.get_data(Service, sender_id):
+                            await self.unregister_service(unregistered_service)
+                            response = ArbiterMessageType.ARBITER_SERVICE_UNREGISTER_ACK
+                    case ArbiterMessageType.SHUTDOWN:
+                        if self.node.shutdown_code == sender_id:
+                            break
+            except Exception as e:
+                print('Error: ', e)
+                print('Message: ', message_type, sender_id)
+                response = ArbiterMessageType.ERROR
+            finally:
+                if response and message.response:
+                    await self.broker.push_message(
+                        message.id,
+                        response.value
                     )
-                message.id and response and await self.broker.push_message(
-                    message.id,
-                    response.encode()
-                )
-            else:
-                # Timeout 발생
-                # Arbiter 상태 확인
-                # Arbiter Shutdown
-                print('Timeout break, Arbiter Shutdown')
-                break
-            
+
         if not self.shutdown_flag:
             # pending_service_queue에 None을 넣어서
             # cli의 종료를 유도하여 shutdown_task를 실행한다.
