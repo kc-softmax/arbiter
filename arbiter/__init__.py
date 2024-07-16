@@ -9,7 +9,7 @@ import pickle
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 from warnings import warn
-from typing import AsyncGenerator, TypeVar, Generic, get_type_hints
+from typing import AsyncGenerator, TypeVar, Generic, get_type_hints, get_origin, get_args, List
 from arbiter.broker import RedisBroker
 from arbiter.database import Database
 from arbiter.database.model import (
@@ -217,6 +217,7 @@ class Arbiter:
 
     @asynccontextmanager
     async def start(self, config: dict[str, str]={}) -> AsyncGenerator[Arbiter, Exception]:
+
         try:
             await self.db.connect()
             await self.db.initialize()
@@ -305,7 +306,7 @@ class Arbiter:
                             )
                             request_models_params: list = []
                             response_model_params = None
-                            
+                            is_list = False
                             for param in signature.parameters.values():
                                 annotation = param.annotation
                                 if param.name == 'self':
@@ -316,28 +317,48 @@ class Arbiter:
                                 annotation = param.annotation
                                 
                                 # 타입 힌트를 가져와서 허용된 타입 중 하나인지 확인
-                                if not isinstance(annotation, type):
-                                    annotation = get_type_hints(signature).get(param.name, None)
-                                
-                                assert annotation is not None, f"Parameter {param.name} should have a type annotation"
-                                assert isinstance(annotation, type), f"Parameter {param.name} annotation must be a type"
-                                assert issubclass(annotation, ALLOWED_TYPE), f"Parameter {param.name} should be one of {ALLOWED_TYPE}"
-                                
-                                if issubclass(annotation, BaseModel):
-                                    request_model_params = annotation.model_json_schema()
-                                else:
-                                    request_model_params = annotation.__name__
-                                
-                                request_models_params.append((name, request_model_params))
-
-                            if response_model := getattr(task, 'response_model', None):
-                                assert isinstance(response_model, type), f"{response_model} annotation must be a type"
-                                assert issubclass(response_model, ALLOWED_TYPE), f"{response_model} should be one of {ALLOWED_TYPE}"
-                                if issubclass(response_model, BaseModel):
-                                    response_model_params = response_model.model_json_schema()
-                                else:
-                                    response_model_params = response_model.__name__
+                                try:
+                                    if not isinstance(annotation, type):
+                                        annotation = get_type_hints(task).get(param.name, None)
+                                    assert annotation is not None, f"Parameter {param.name} should have a type annotation"
+                                    request_model_type = None
+                                    origin = get_origin(annotation)
+                                    if origin is list or origin is List:
+                                        is_list = True
+                                        request_model_type = get_args(annotation)[0]
+                                    else:
+                                        is_list = False
+                                        request_model_type = annotation
+                                    assert isinstance(request_model_type, type), f"Parameter {param.name} annotation must be a type"
+                                    assert issubclass(request_model_type, ALLOWED_TYPE), f"Parameter {param.name} should be one of {ALLOWED_TYPE}"
+                                    if issubclass(request_model_type, BaseModel):
+                                        request_model_params = request_model_type.model_json_schema()
+                                    else:
+                                        request_model_params = request_model_type.__name__
+                                    if is_list:
+                                        request_model_params = [request_model_params]
+                                    request_models_params.append((name, request_model_params))
+                                except Exception as e:
+                                    print('ex h: ', e)
                                     
+                            if response_model := getattr(task, 'response_model', None):
+                                is_list = False
+                                response_model_type = None
+                                origin = get_origin(response_model)
+                                if origin is list or origin is List:
+                                    is_list = True
+                                    response_model_type = get_args(response_model)[0]
+                                else:
+                                    is_list = False
+                                    response_model_type = response_model
+                                assert isinstance(response_model_type, type), f"{response_model_type} annotation must be a type"
+                                assert issubclass(response_model_type, ALLOWED_TYPE), f"{response_model_type} should be one of {ALLOWED_TYPE}"
+                                if issubclass(response_model_type, BaseModel):
+                                    response_model_params = response_model_type.model_json_schema()
+                                else:
+                                    response_model_params = response_model_type.__name__
+                                if is_list:
+                                    response_model_params = [response_model_params]
                             data.update(
                                 request_models=json.dumps(request_models_params),
                                 response_model=json.dumps(response_model_params) if response_model_params else None,
@@ -420,6 +441,8 @@ class Arbiter:
             ARBITER_SYSTEM_TIMEOUT
         ):
             try:
+                if message is None:
+                    break
                 sender_id = message.sender_id
                 message_type = ArbiterMessageType(int(message.data))
                 response: ArbiterMessageType = None

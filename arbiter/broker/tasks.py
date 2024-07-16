@@ -105,13 +105,15 @@ class HttpTask(Task):
     def __call__(self, func: HttpTaskProtocol) -> BaseModel | str | bytes:
         super().__call__(func)
         func.response_model = self.response_model
-        signature = inspect.signature(func)
-        request_models = {}
-        for param in signature.parameters.values():
-            if param.name == 'self':
-                continue
-            request_models[param.name] = param.annotation
-        
+        try:
+            signature = inspect.signature(func)
+            request_models = {}
+            for param in signature.parameters.values():
+                if param.name == 'self':
+                    continue
+                request_models[param.name] = param.annotation
+        except Exception as e:
+            print('24 ', (e))           
         @functools.wraps(func)
         async def wrapper(self, *args: Any, **kwargs: Any):
             channel = f'{to_snake_case(self.__class__.__name__)}_{func.__name__}'

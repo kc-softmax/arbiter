@@ -171,25 +171,41 @@ class ArbiterApiApp(FastAPI):
 
         DynamicRequestModel = None
         DynamicResponseModel = None
+        list_response = False
+        list_request = False
         
         if task_function.response_model:
             response_model = json.loads(task_function.response_model)
+            list_response = isinstance(response_model, list)
+            if list_response:
+                response_model = response_model[0]
             if isinstance(response_model, dict):
                 DynamicResponseModel = create_model_from_schema(response_model)
             else:
                 DynamicResponseModel = response_model
+                
         if task_function.request_models != '[]':
             dynamic_request_params = {}
             request_models = json.loads(task_function.request_models)
             for name, annotation in request_models:
                 request_model = None
+                list_request = isinstance(annotation, list)
+                if list_request:
+                    annotation = annotation[0]
                 if isinstance(annotation, dict):
                     request_model = create_model_from_schema(annotation)
                 else:
                     request_model = annotation
+                if list_request:
+                    request_model = list[request_model]
                 dynamic_request_params[name] = (request_model, ...)
             DynamicRequestModel = create_model(task_function.name + "Model", **dynamic_request_params)
-
+        try:
+            if list_response:
+                DynamicResponseModel = list[DynamicResponseModel]
+        except Exception as e:
+            print(e, 'err')
+                        
         async def dynamic_function_no_requset(
             app: ArbiterApiApp = Depends(get_app),
             task_function: TaskFunction = Depends(get_task_function),
@@ -258,19 +274,21 @@ class ArbiterApiApp(FastAPI):
             end_point = dynamic_auth_function if DynamicRequestModel else dynamic_auth_function_no_requset
         else:
             end_point = dynamic_function if DynamicRequestModel else dynamic_function_no_requset
-            
-        if DynamicResponseModel:
-            self.router.post(
-                f'/{to_snake_case(service_name)}/{task_function.name}',
-                tags=[service_name],
-                response_model=DynamicResponseModel
-            )(end_point)
-        else:
-            self.router.post(
-                f'/{to_snake_case(service_name)}/{task_function.name}',
-                tags=[service_name]
-            )(end_point)
-        
+        try:
+            if DynamicResponseModel:
+                self.router.post(
+                    f'/{to_snake_case(service_name)}/{task_function.name}',
+                    tags=[service_name],
+                    response_model=DynamicResponseModel
+                )(end_point)
+            else:
+                self.router.post(
+                    f'/{to_snake_case(service_name)}/{task_function.name}',
+                    tags=[service_name]
+                )(end_point)
+        except Exception as e:
+            print(e)
+                    
     def generate_websocket_function(
         self,
         service_name: str,
