@@ -1,9 +1,8 @@
 import inspect
 import pickle
 import json
-import uuid
 import functools
-from typing import Any, Type
+from typing import Any, Type, get_origin, get_args, List
 from pydantic import BaseModel
 from arbiter.constants.messages import ArbiterMessage
 from arbiter.broker.base import MessageBrokerInterface
@@ -63,11 +62,10 @@ class StreamTask(Task):
             channel = f'{to_snake_case(self.__class__.__name__)}_{func.__name__}'
             broker = getattr(self, "broker", None)
             assert isinstance(broker, MessageBrokerInterface)
-
-            # response_queue
-            async for message in broker.listen_bytes(channel):
+            #            
+            async for message in broker.listen_bytes(channel):# 이 채널은 함수의 채널 
                 try:
-                    response_queue, receive_data = pickle.loads(message)
+                    response_info, receive_data = pickle.loads(message)
                     if isinstance(receive_data, bytes) and request_type == str:
                         receive_data = receive_data.decode()
                     if isinstance(receive_data, str) and request_type == bytes:
@@ -76,11 +74,17 @@ class StreamTask(Task):
                         case StreamCommunicationType.SYNC_UNICAST:
                             result = await func(self, receive_data)
                             await broker.push_message(
-                                response_queue, result)
+                                response_info, result)
                         case StreamCommunicationType.ASYNC_UNICAST:
                             async for result in func(self, receive_data):
                                 await broker.push_message(
-                                    response_queue, result)
+                                    response_info, result)
+                        case StreamCommunicationType.BROADCAST:
+                            user_id, broadcast_channel = response_info
+                            result = func(self, receive_data, user_id)
+                            await broker.broadcast(broadcast_channel, result)
+                            # channel 로 보내야 하는데?
+                            pass
                     # results = await func(self, decoded_message.data)
                     # await broker.push_message(
                     #     decoded_message.id, results)
@@ -105,15 +109,18 @@ class HttpTask(Task):
     def __call__(self, func: HttpTaskProtocol) -> BaseModel | str | bytes:
         super().__call__(func)
         func.response_model = self.response_model
-        try:
-            signature = inspect.signature(func)
-            request_models = {}
-            for param in signature.parameters.values():
-                if param.name == 'self':
-                    continue
+        signature = inspect.signature(func)
+        response_model = self.response_model
+        request_models = {}
+        for param in signature.parameters.values():
+            if param.name == 'self':
+                continue
+            origin = get_origin(param.annotation)
+            if origin is list or origin is List:
+                request_models[param.name] = [get_args(param.annotation)[0]]
+            else:
                 request_models[param.name] = param.annotation
-        except Exception as e:
-            print('24 ', (e))           
+
         @functools.wraps(func)
         async def wrapper(self, *args: Any, **kwargs: Any):
             channel = f'{to_snake_case(self.__class__.__name__)}_{func.__name__}'
@@ -121,18 +128,40 @@ class HttpTask(Task):
             assert isinstance(broker, MessageBrokerInterface)
             async for message in broker.listen(channel):
                 try:
+                    message: ArbiterMessage
                     request_json = json.loads(message.data)
                     request_params = {}
                     for k, v in request_json.items():
                         if k in request_models:
                             model = request_models[k]
-                            if issubclass(model, BaseModel):
-                                request_params[k] = model.model_validate(v)
+                            if isinstance(model, list):
+                                model = model[0]
+                                assert isinstance(v, list)
+                                if issubclass(model, BaseModel):
+                                    request_params[k] = [
+                                        model.model_validate(_v)
+                                        for _v in v
+                                    ]
+                                else:
+                                    request_params[k] = v
                             else:
-                                request_params[k] = v
+                                if issubclass(model, BaseModel):
+                                    request_params[k] = model.model_validate(v)
+                                else:
+                                    request_params[k] = v
+                    
                     results = await func(self, **request_params)
-                    if isinstance(results, BaseModel):
-                        results = results.model_dump_json()
+                    if isinstance(results, list):
+                        new_results = []
+                        for result in results:
+                            if isinstance(result, BaseModel):
+                                new_results.append(result.model_dump_json())
+                            else:
+                                new_results.append(result)
+                        results = json.dumps(new_results)
+                    else:
+                        if isinstance(results, BaseModel):
+                            results = results.model_dump_json()
                     message.id and await broker.push_message(
                         message.id, 
                         results)

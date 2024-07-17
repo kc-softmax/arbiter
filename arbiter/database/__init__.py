@@ -104,3 +104,17 @@ class Database:
                 if all(conditions):
                     results.append(model_data)
         return results
+    
+     ################ User management ################
+    async def fetch_user_channels(self, user_ids: list[int]) -> list[str]:
+        results = []
+        keys = [
+            f'user:{user_id}'
+            for user_id in user_ids
+        ]
+        values = await self.client.mget(*keys)
+        for value in values:
+            if value:
+                data = User.model_validate_json(value)
+                results.append(data)
+        return results

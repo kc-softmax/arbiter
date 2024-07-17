@@ -42,7 +42,7 @@ class RedisBroker(MessageBrokerInterface):
             return None
         response_data = await self.client.blpop(message.id, timeout=timeout)
         if response_data:
-            response_data = response_data[1]
+            response_data = response_data[1].decode()
         else:
             response_data = None
         # TODO MARK Test ref check

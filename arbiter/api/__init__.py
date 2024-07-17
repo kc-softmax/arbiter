@@ -9,7 +9,7 @@ from pydantic import create_model, BaseModel
 from configparser import ConfigParser
 from fastapi.routing import APIRoute
 from uvicorn.workers import UvicornWorker
-from typing import Optional, Union
+from typing import Optional, Union, get_args, Type
 from fastapi import FastAPI, Query, WebSocket, Depends, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
@@ -28,8 +28,10 @@ from arbiter.database import (
     Node,
     TaskFunction
 )
+from arbiter.constants.messages import ArbiterStreamMessage
 from arbiter.constants.enums import (
     HttpMethod,
+    StreamCommand,
     StreamMethod,
     StreamCommunicationType
 )
@@ -205,59 +207,60 @@ class ArbiterApiApp(FastAPI):
                 DynamicResponseModel = list[DynamicResponseModel]
         except Exception as e:
             print(e, 'err')
-                        
-        async def dynamic_function_no_requset(
+                            
+        async def process_response(
+            response: Union[str, list[str], None], 
+            response_model_type: Optional[type[BaseModel]]) -> Union[dict, list[dict], None]:
+            if not response:
+                raise Exception("Failed to get response")
+            response = json.loads(response) if isinstance(response, str) else response
+            if not response_model_type:
+                return response
+            if isinstance(response, list):
+                assert issubclass(response_model_type, BaseModel), "Response model must be subclass of Pydantic BaseModel"
+                return [response_model_type.model_validate_json(res) for res in response]
+            return response_model_type.model_validate_json(response)
+
+        async def dynamic_function_no_request(
             app: ArbiterApiApp = Depends(get_app),
             task_function: TaskFunction = Depends(get_task_function),
-        ):
+        ) -> Union[dict, list[dict], None]:
             response = await app.broker.send_message(
                 task_function.queue_name,
                 ArbiterMessage(
                     sender_id=self.app_id))
-            if not response:
-                raise Exception("Failed to get response")
-            if not DynamicResponseModel:
-                return response
-            return DynamicResponseModel.model_validate_json(response)
+            return await process_response(response, get_args(DynamicResponseModel)[0] if DynamicResponseModel else None)
 
-        async def dynamic_auth_function_no_requset(
+        async def dynamic_auth_function_no_request(
             user: User = Depends(get_user),
             app: ArbiterApiApp = Depends(get_app),
             task_function: TaskFunction = Depends(get_task_function),
-        ):
+        ) -> Union[dict, list[dict], None]:
             response = await app.broker.send_message(
                 task_function.queue_name,
                 ArbiterMessage(
                     data=json.dumps(dict(user_id=user.id)),
                     sender_id=self.app_id))
-            if not response:
-                raise Exception("Failed to get response")
-            if not DynamicResponseModel:
-                return response
-            return DynamicResponseModel.model_validate_json(response)
+            return await process_response(response, get_args(DynamicResponseModel)[0] if DynamicResponseModel else None)
 
         async def dynamic_function(
-            data: type[BaseModel] = Depends(DynamicRequestModel),  # 동적으로 생성된 Pydantic 모델 사용 # type: ignore
+            data: Type[BaseModel] = Depends(DynamicRequestModel),  # 동적으로 생성된 Pydantic 모델 사용 # type: ignore
             app: ArbiterApiApp = Depends(get_app),
             task_function: TaskFunction = Depends(get_task_function),
-        ):
+        ) -> Union[dict, list[dict], None]:
             response = await app.broker.send_message(
                 task_function.queue_name,
                 ArbiterMessage(
                     data=data.model_dump_json(), 
                     sender_id=self.app_id))
-            if not response:
-                raise Exception("Failed to get response")
-            if not DynamicResponseModel:
-                return response
-            return DynamicResponseModel.model_validate_json(response)
+            return await process_response(response, get_args(DynamicResponseModel)[0] if DynamicResponseModel else None)
 
         async def dynamic_auth_function(
-            data: type[BaseModel] = Depends(DynamicRequestModel),  # 동적으로 생성된 Pydantic 모델 사용 # type: ignore
+            data: Type[BaseModel] = Depends(DynamicRequestModel),  # 동적으로 생성된 Pydantic 모델 사용 # type: ignore
             user: User = Depends(get_user),
             app: ArbiterApiApp = Depends(get_app),
             task_function: TaskFunction = Depends(get_task_function),
-        ):
+        ) -> Union[dict, list[dict], None]:
             data_dict = data.model_dump()
             data_dict["user_id"] = user.id
             response = await app.broker.send_message(
@@ -265,16 +268,13 @@ class ArbiterApiApp(FastAPI):
                 ArbiterMessage(
                     data=json.dumps(data_dict),
                     sender_id=self.app_id))
-            if not response:
-                raise Exception("Failed to get response")
-            if not DynamicResponseModel:
-                return response
-            return DynamicResponseModel.model_validate_json(response)
+            return await process_response(response, get_args(DynamicResponseModel)[0] if DynamicResponseModel else None)
+
+
         if task_function.auth:
-            end_point = dynamic_auth_function if DynamicRequestModel else dynamic_auth_function_no_requset
+            end_point = dynamic_auth_function if DynamicRequestModel else dynamic_auth_function_no_request
         else:
-            end_point = dynamic_function if DynamicRequestModel else dynamic_function_no_requset
-        try:
+            end_point = dynamic_function if DynamicRequestModel else dynamic_function_no_request
             if DynamicResponseModel:
                 self.router.post(
                     f'/{to_snake_case(service_name)}/{task_function.name}',
@@ -286,8 +286,6 @@ class ArbiterApiApp(FastAPI):
                     f'/{to_snake_case(service_name)}/{task_function.name}',
                     tags=[service_name]
                 )(end_point)
-        except Exception as e:
-            print(e)
                     
     def generate_websocket_function(
         self,
@@ -313,6 +311,7 @@ class ArbiterApiApp(FastAPI):
             MULTICAST
                 send message to specific group
             BROADCAST
+                현재 접속하여 있는 사람들에게 메세지를 보낸다.?
                 특정 방에 있는 모두에게 메세지를 보낸다.
 
         """
@@ -325,6 +324,7 @@ class ArbiterApiApp(FastAPI):
                     await websocket.send_text(data.decode())
                 
             await websocket.accept()
+            # user_id 가 있을 경우 user의 unique_id를 이용하여 처리한다.
             response_queue = uuid.uuid4().hex
             response_task = asyncio.create_task(get_response(websocket, response_queue))
             
@@ -376,47 +376,120 @@ class ArbiterApiApp(FastAPI):
             if not websocket.client_state == WebSocketState.DISCONNECTED:
                 await websocket.close()
 
-
-        async def handle_websocket(
+        async def handle_multicast_websocket(
             websocket: WebSocket,
             user_id: str = None
         ):
             async def get_response(websocket: WebSocket, channel: str):
-                async for data in self.broker.listen(channel):
+                async for data in self.broker.listen_bytes(channel):
                     await websocket.send_text(data.decode())
-                    
-            
-            websocket_response_ch = uuid.uuid4().hex
+                
+            targets = set()
             await websocket.accept()
-
-            response_task = asyncio.create_task(get_response(websocket, websocket_response_ch))
-            
+            if user_id:
+                # MARK: THINK ABOUT IT
+                pass
+            # multicast의 경우 단발성이기 때문에 만든다.
+            # 데이터를 저장은 고민해봐야한다.
+            response_queue = uuid.uuid4().hex
+            response_task = asyncio.create_task(get_response(websocket, response_queue))            
             try:
                 while not response_task.done():
-                    receive_data = await websocket.receive_text()
+                    # TODO Test
+                    receive_data = await websocket.receive()
                     if not receive_data:
                         continue
-                    data = {
-                        "data": receive_data,
-                    }
-                    if user_id:
-                        data["user_id"] = user_id
-                    await self.broker.async_send_arbiter_message(
-                        task_function.queue_name,
-                        pickle.dumps(data),
-                        websocket_response_ch,
-                    )
+                # 메시지가 JSON 형태인지 확인
+                    try:
+                        json_data = json.loads(receive_data)
+                        stream_message = ArbiterStreamMessage.model_validate_json(json_data)
+                        match stream_message.command:
+                            case StreamCommand.SET_MULTICAST_TARGETS:
+                                # target_user_id, target_channel_id
+                                target_info: dict = json.loads(stream_message.data)
+                                target_user_ids: list = target_info.get("target_user_ids", [])
+                                target_channel_ids: list = target_info.get("target_channel_ids", [])
+                                if target_user_ids:
+                                    if channels := await self.db.fetch_user_channels(target_user_ids):
+                                        target_channel_ids.extend(channels)
+                                targets.update(target_channel_ids)
+                                
+                    except json.JSONDecodeError:
+                        if not targets:
+                            await websocket.send("No targets")
+                            continue
+                        # receive_data should be bytes and str
+                        assert isinstance(receive_data, (bytes, str)), "Data must be bytes or str"
+                        for target in targets:
+                            await self.broker.push_message(
+                                target,
+                                pickle.dumps((response_queue, receive_data))
+                            )
             except WebSocketDisconnect:
                 pass
             if not response_task.done():
                 response_task.cancel()
-            await websocket.close()
+            if not websocket.client_state == WebSocketState.DISCONNECTED:
+                await websocket.close()
+
+        async def handle_broadcast_websocket(
+            websocket: WebSocket,
+            user_id: str = None
+        ):
+            async def subscribe(websocket: WebSocket, channel: str):
+                async for data in self.broker.subscribe(channel):
+                    await websocket.send_text(data)
+                       
+            await websocket.accept()
+            if user_id:
+                # MARK: THINK ABOUT IT
+                pass
+            user_id = user_id or "guest"
+            # 데이터를 저장은 고민해봐야한다.
+            channel: str = None
+            subscribe_task = None
+            try:
+                while not websocket.client_state == WebSocketState.DISCONNECTED:
+                    # TODO Test
+                    receive_data = await websocket.receive()
+                    if not receive_data:
+                        continue
+                    try:
+                        json_data = json.loads(receive_data)
+                        stream_message = ArbiterStreamMessage.model_validate_json(json_data)
+                        match stream_message.command:
+                            case StreamCommand.SET_BROADCAST_TARGET:
+                                # channel id
+                                channel = stream_message.data
+                                # find channel
+                                # 일단 다 만들 수 있도록 해보자
+                                # if find:
+                                #      subscribe_task = asyncio.create_task(subscribe(websocket, channel))            
+                                subscribe_task = asyncio.create_task(subscribe(websocket, channel))
+                    except json.JSONDecodeError:
+                        if not channel:
+                            await websocket.send("No channel")
+                            continue
+                        # receive_data should be bytes and str
+                        assert isinstance(receive_data, (bytes, str)), "Data must be bytes or str"
+                        
+                        await self.broker.push_message(
+                            task_function.queue_name,
+                            pickle.dumps(((user_id, channel), receive_data))
+                        )
+            except WebSocketDisconnect:
+                    pass
+            if subscribe_task and not subscribe_task.done():
+                subscribe_task.cancel()
+            if not websocket.client_state == WebSocketState.DISCONNECTED:
+                await websocket.close()
+
 
         handle_websocket_functions = {
             StreamCommunicationType.ASYNC_UNICAST: handle_async_unicast_websocket,
             StreamCommunicationType.SYNC_UNICAST: handle_sync_unicast_websocket,
-            StreamCommunicationType.MULTICAST: handle_websocket,
-            StreamCommunicationType.BROADCAST: handle_websocket,
+            StreamCommunicationType.MULTICAST: handle_multicast_websocket,
+            StreamCommunicationType.BROADCAST: handle_broadcast_websocket,
         }
         websocket_function = handle_websocket_functions[task_function.communication_type]
         

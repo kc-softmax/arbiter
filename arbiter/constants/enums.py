@@ -7,6 +7,17 @@ class ServiceState(IntEnum):
     INACTIVE = 3
 
 
+class StreamCommand(IntEnum):
+    SET_MULTICAST_TARGETS = 22
+    """MULTICAST 방식으로 메세지를 보낼 대상을 설정하는 명령어"""
+    
+    SET_BROADCAST_TARGET = 23
+    """BROADCAST 방식으로 메세지를 보낼 채널을 설정하는 명령어"""
+    
+    SUBSCRIBE = 24
+    """특정 채널을 구독하는 명령어"""
+
+
 class StreamMethod(IntEnum):
     WEBSOCKET = 10
     """WebSocket을 통한 스트림 전송 방식."""

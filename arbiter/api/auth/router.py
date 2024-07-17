@@ -1,4 +1,5 @@
 import httpx
+import uuid
 import arbiter.api.auth.exceptions as AuthExceptions
 import arbiter.api.auth.schemas as AuthSchemas
 from fastapi import APIRouter, Depends, HTTPException
@@ -85,7 +86,8 @@ async def signup_email(
     new_user = await db.create_data(
         User,
         email=data.email,
-        password=hashed_password
+        password=hashed_password,
+        unique_channel=uuid.uuid4().hex
     )
     new_token = AuthSchemas.TokenSchema(
         access_token=create_token(new_user.id),

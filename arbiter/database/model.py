@@ -29,6 +29,7 @@ class User(DefaultModel):
     password: str
     created_at: datetime
     updated_at: datetime
+    unique_channel: str
     description: Optional[str] = Field(default=None)
     access_token: Optional[str] = Field(default=None)
     refresh_token: Optional[str] = Field(default=None)
