@@ -6,8 +6,8 @@ from arbiter.constants.enums import ArbiterMessageType, StreamCommand
     
 class ArbiterMessage(BaseModel):
     id: str = Field(default_factory=lambda: uuid.uuid4().hex)
-    sender_id: str = Field(default=None)
-    data: str | bytes = Field(default=None)
+    sender_id: str = Field(default='')
+    data: str | bytes = Field(default='')
     response: bool = Field(default=True)
 
 class ArbiterBroadcastMessage(BaseModel):

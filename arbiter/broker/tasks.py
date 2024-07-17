@@ -129,7 +129,10 @@ class HttpTask(Task):
             async for message in broker.listen(channel):
                 try:
                     message: ArbiterMessage
-                    request_json = json.loads(message.data)
+                    try:
+                        request_json = json.loads(message.data)
+                    except json.JSONDecodeError:
+                        request_json = {}
                     request_params = {}
                     for k, v in request_json.items():
                         if k in request_models:
