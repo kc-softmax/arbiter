@@ -125,5 +125,6 @@ class ArbiterMessageType(IntEnum):
     API_ROUTE_UNREGISTER = 17
     API_ROUTE_UNREGISTER_ACK = 18
     # # Error messages
+    ACK = 19
     ERROR = 100
     

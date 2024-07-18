@@ -12,6 +12,7 @@ class ArbiterMessage(BaseModel):
 
 class ArbiterBroadcastMessage(BaseModel):
     type: ArbiterMessageType
+    data: str | bytes = Field(default='')
 
 class ArbiterStreamMessage(BaseModel):
     command: StreamCommand

@@ -32,6 +32,7 @@ from arbiter.database import (
 from arbiter.constants.messages import ArbiterStreamMessage
 from arbiter.constants.enums import (
     HttpMethod,
+    ServiceState,
     StreamCommand,
     StreamMethod,
     StreamCommunicationType
@@ -93,7 +94,7 @@ class ArbiterApiApp(FastAPI):
         await self.db.connect()
         await self.broker.connect()
         self.router_task = asyncio.create_task(self.router_handler())
-        master_nodes = await self.db.search_data(Node, is_master=True)
+        master_nodes = await self.db.search_data(Node, is_master=True, state=ServiceState.ACTIVE)
         assert len(master_nodes) == 1, "There must be only one master node"
         
         # TODO FIX get master node

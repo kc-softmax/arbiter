@@ -214,7 +214,11 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
     @subscribe_task(channel=ARBITER_SYSTEM_CHANNEL) # Master Channel 인데 바꿔야 한다
     async def get_system_message(self, message: str):
         decoded_message = ArbiterBroadcastMessage.model_validate_json(message)
+        data = decoded_message.data
         match decoded_message.type:
+            case ArbiterMessageType.SHUTDOWN:
+                if data == self.node_id:
+                    self.force_stop = True
             case ArbiterMessageType.MASTER_SHUTDOWN:
                 self.force_stop = True
                 # main arbiter가 비정상적으로 종료되었을때 온다.

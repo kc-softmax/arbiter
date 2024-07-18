@@ -15,6 +15,7 @@ class DefaultModel(BaseModel):
     
 class Node(DefaultModel):
     unique_id: str
+    state: ServiceState
     is_master: bool
     ip_address: str
     shutdown_code: str
@@ -36,9 +37,11 @@ class User(DefaultModel):
 
 
 class ServiceMeta(DefaultModel):
+    node_id: int
     module_name: str
 
 class Service(DefaultModel):
+    node_id: int
     state: ServiceState
     created_at: datetime
     updated_at: datetime

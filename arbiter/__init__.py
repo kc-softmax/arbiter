@@ -62,7 +62,7 @@ class Arbiter:
 
     @property
     async def active_services(self) -> list[Service]:
-        return await self.db.search_data(Service, state=ServiceState.ACTIVE)
+        return await self.db.search_data(Service, state=ServiceState.ACTIVE, node_id=self.node.id)
 
     @property
     def is_replica(self) -> bool:
@@ -82,9 +82,11 @@ class Arbiter:
         self.shutdown_flag = False
 
     async def clear(self):
-        if self.node and not self.is_replica:
-            # 임시코드 master node가 삭제하면 전부 삭제해버린다.
-            await self.db.initialize()
+        if self.node:
+            await self.db.update_data(
+                self.node,
+                state=ServiceState.INACTIVE
+            )
         if self.system_task:
             self.system_task.cancel()
         if self.health_check_task:
@@ -125,32 +127,51 @@ class Arbiter:
 
     async def _setup_shutdown_task(self):
         try:
-            await self.broker.broadcast(
-                ARBITER_SYSTEM_CHANNEL,
-                ArbiterBroadcastMessage(
-                    type=ArbiterMessageType.MASTER_SHUTDOWN).model_dump_json()
-            )
-            if replica_nodes := await self.db.search_data(Node, name=self.name, is_master=False):
-                for replica_node in replica_nodes:
-                    await self.broker.send_message(
-                        replica_node.unique_id,
-                        ArbiterMessage(
-                            data=ArbiterMessageType.SHUTDOWN,
-                            sender_id=self.node.shutdown_code))
+            if not self.is_replica:
+                await self.broker.broadcast(
+                    ARBITER_SYSTEM_CHANNEL,
+                    ArbiterBroadcastMessage(
+                        type=ArbiterMessageType.MASTER_SHUTDOWN,
+                        data=self.node.unique_id
+                    ).model_dump_json()
+                )
+                if replica_nodes := await self.db.search_data(
+                    Node,
+                    state=ServiceState.ACTIVE,
+                    name=self.name, 
+                    is_master=False
+                ):
+                    for replica_node in replica_nodes:
+                        await self.broker.send_message(
+                            replica_node.unique_id,
+                            ArbiterMessage(
+                                data=ArbiterMessageType.SHUTDOWN,
+                                sender_id=replica_node.shutdown_code))
+            else:
+                await self.broker.broadcast(
+                    ARBITER_SYSTEM_CHANNEL,
+                    ArbiterBroadcastMessage(
+                        type=ArbiterMessageType.SHUTDOWN,
+                        data=self.node.unique_id
+                    ).model_dump_json()
+                )
             start_time = time.time()
             while True:
-                if time.time() - start_time > ARBITER_SERVICE_SHUTDOWN_TIMEOUT:
-                    # 서비스가 종료되지 않았기 때문에 확인하는 메세지를 보내야한다.
-                    # 종료되지 않은 서비스들이 있기 때문에 확인해야 한다.
-                    await self._shutdown_queue.put(
-                        (ArbiterShutdownTaskResult.WARNING, None)
-                    )
-                    break
-                if not await self.active_services:
-                    await self._shutdown_queue.put(
-                        (ArbiterShutdownTaskResult.SUCCESS, None)
-                    )
-                    break
+                try:
+                    if time.time() - start_time > ARBITER_SERVICE_SHUTDOWN_TIMEOUT:
+                        # 서비스가 종료되지 않았기 때문에 확인하는 메세지를 보내야한다.
+                        # 종료되지 않은 서비스들이 있기 때문에 확인해야 한다.
+                        await self._shutdown_queue.put(
+                            (ArbiterShutdownTaskResult.WARNING, None)
+                        )
+                        break
+                    if not await self.active_services:
+                        await self._shutdown_queue.put(
+                            (ArbiterShutdownTaskResult.SUCCESS, None)
+                        )
+                        break
+                except Exception as e:
+                    print(e)
                 await asyncio.sleep(0.3)
         except Exception as e:
             print('Error: ', e)
@@ -165,31 +186,41 @@ class Arbiter:
             4. disconnect db
             5. disconnect broker
         """
-        await self.pending_service_queue.put(None)
-        asyncio.create_task(self._setup_shutdown_task())
-        while True:
-            message = await self._shutdown_queue.get()
-            if message == None:
-                break
-            yield message
-        await self.broker.send_message(
-            self.node.unique_id,
-            ArbiterMessage(
-                data=ArbiterMessageType.SHUTDOWN,
-                sender_id=self.node.shutdown_code, 
-                response=False))
-        self.shutdown_flag = True
-        await self.system_task
-        await self.health_check_task
+        try:
+            self.shutdown_flag = True
+            await self.pending_service_queue.put(None)
+            asyncio.create_task(self._setup_shutdown_task())
+            while True:
+                message = await self._shutdown_queue.get()
+                if message == None:
+                    break
+                yield message
+            await self.broker.send_message(
+                self.node.unique_id,
+                ArbiterMessage(
+                    data=ArbiterMessageType.SHUTDOWN,
+                    sender_id=self.node.shutdown_code, 
+                    response=False))
+            self.shutdown_flag = True
+            await self.system_task
+            await self.health_check_task
+        except Exception as e:
+            print('Error in shutdown: ', e)
 
     async def _setup_initial_task(self):
         async def check_initial_services(timeout: int) -> list[Service]:
             start_time = time.time()
             while time.time() - start_time < timeout:
-                if not await self.db.search_data(Service, state=ServiceState.PENDING):
+                if not await self.db.search_data(
+                    Service,
+                    state=ServiceState.PENDING,
+                    node_id=self.node.id):
                     return []
                 await asyncio.sleep(0.5)
-            return await self.db.search_data(Service, state=ServiceState.PENDING)
+            return await self.db.search_data(
+                Service,
+                state=ServiceState.PENDING,
+                node_id=self.node.id)
         # api 와 함께라면 api 부터 검사해야 한다.
         if pending_services := await check_initial_services(ARBITER_SERVICE_PENDING_TIMEOUT):
             # failed to start all services
@@ -220,7 +251,6 @@ class Arbiter:
 
         try:
             await self.db.connect()
-            # await self.db.initialize()
             node_data = dict(
                 name=self.name,
                 unique_id=uuid.uuid4().hex,
@@ -228,7 +258,7 @@ class Arbiter:
                 is_master=True,
                 ip_address="",
             )
-            if previous_nodes := await self.db.search_data(Node, name=self.name):
+            if previous_nodes := await self.db.search_data(Node, name=self.name, state=ServiceState.ACTIVE):
                 # find master node in previous nodes
                 if master_node := next((node for node in previous_nodes if node.is_master), None):
                     node_data.update(is_master=False)
@@ -242,7 +272,6 @@ class Arbiter:
                     (WarpInTaskResult.IS_MASTER, 'Master Node is created')
                 )
         except Exception as e:
-            await self.db.initialize()
             await self.clear()
             await self._warp_in_queue.put(
                 (WarpInTaskResult.FAIL, e)
@@ -253,6 +282,7 @@ class Arbiter:
         await self._warp_in_queue.put(None)
         self.node = await self.db.create_data(
             Node,
+            state=ServiceState.ACTIVE,
             **node_data
         )  # TODO Change
         self.broker = RedisBroker()
@@ -272,6 +302,7 @@ class Arbiter:
                 
                 service_meta = await self.db.create_data(
                     ServiceMeta,
+                    node_id=self.node.id,
                     name=service_class.__name__,
                     module_name=service_class.__module__)
                 
@@ -373,6 +404,7 @@ class Arbiter:
                             await self.db.create_data(
                                 Service,
                                 name=uuid.uuid4().hex,
+                                node_id=self.node.id,
                                 state=ServiceState.PENDING,
                                 service_meta=service_meta
                             )
@@ -478,9 +510,17 @@ class Arbiter:
                         if unregistered_service := await self.db.get_data(Service, sender_id):
                             await self.unregister_service(unregistered_service)
                             response = ArbiterMessageType.ARBITER_SERVICE_UNREGISTER_ACK
+                        else:
+                            print('Service is not found')
                     case ArbiterMessageType.SHUTDOWN:
                         if self.node.shutdown_code == sender_id:
-                            break
+                            if not self.shutdown_flag:
+                                # pending_service_queue에 None을 넣어서
+                                # cli의 종료를 유도하여 shutdown_task를 실행한다.
+                                await self.pending_service_queue.put(None)
+                                response = ArbiterMessageType.ACK
+                            else:
+                                break
             except Exception as e:
                 print('Error: ', e)
                 print('Message: ', message_type, sender_id)
@@ -492,10 +532,6 @@ class Arbiter:
                         response.value
                     )
 
-        if not self.shutdown_flag:
-            # pending_service_queue에 None을 넣어서
-            # cli의 종료를 유도하여 shutdown_task를 실행한다.
-            await self.pending_service_queue.put(None)
 
 
 # atexit.register(arbiter.clear)
