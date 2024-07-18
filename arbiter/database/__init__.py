@@ -42,7 +42,7 @@ class Database:
         self.client = aioredis.Redis.from_pool(async_redis_connection_pool)
 
     async def disconnect(self):
-        await self.client.close()
+        await self.client.aclose()
 
     async def initialize(self):
         await self.clear_database()

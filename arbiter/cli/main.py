@@ -123,7 +123,7 @@ async def check_redis_running():
             port=port)
         redis = Redis(connection_pool=redis_pool)
         await redis.ping()
-        await redis.close()
+        await redis.aclose()
         await redis_pool.disconnect()
         return True
     except ConnectionError:

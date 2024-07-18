@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 from pydantic import BaseModel
 from typing import AsyncGenerator
 from arbiter.broker import subscribe_task, periodic_task, http_task, stream_task
@@ -36,9 +37,9 @@ class TestService(RedisService):
     # async def get_message_auth(self, message: TestModel, member: int) -> TestModel:
     #     return message
 
-    # @http_task(method=HttpMethod.POST, auth=True)
-    # async def get_message_auth_no_request(self, user_id: int) -> str:
-    #     return 'its me'
+    @http_task(method=HttpMethod.POST)
+    async def get_message_auth_no_request(self, datetime: datetime) -> str:
+        return 'its me'
     
     @http_task(method=HttpMethod.POST, response_model=list[TestModel])
     async def get_message(self, message: list[TestModel], member: list[int]) -> list[TestModel]:

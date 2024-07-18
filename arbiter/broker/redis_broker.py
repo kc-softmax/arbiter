@@ -34,7 +34,7 @@ class RedisBroker(MessageBrokerInterface):
         for pubsub in self.pubsub_map.values():
             await pubsub.close()
         if self.client:
-            await self.client.close()
+            await self.client.aclose()
 
     async def send_message(
         self,
