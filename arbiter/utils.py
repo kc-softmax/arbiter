@@ -33,7 +33,6 @@ def to_snake_case(name: str) -> str:
 def find_python_files_in_path(dir_path: str = './'):
     current_path = Path(dir_path)
     python_files = []
-
     # Check root directory files
     for p in current_path.iterdir():
         if p.is_file() and p.suffix == '.py':
@@ -46,9 +45,9 @@ def find_python_files_in_path(dir_path: str = './'):
     services_path = current_path / 'services'
     if services_path.exists() and services_path.is_dir():
         for p in services_path.iterdir():
-            if p.is_file() and p.suffix == '.py':
-                python_files.append(str(p).split('.py')[0])
-
+            if p.is_file() and p.suffix == '.py' and p.name != '__init__.py':
+                file_name = str(p).replace('/', '.').split('.py')[0]
+                python_files.append(file_name)
     return python_files
 
 def find_registered_services(python_files_in_root: list[str], abstract_service: type):
