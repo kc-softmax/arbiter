@@ -220,7 +220,7 @@ class Arbiter:
 
         try:
             await self.db.connect()
-            await self.db.initialize()
+            # await self.db.initialize()
             node_data = dict(
                 name=self.name,
                 unique_id=uuid.uuid4().hex,
