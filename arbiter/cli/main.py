@@ -109,12 +109,18 @@ async def connect_stdin_stdout() -> asyncio.StreamReader:
     await _loop.connect_read_pipe(lambda: protocol, sys.stdin)
     return reader
 
-async def check_redis_running(redis_url: str):
+async def check_redis_running():
     from redis.asyncio import ConnectionPool, Redis, ConnectionError
     try:
+        from arbiter.cli import CONFIG_FILE
+        from arbiter.cli.utils import read_config
+        config = read_config(CONFIG_FILE)
+        host = config.get("cache", "redis.url", fallback="localhost")
+        port = config.get("cache", "cache", fallback="6379")
         redis_pool = ConnectionPool(
-            host=redis_url, 
-            socket_timeout=5)
+            host=host, 
+            socket_timeout=5,
+            port=port)
         redis = Redis(connection_pool=redis_pool)
         await redis.ping()
         await redis.close()
@@ -241,12 +247,11 @@ def dev(
         """
         host = config.get("api", "host", fallback=None)
         port = config.get("api", "port", fallback=None)
-        redis_url=config.get("redis", "url", fallback='localhost')
         worker_count = config.get("api", "worker_count", fallback=1)
         
         console.print(f"[bold green]Warp In [bold yellow]Arbiter[/bold yellow] [bold green]{name}...[/bold green]")
 
-        if not await check_redis_running(redis_url):
+        if not await check_redis_running():
             console.print("[bold red]Failed to start, connect redis issue.[/bold red]")
             console.print("[bold yellow]Check redis connection configuration in 'arbiter.settings.ini'[/bold yellow]")            
             console.print("[bold yellow]or Check if the Redis server is running.  [/bold yellow]")

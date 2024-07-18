@@ -21,8 +21,13 @@ class RedisBroker(MessageBrokerInterface):
         self.pubsub_map: dict[str, PubSub] = {}
 
     async def connect(self, temp: str = None):
+        from arbiter.cli import CONFIG_FILE
+        from arbiter.cli.utils import read_config
+        config = read_config(CONFIG_FILE)
+        host = config.get("cache", "redis.url", fallback="localhost")
+        port = config.get("cache", "cache", fallback="6379")
         async_redis_connection_pool = aioredis.ConnectionPool(
-            host='localhost')
+            host=host, port=port)
         self.client = aioredis.Redis.from_pool(async_redis_connection_pool)
 
     async def disconnect(self):
