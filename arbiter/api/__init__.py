@@ -5,6 +5,7 @@ import uuid
 import asyncio
 import pickle
 import base64
+from datetime import datetime
 from pydantic import create_model, BaseModel
 from configparser import ConfigParser
 from fastapi.routing import APIRoute
@@ -157,11 +158,16 @@ class ArbiterApiApp(FastAPI):
                 'string': str,
                 'integer': int,
                 'number': float,
-                'boolean': bool
+                'boolean': bool,
+                'datetime': datetime
             }
             fields = {}
             for name, details in schema['properties'].items():
-                field_type = type_mapping.get(details['type'], str)  # 기본 타입을 str로 설정
+                # datetime 형식의 문자열을 인식하여 datetime 타입으로 변환
+                if details.get('format') == 'date-time':
+                    field_type = datetime
+                else:
+                    field_type = type_mapping.get(details['type'], str)  # 기본 타입을 str로 설정
                 fields[name] = (field_type, ...)
             return create_model(schema['title'], **fields)     
 

@@ -1,5 +1,5 @@
 import asyncio
-import datetime
+from datetime import datetime
 from pydantic import BaseModel
 from typing import AsyncGenerator
 from arbiter.broker import subscribe_task, periodic_task, http_task, stream_task
@@ -16,6 +16,7 @@ from arbiter.database import User
 class TestModel(BaseModel):
     name: str
     age: int
+    time: datetime
 
 class TestService(RedisService):
 

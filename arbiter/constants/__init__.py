@@ -1,9 +1,10 @@
 from __future__ import annotations
 from pydantic import BaseModel
+from datetime import datetime
 from .enums import *
 from .messages import *
 
-ALLOWED_TYPE = (BaseModel, int, str, float, bool)
+ALLOWED_TYPE = (BaseModel, int, str, float, bool, datetime)
 AUTH_PARAMETER = "user_id"
 
 WARP_IN_TIMEOUT = 10
