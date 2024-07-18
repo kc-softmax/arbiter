@@ -46,8 +46,12 @@ def find_python_files_in_path(dir_path: str = './'):
     if services_path.exists() and services_path.is_dir():
         for p in services_path.iterdir():
             if p.is_file() and p.suffix == '.py' and p.name != '__init__.py':
-                file_name = str(p).replace('/', '.').split('.py')[0]
-                python_files.append(file_name)
+                with open(p, 'r') as file:
+                    content = file.read()
+                    if re.search(r'class\s+\w+\(RedisService\)', content):
+                        file_name = str(p).replace('/', '.').split('.py')[0]
+                        python_files.append(file_name)
+
     return python_files
 
 def find_registered_services(python_files_in_root: list[str], abstract_service: type):
