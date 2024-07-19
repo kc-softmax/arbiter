@@ -12,6 +12,8 @@ from arbiter.constants.enums import (
 from arbiter.database import User
 
 
+class DefaultResponseModel(BaseModel):
+    response: str
 
 class TestModel(BaseModel):
     name: str
@@ -39,12 +41,12 @@ class TestService(RedisService):
     #     return message
 
     @http_task(method=HttpMethod.POST)
-    async def get_message_auth_no_request(self, datetime: datetime) -> str:
-        return 'its me'
+    async def get_message_auth_no_request(self) -> DefaultResponseModel:
+        return 'hihi'
     
-    @http_task(method=HttpMethod.POST, response_model=list[TestModel])
+    @http_task(method=HttpMethod.POST, response_model=TestModel)
     async def get_message(self, message: list[TestModel], member: list[int]) -> list[TestModel]:
-        return message
+        return message[0]
     
     # @http_task(method=HttpMethod.POST)
     # async def get_message_no_requset(self) -> int:

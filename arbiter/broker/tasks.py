@@ -3,7 +3,7 @@ import pickle
 import json
 import functools
 from typing import Any, Type, get_origin, get_args, List
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from arbiter.constants.messages import ArbiterMessage
 from arbiter.broker.base import MessageBrokerInterface
 from arbiter.utils import to_snake_case
@@ -23,6 +23,8 @@ from arbiter.constants.protocols import (
     PeriodicTaskProtocol,
     SubscribeTaskProtocol,
 )
+class DummyResponseModel(BaseModel):
+    response: str = Field(default='success')
 
 
 class Task:
@@ -108,6 +110,9 @@ class HttpTask(Task):
 
     def __call__(self, func: HttpTaskProtocol) -> BaseModel | str | bytes:
         super().__call__(func)
+        if not self.response_model:
+            # generate dummy response model                
+            self.response_model = DummyResponseModel
         func.response_model = self.response_model
         signature = inspect.signature(func)
         response_model = self.response_model
@@ -154,6 +159,9 @@ class HttpTask(Task):
                                     request_params[k] = v
                     
                     results = await func(self, **request_params)
+                    if response_model == DummyResponseModel:
+                        results = DummyResponseModel(response=results)
+                        
                     if isinstance(results, list):
                         new_results = []
                         for result in results:
@@ -165,9 +173,10 @@ class HttpTask(Task):
                     else:
                         if isinstance(results, BaseModel):
                             results = results.model_dump_json()
-                    message.id and await broker.push_message(
-                        message.id, 
-                        results)
+                    if results and message.id:
+                        await broker.push_message(
+                            message.id, 
+                            results)
                 except Exception as e:
                     print(e)
         return wrapper

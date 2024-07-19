@@ -214,54 +214,79 @@ class ArbiterApiApp(FastAPI):
                 DynamicResponseModel = list[DynamicResponseModel]
         except Exception as e:
             print(e, 'err')
-                            
+            
         async def process_response(
             response: Union[str, list[str], None], 
             response_model_type: Optional[type[BaseModel]]) -> Union[dict, list[dict], None]:
             if not response:
                 raise Exception("Failed to get response")
+            # response 가 다른 타입일수 있을까? int, etc,
             response = json.loads(response) if isinstance(response, str) else response
             if not response_model_type:
                 return response
             if isinstance(response, list):
                 assert issubclass(response_model_type, BaseModel), "Response model must be subclass of Pydantic BaseModel"
                 return [response_model_type.model_validate_json(res) for res in response]
-            return response_model_type.model_validate_json(response)
+            return response_model_type.model_validate(response)
 
         async def dynamic_function_no_request(
             app: ArbiterApiApp = Depends(get_app),
             task_function: TaskFunction = Depends(get_task_function),
         ) -> Union[dict, list[dict], None]:
+            response_required = True if DynamicResponseModel else False
             response = await app.broker.send_message(
                 task_function.queue_name,
                 ArbiterMessage(
-                    sender_id=self.app_id))
-            return await process_response(response, get_args(DynamicResponseModel)[0] if DynamicResponseModel else None)
+                    sender_id=self.app_id,
+                    response=response_required))
+            if not DynamicResponseModel:
+                return response
+            if list_response:
+                response_model_type = get_args(DynamicResponseModel)[0]
+            else:
+                response_model_type = DynamicResponseModel
+            return await process_response(response, response_model_type)
 
         async def dynamic_auth_function_no_request(
             user: User = Depends(get_user),
             app: ArbiterApiApp = Depends(get_app),
             task_function: TaskFunction = Depends(get_task_function),
         ) -> Union[dict, list[dict], None]:
+            response_required = True if DynamicResponseModel else False
             response = await app.broker.send_message(
                 task_function.queue_name,
                 ArbiterMessage(
                     data=json.dumps(dict(user_id=user.id)),
-                    sender_id=self.app_id))
-            return await process_response(response, get_args(DynamicResponseModel)[0] if DynamicResponseModel else None)
+                    sender_id=self.app_id,
+                    response=response_required))
+            if not DynamicResponseModel:
+                return response
+            if list_response:
+                response_model_type = get_args(DynamicResponseModel)[0]
+            else:
+                response_model_type = DynamicResponseModel
+            return await process_response(response, response_model_type)
 
         async def dynamic_function(
             data: Type[BaseModel] = Depends(DynamicRequestModel),  # 동적으로 생성된 Pydantic 모델 사용 # type: ignore
             app: ArbiterApiApp = Depends(get_app),
             task_function: TaskFunction = Depends(get_task_function),
         ) -> Union[dict, list[dict], None]:
+            response_required = True if DynamicResponseModel else False
             response = await app.broker.send_message(
                 task_function.queue_name,
                 ArbiterMessage(
                     data=data.model_dump_json(), 
-                    sender_id=self.app_id))
-            return await process_response(response, get_args(DynamicResponseModel)[0] if DynamicResponseModel else None)
-
+                    sender_id=self.app_id,
+                    response=response_required))                    
+            if not DynamicResponseModel:
+                return response
+            if list_response:
+                response_model_type = get_args(DynamicResponseModel)[0]
+            else:
+                response_model_type = DynamicResponseModel
+            return await process_response(response, response_model_type)
+        
         async def dynamic_auth_function(
             data: Type[BaseModel] = Depends(DynamicRequestModel),  # 동적으로 생성된 Pydantic 모델 사용 # type: ignore
             user: User = Depends(get_user),
@@ -270,12 +295,20 @@ class ArbiterApiApp(FastAPI):
         ) -> Union[dict, list[dict], None]:
             data_dict = data.model_dump()
             data_dict["user_id"] = user.id
+            response_required = True if DynamicResponseModel else False
             response = await app.broker.send_message(
                 task_function.queue_name,
                 ArbiterMessage(
                     data=json.dumps(data_dict),
-                    sender_id=self.app_id))
-            return await process_response(response, get_args(DynamicResponseModel)[0] if DynamicResponseModel else None)
+                    sender_id=self.app_id,
+                    response=response_required))                    
+            if not DynamicResponseModel:
+                return response
+            if list_response:
+                response_model_type = get_args(DynamicResponseModel)[0]
+            else:
+                response_model_type = DynamicResponseModel
+            return await process_response(response, response_model_type)
 
 
         if task_function.auth:
