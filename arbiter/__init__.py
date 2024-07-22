@@ -307,25 +307,12 @@ class Arbiter:
                     module_name=service_class.__module__)
                 
                 if tasks := service_class.tasks:
-                    """
-                        model의 parameter를 확인할 수 있는 정보
-                        pydantic model의 type을 dict로 저장해야 한다.
-                    """
                     for task in tasks:
-                        # task는 function 내용이다, 즉 response model이 없다
                         try:
                             if not getattr(task, 'routing', False):
                                 continue
                             signature = inspect.signature(task)
-                            # deprecated, because of using dynamic pydantic model
-                            # Print the parameters of the function
-                            # check if the first argument is User instance
-                            # parameters = [
-                            #     (param.name, extract_annotation(param))
-                            #     for param in signature.parameters.values()
-                            #     if param.name != 'self'
-                            # ]
-
+                            
                             data = dict(
                                 name=task.__name__,
                                 queue_name=f"{to_snake_case(service_meta.name)}_{task.__name__}",

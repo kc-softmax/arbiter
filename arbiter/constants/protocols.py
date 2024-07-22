@@ -9,6 +9,7 @@ from arbiter.constants.enums import (
 
 class TaskProtocol(Protocol):
     is_task_function: bool
+    task_name: str
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         ...

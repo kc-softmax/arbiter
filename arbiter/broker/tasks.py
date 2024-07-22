@@ -30,6 +30,7 @@ class DummyResponseModel(BaseModel):
 class Task:
     def __call__(self, func: TaskProtocol):
         func.is_task_function = True
+        func.task_name = self.__class__.__name__
         for attribute, value in self.__dict__.items():
             setattr(func, attribute, value)
         return func
@@ -38,12 +39,58 @@ class StreamTask(Task):
     def __init__(
         self,
         connection: StreamMethod,
-        communication_type: StreamCommunicationType,
         auth: bool = False,
     ):
         self.auth = auth
         self.connection = connection
-        self.communication_type = communication_type
+        self.communication_type = StreamCommunicationType.SYNC
+        self.routing = True
+
+    def __call__(self, func: StreamTaskProtocol) -> StreamTaskProtocol:
+        super().__call__(func)
+        signature = inspect.signature(func)
+        request_type = None
+        for param in signature.parameters.values():
+            if param.name == 'self':
+                continue
+            if param.annotation not in [bytes, str]:
+                raise ValueError(f"Invalid parameter type: {param.annotation}, stream task only supports bytes and str")
+            if request_type:
+                raise ValueError("Stream task only supports one parameter")
+            request_type = param.annotation
+        
+        @functools.wraps(func)
+        async def wrapper(self, *args: Any, **kwargs: Any):
+            channel = f'{to_snake_case(self.__class__.__name__)}_{func.__name__}'
+            broker = getattr(self, "broker", None)
+            assert isinstance(broker, MessageBrokerInterface)
+            async for message in broker.listen_bytes(channel):# 이 채널은 함수의 채널 
+                try:
+                    response_queue, target, receive_data = pickle.loads(message)
+                    if isinstance(receive_data, bytes) and request_type == str:
+                        receive_data = receive_data.decode()
+                    if isinstance(receive_data, str) and request_type == bytes:
+                        receive_data = receive_data.encode()
+                    result = await func(self, receive_data)
+                    # for target in target:
+                    #     # consider using asyncio.gather
+                    #     # consider waiting for all responses
+                    if target:
+                        await broker.push_message(target, result)
+                    await broker.push_message(response_queue, result)
+                except Exception as e:
+                    print(e)
+        return wrapper
+
+class AsyncStreamTask(Task):
+    def __init__(
+        self,
+        connection: StreamMethod,
+        auth: bool = False,
+    ):
+        self.auth = auth
+        self.connection = connection
+        self.communication_type = StreamCommunicationType.ASYNC
         self.routing = True
 
     def __call__(self, func: StreamTaskProtocol) -> StreamTaskProtocol:
@@ -67,33 +114,23 @@ class StreamTask(Task):
             #            
             async for message in broker.listen_bytes(channel):# 이 채널은 함수의 채널 
                 try:
-                    response_info, receive_data = pickle.loads(message)
+                    response_queue, target, receive_data = pickle.loads(message)
                     if isinstance(receive_data, bytes) and request_type == str:
                         receive_data = receive_data.decode()
                     if isinstance(receive_data, str) and request_type == bytes:
                         receive_data = receive_data.encode()
-                    match func.communication_type:
-                        case StreamCommunicationType.SYNC_UNICAST:
-                            result = await func(self, receive_data)
+
+                    async for result in func(self, receive_data):
+                        if target:
+                            await broker.broadcast(target, result)
+                        else:
+                            assert response_queue, "response_queue is required and set target is not None"
                             await broker.push_message(
-                                response_info, result)
-                        case StreamCommunicationType.ASYNC_UNICAST:
-                            async for result in func(self, receive_data):
-                                await broker.push_message(
-                                    response_info, result)
-                        case StreamCommunicationType.BROADCAST:
-                            user_id, broadcast_channel = response_info
-                            result = func(self, receive_data, user_id)
-                            await broker.broadcast(broadcast_channel, result)
-                            # channel 로 보내야 하는데?
-                            pass
-                    # results = await func(self, decoded_message.data)
-                    # await broker.push_message(
-                    #     decoded_message.id, results)
-                    # print("StreamTask")
+                                response_queue, result)
                 except Exception as e:
                     print(e)
         return wrapper
+
 
 
 class HttpTask(Task):
@@ -205,10 +242,7 @@ class PeriodicTask(Task):
             broker = getattr(self, "broker", None)
             assert isinstance(broker, MessageBrokerInterface)
             async for messages in broker.periodic_listen(periodic_queue, period):
-                try:
-                    await func(self, messages)
-                except Exception as e:
-                    print(e)
+                await func(self, messages)
         return wrapper
 
 
@@ -222,7 +256,6 @@ class SubscribeTask(Task):
     def __call__(self, func: SubscribeTaskProtocol) -> SubscribeTaskProtocol:
         super().__call__(func)
         channel = self.channel
-
         @functools.wraps(func)
         async def wrapper(self, *args, **kwargs):
             broker = getattr(self, "broker", None)

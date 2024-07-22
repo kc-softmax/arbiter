@@ -1,6 +1,6 @@
 from __future__ import annotations
 import uuid
-from typing import Type
+from typing import Type, Optional
 from pydantic import BaseModel, Field
 from arbiter.constants.enums import ArbiterMessageType, StreamCommand
     
@@ -15,5 +15,5 @@ class ArbiterBroadcastMessage(BaseModel):
     data: str | bytes = Field(default='')
 
 class ArbiterStreamMessage(BaseModel):
-    command: StreamCommand
+    command: Optional[StreamCommand] = Field(default=None)
     data: str | bytes = Field(default="")

@@ -119,8 +119,18 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
         setattr(instance, 'node_id', node_id)
         setattr(instance, 'service_id', service_id)
         service = asyncio.create_task(instance.start())
+        await instance.on_launch()
         result = await service
         return result
+
+    async def on_launch(self):
+        pass
+    
+    async def on_start(self):
+        pass
+    
+    async def on_shutdown(self):
+        pass
 
     async def get_service(self):
         return self
@@ -151,12 +161,6 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
         if self.force_stop:
             return 'Force Stop from System'
         return 'Health Check Finished'
-
-    async def on_start(self):
-        pass
-    
-    async def on_shutdown(self):
-        pass
 
     async def shutdown(
         self,

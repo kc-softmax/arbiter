@@ -328,231 +328,176 @@ class ArbiterApiApp(FastAPI):
                 )(end_point)
                     
     def generate_websocket_function(
-        self,
-        service_name: str,
-        task_function: TaskFunction,
-    ):
-        """
-            websocket의 경우 parameter가 user 밖에 없을것이다.
-            인증방식은 query parameter로 token을 받아서 처리할것이다.
-            각각 커뮤니케이션 방식에 따라 동작방식이 다를것이다.
-            SYNC_UNICAST
-                메세지를 받으면, 처리할때까지 기다리고, 응답을 보낸다. (timeout 이 있다.)
-            ASYNC_UNICAST
-                메세지를 받으면, 처리하라고 넘기며, 응답은 비동기적으로 보낸다. (time out이 없다.?)
-                send message and don't wait for response
-
-            PUSH_NOTIFICATION
-            # 로직을 처리하지 않으며, parameter로 channel을 받아서 처리할것이다.?
-            
-            # 대상은 어떻게 정할것인가?
-            # 함수를 만들때 정하지는 못할것이다,
-            # '유저가 접속했을때' 그때 정해야 한다. 함수를 dependon으로 받아서 처리해야 한다?
-            MULTICAST
-                send message to specific group
-            BROADCAST
-                현재 접속하여 있는 사람들에게 메세지를 보낸다.?
-                특정 방에 있는 모두에게 메세지를 보낸다.
-
-        """
-        async def handle_async_unicast_websocket(
-            websocket: WebSocket,
-            user_id: str = None
-        ):
-            async def get_response(websocket: WebSocket, channel: str):
-                async for data in self.broker.listen_bytes(channel):
-                    await websocket.send_text(data.decode())
-                
-            await websocket.accept()
-            # user_id 가 있을 경우 user의 unique_id를 이용하여 처리한다.
-            response_queue = uuid.uuid4().hex
-            response_task = asyncio.create_task(get_response(websocket, response_queue))
-            
-            try:
-                while not response_task.done():
-                    receive_data = await websocket.receive_text()
-                    if not receive_data:
-                        continue
-                    if user_id:
-                        # MARK: THINK ABOUT IT
-                        pass
-                    await self.broker.push_message(
-                        task_function.queue_name,
-                        pickle.dumps((response_queue, receive_data))
-                    )
-            except WebSocketDisconnect:
-                pass
-            if not response_task.done():
-                response_task.cancel()
-            if not websocket.client_state == WebSocketState.DISCONNECTED:
-                await websocket.close()
-
-        async def handle_sync_unicast_websocket(
-            websocket: WebSocket,
-            user_id: str = None
-        ):
-            await websocket.accept()
-            try:
-                response_queue = uuid.uuid4().hex
-                while True:
-                    receive_data = await websocket.receive_text()
-                    if not receive_data:
-                        continue
-                    if user_id:
-                        # MARK: THINK ABOUT IT
-                        pass
-                    
-                    await self.broker.push_message(
-                        task_function.queue_name,
-                        pickle.dumps((response_queue, receive_data))
-                    )
-                    try:
-                        message = await self.broker.get_message(response_queue)
-                    except TimeoutError:
+            self,
+            service_name: str,
+            task_function: TaskFunction,
+        ):        
+            async def message_listen_queue(websocket: WebSocket, queue: str, time_out: int = 10):
+                async for data in self.broker.listen_bytes(queue, time_out):
+                    if data is None:
+                        data = {"from": queue, "data": 'LEAVE'}
+                        await websocket.send_text(json.dumps(data))
                         break
-                    await websocket.send_text(message.decode())
-            except WebSocketDisconnect:
-                pass
-            if not websocket.client_state == WebSocketState.DISCONNECTED:
-                await websocket.close()
+                    data = {"from": queue, "data": data.decode()}
+                    await websocket.send_text(json.dumps(data))
 
-        async def handle_multicast_websocket(
-            websocket: WebSocket,
-            user_id: str = None
-        ):
-            async def get_response(websocket: WebSocket, channel: str):
-                async for data in self.broker.listen_bytes(channel):
-                    await websocket.send_text(data.decode())
-                
-            targets = set()
-            await websocket.accept()
-            if user_id:
-                # MARK: THINK ABOUT IT
-                pass
-            # multicast의 경우 단발성이기 때문에 만든다.
-            # 데이터를 저장은 고민해봐야한다.
-            response_queue = uuid.uuid4().hex
-            response_task = asyncio.create_task(get_response(websocket, response_queue))            
-            try:
-                while not response_task.done():
-                    # TODO Test
-                    receive_data = await websocket.receive()
-                    if not receive_data:
-                        continue
-                # 메시지가 JSON 형태인지 확인
-                    try:
-                        json_data = json.loads(receive_data)
-                        stream_message = ArbiterStreamMessage.model_validate_json(json_data)
-                        match stream_message.command:
-                            case StreamCommand.SET_MULTICAST_TARGETS:
-                                # target_user_id, target_channel_id
-                                target_info: dict = json.loads(stream_message.data)
-                                target_user_ids: list = target_info.get("target_user_ids", [])
-                                target_channel_ids: list = target_info.get("target_channel_ids", [])
-                                if target_user_ids:
-                                    if channels := await self.db.fetch_user_channels(target_user_ids):
-                                        target_channel_ids.extend(channels)
-                                targets.update(target_channel_ids)
-                                
-                    except json.JSONDecodeError:
-                        if not targets:
-                            await websocket.send("No targets")
-                            continue
-                        # receive_data should be bytes and str
-                        assert isinstance(receive_data, (bytes, str)), "Data must be bytes or str"
-                        for target in targets:
-                            await self.broker.push_message(
-                                target,
-                                pickle.dumps((response_queue, receive_data))
-                            )
-            except WebSocketDisconnect:
-                pass
-            if not response_task.done():
-                response_task.cancel()
-            if not websocket.client_state == WebSocketState.DISCONNECTED:
-                await websocket.close()
-
-        async def handle_broadcast_websocket(
-            websocket: WebSocket,
-            user_id: str = None
-        ):
-            async def subscribe(websocket: WebSocket, channel: str):
+            async def message_subscribe_channel(websocket: WebSocket, channel: str):
                 async for data in self.broker.subscribe(channel):
-                    await websocket.send_text(data)
-                       
-            await websocket.accept()
-            if user_id:
-                # MARK: THINK ABOUT IT
-                pass
-            user_id = user_id or "guest"
-            # 데이터를 저장은 고민해봐야한다.
-            channel: str = None
-            subscribe_task = None
-            try:
-                while not websocket.client_state == WebSocketState.DISCONNECTED:
-                    # TODO Test
-                    receive_data = await websocket.receive()
-                    if not receive_data:
-                        continue
-                    try:
-                        json_data = json.loads(receive_data)
-                        stream_message = ArbiterStreamMessage.model_validate_json(json_data)
-                        match stream_message.command:
-                            case StreamCommand.SET_BROADCAST_TARGET:
-                                # channel id
-                                channel = stream_message.data
-                                # find channel
-                                # 일단 다 만들 수 있도록 해보자
-                                # if find:
-                                #      subscribe_task = asyncio.create_task(subscribe(websocket, channel))            
-                                subscribe_task = asyncio.create_task(subscribe(websocket, channel))
-                    except json.JSONDecodeError:
-                        if not channel:
-                            await websocket.send("No channel")
+                    data = {"from": channel, "data": data}
+                    await websocket.send_text(json.dumps(data))
+                    
+            async def async_websocket_function(
+                websocket: WebSocket,
+                user_id: str = None
+            ):
+                await websocket.accept()
+                
+                response_queue = uuid.uuid4().hex
+                if user_id:
+                    if user:= await self.db.get_data(User, user_id):
+                        response_queue = user.unique_channel
+                # stream communication type 수에 따라서 response_queue를 생성한다.                
+                # response task가 만들어질때, response_queue를 인자로 넘겨준다.
+                message_tasks: dict[str, asyncio.Task] = {}
+                message_tasks[response_queue] = asyncio.create_task(message_listen_queue(websocket, response_queue))
+                try:
+                    target = None
+                    while True:
+                        receive_data = await websocket.receive_text()
+                        if not receive_data: 
                             continue
-                        # receive_data should be bytes and str
-                        assert isinstance(receive_data, (bytes, str)), "Data must be bytes or str"
-                        
-                        await self.broker.push_message(
-                            task_function.queue_name,
-                            pickle.dumps(((user_id, channel), receive_data))
-                        )
-            except WebSocketDisconnect:
+                        # target은 믿는다.
+                        try:
+                            json_data = json.loads(receive_data)
+                            
+                            to_remove_tasks = [
+                                key for key, value in message_tasks.items() if value.done()
+                            ]
+                            for key in to_remove_tasks:
+                                message_tasks.pop(key)
+                                
+                            stream_message = ArbiterStreamMessage.model_validate_json(json_data)
+                                                            
+                            match stream_message.command:
+                                case StreamCommand.UNSUBSCRIBE:
+                                    channel = stream_message.data
+                                    if not channel:
+                                        continue
+                                    if channel not in message_tasks:
+                                        await websocket.send_text(f"Already unsubscribed to {channel}")
+                                        continue
+                                    if not message_tasks[channel].done():
+                                        message_tasks[channel].cancel()
+                                case StreamCommand.SUBSCRIBE:
+                                    channel = stream_message.data
+                                    if not channel:
+                                        continue
+                                    if channel in message_tasks and not message_tasks[channel].done():
+                                        await websocket.send_text(f"Already subscribed to {channel}")
+                                        continue
+                                    message_tasks[channel] = asyncio.create_task(message_subscribe_channel(websocket, channel))
+                                    target = channel
+                                case StreamCommand.SET_TARGET:
+                                    new_target = stream_message.data
+                                    # target validation
+                                    target = new_target
+                        except json.JSONDecodeError:
+                            # receive_data should be bytes and str
+                            assert isinstance(receive_data, (bytes, str)), "Data must be bytes or str"
+                            
+                            # target 종류에 따라서 다른 처리방법을 사용해야 한다.
+                            # target이 broadcast인 경우, response_queue는 없어도 된다.
+                            await self.broker.push_message(
+                                task_function.queue_name,
+                                pickle.dumps(
+                                    (
+                                        None if target in message_tasks else response_queue,
+                                        target, 
+                                        receive_data)
+                                )
+                            )
+                except WebSocketDisconnect:
                     pass
-            if subscribe_task and not subscribe_task.done():
-                subscribe_task.cancel()
-            if not websocket.client_state == WebSocketState.DISCONNECTED:
-                await websocket.close()
+                results = await asyncio.gather(*message_tasks.values(), return_exceptions=True)
+                if not websocket.client_state == WebSocketState.DISCONNECTED:
+                    await websocket.close()
 
+            async def sync_websocket_function(
+                websocket: WebSocket,
+                user_id: str = None
+            ):
+                await websocket.accept()
+                try:
+                    response_queue = uuid.uuid4().hex
+                    try:
+                        if user_id:
+                            if user:= await self.db.get_data(User, user_id):
+                                response_queue = user.unique_channel
+                    except Exception as e:
+                        print(e, 'err - code ws-1')
+                        
+                    target = None
+                    while True:
+                        # target은 믿는다.
+                        try:
+                            receive_data = await websocket.receive_text()
+                            json_data = json.loads(receive_data)
+                            
+                            stream_message = ArbiterStreamMessage.model_validate_json(json_data)
+                                                            
+                            match stream_message.command:
+                                case StreamCommand.SET_TARGET:
+                                    new_target = stream_message.data
+                                    # target validation
+                                    if new_target:
+                                        target = new_target
+                        except json.JSONDecodeError:
+                            # receive_data should be bytes and str
+                            assert isinstance(receive_data, (bytes, str)), "Data must be bytes or str"
+                            
+                            await self.broker.push_message(
+                                task_function.queue_name,
+                                pickle.dumps((response_queue, target, receive_data))
+                            )
+                            try:
+                                message = await self.broker.get_message(response_queue)
+                            except TimeoutError:
+                                
+                                break
+                            await websocket.send_text(message.decode())
+                except WebSocketDisconnect:
+                    pass
+                if not websocket.client_state == WebSocketState.DISCONNECTED:
+                    await websocket.close()
 
-        handle_websocket_functions = {
-            StreamCommunicationType.ASYNC_UNICAST: handle_async_unicast_websocket,
-            StreamCommunicationType.SYNC_UNICAST: handle_sync_unicast_websocket,
-            StreamCommunicationType.MULTICAST: handle_multicast_websocket,
-            StreamCommunicationType.BROADCAST: handle_broadcast_websocket,
-        }
-        websocket_function = handle_websocket_functions[task_function.communication_type]
-        
-        async def websocket_endpoint(websocket: WebSocket):
-            await websocket_function(websocket)
-        
-        async def auth_websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
-            # response channel must be unique for each websocket
-            token_data = verify_token(token)
-            user_id = token_data.sub
-            await websocket_function(websocket, user_id)
-
-        if task_function.auth:
-            end_point = auth_websocket_endpoint
-        else:
-            end_point = websocket_endpoint
+            async def websocket_endpoint(websocket: WebSocket):
+                match task_function.communication_type:
+                    case StreamCommunicationType.SYNC:
+                        await sync_websocket_function(websocket)
+                    case StreamCommunicationType.ASYNC:
+                        await async_websocket_function(websocket)
             
-        self.router.websocket(
-            f"/{to_snake_case(service_name)}/{task_function.name}"
-        )(end_point)
+            async def auth_websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
+                # response channel must be unique for each websocket
+                token_data = verify_token(token)
+                user_id = token_data.sub
+                match task_function.communication_type:
+                    case StreamCommunicationType.SYNC:
+                        await sync_websocket_function(websocket, user_id)
+                    case StreamCommunicationType.ASYNC:
+                        await async_websocket_function(websocket, user_id)
+
+            if task_function.auth:
+                end_point = auth_websocket_endpoint
+            else:
+                end_point = websocket_endpoint
+            self.router.websocket(
+                f"/{to_snake_case(service_name)}/{task_function.name}",
+            )(end_point)
 
 
 def get_app() -> ArbiterApiApp:
+    
     from arbiter.cli import CONFIG_FILE
     from arbiter.cli.utils import read_config
     config = read_config(CONFIG_FILE)
