@@ -51,10 +51,9 @@ class Service(DefaultModel):
 class TaskFunction(DefaultModel):
     queue_name: str
     service_meta: ServiceMeta
-    auth: bool = Field(default=False)
+    auth: bool
+    method: HttpMethod | None = Field(default=None)
     request_models: str | None = Field(default=None)
     response_model: str | None = Field(default=None)
-    method: HttpMethod | None = Field(default=None)
     connection: StreamMethod | None = Field(default=None)
     communication_type: StreamCommunicationType | None = Field(default=None)
-    

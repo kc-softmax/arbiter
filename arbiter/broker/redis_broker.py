@@ -26,8 +26,12 @@ class RedisBroker(MessageBrokerInterface):
         config = read_config(CONFIG_FILE)
         host = config.get("cache", "redis.url", fallback="localhost")
         port = config.get("cache", "cache", fallback="6379")
+        # db = config.getint("cache", "redis.db", fallback=0)
+
+        # redis_url = f"redis://{host}:{port}/{db}"
         async_redis_connection_pool = aioredis.ConnectionPool(
             host=host, port=port)
+        # async_redis_connection_pool = aioredis.ConnectionPool.from_url(redis_url)
         self.client = aioredis.Redis.from_pool(async_redis_connection_pool)
 
     async def disconnect(self):
@@ -108,6 +112,7 @@ class RedisBroker(MessageBrokerInterface):
         except Exception as e:
             print('error in : ', e)
             yield None
+        print('end')
 
     async def listen(
         self,
