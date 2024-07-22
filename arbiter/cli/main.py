@@ -109,7 +109,7 @@ async def connect_stdin_stdout() -> asyncio.StreamReader:
     await _loop.connect_read_pipe(lambda: protocol, sys.stdin)
     return reader
 
-async def check_redis_running():
+async def check_redis_running(name: str) -> bool:
     from redis.asyncio import ConnectionPool, Redis, ConnectionError
     try:
         from arbiter.cli import CONFIG_FILE
@@ -117,14 +117,17 @@ async def check_redis_running():
         config = read_config(CONFIG_FILE)
         host = config.get("cache", "redis.url", fallback="localhost")
         port = config.get("cache", "cache", fallback="6379")
-        redis_pool = ConnectionPool(
-            host=host, 
+        host = config.get("cache", "redis.url", fallback="localhost")
+        port = config.get("cache", "cache", fallback="6379")
+        redis_url = f"redis://{host}:{port}/{name}"
+        async_redis_connection_pool = ConnectionPool.from_url(
+            redis_url,
             socket_timeout=5,
-            port=port)
-        redis = Redis(connection_pool=redis_pool)
+        )
+        redis = Redis(connection_pool=async_redis_connection_pool)
         await redis.ping()
         await redis.aclose()
-        await redis_pool.disconnect()
+        await async_redis_connection_pool.disconnect()
         return True
     except ConnectionError:
         return False
@@ -227,6 +230,7 @@ def dev(
                 service.service_meta.name,
                 service.id,
                 arbiter.node.unique_id,
+                arbiter.name
             )
             process = await start_process(
                 f'{sys.executable} -c "{command}"',
@@ -251,7 +255,7 @@ def dev(
         
         console.print(f"[bold green]Warp In [bold yellow]Arbiter[/bold yellow] [bold green]{name}...[/bold green]")
 
-        if not await check_redis_running():
+        if not await check_redis_running(name):
             console.print("[bold red]Failed to start, connect redis issue.[/bold red]")
             console.print("[bold yellow]Check redis connection configuration in 'arbiter.settings.ini'[/bold yellow]")            
             console.print("[bold yellow]or Check if the Redis server is running.  [/bold yellow]")
@@ -261,7 +265,6 @@ def dev(
             console.print(
                 "[bold red]Set the port and host in 'arbiter.settings.ini' or give them as options.[/bold red]")
             return
-        
         try:
             manager_task = None
             failed_to_warp_in = False
@@ -283,6 +286,7 @@ def dev(
                     # env에 넣어야 한다.
                     # start gunicorn process, and check it is running
                     gunicorn_command = ' '.join([
+                        f'ARBITER_NAME={name}',
                         'gunicorn',
                         '-w', f"{worker_count}",  # Number of workers
                         '--bind', f"{host}:{port}",  # Bind to port 8080

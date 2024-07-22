@@ -104,20 +104,33 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
 
     def __init__(
         self,
+        name: str,
+        node_id: str,
+        service_id: str,
         broker_type: type[T],
     ):
+        self.name = name
+        self.node_id = node_id
+        self.service_id = service_id
         self.force_stop = False
         self.broker_type = broker_type
-        self.broker = broker_type()
+        self.broker = broker_type(name)
 
         self.health_check_task: asyncio.Task = None
         self.health_check_time = 0
 
     @classmethod
-    async def launch(cls, node_id: str, service_id: str):
-        instance = cls()
-        setattr(instance, 'node_id', node_id)
-        setattr(instance, 'service_id', service_id)
+    async def launch(
+        cls,
+        name: str,
+        node_id: str, 
+        service_id: str
+    ):
+        instance = cls(
+            name,
+            node_id,
+            service_id
+        )
         service = asyncio.create_task(instance.start())
         await instance.on_launch()
         result = await service

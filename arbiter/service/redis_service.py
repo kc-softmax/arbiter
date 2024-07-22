@@ -4,8 +4,17 @@ from arbiter.broker import RedisBroker
 
 class RedisService(AbstractService[RedisBroker]):
 
-    def __init__(self):
-        super().__init__(RedisBroker)
+    def __init__(
+        self,
+        name: str,
+        node_id: str,
+        service_id: str,
+    ):
+        super().__init__(
+            name,
+            node_id, 
+            service_id,
+            RedisBroker)
 
     # async def incoming_task_func(self) -> str:
     #     # RPC

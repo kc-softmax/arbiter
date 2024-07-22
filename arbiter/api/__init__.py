@@ -1,5 +1,6 @@
 from __future__ import annotations
 import importlib
+import os
 import json
 import uuid
 import asyncio
@@ -64,9 +65,11 @@ class ArbiterApiApp(FastAPI):
 
     def __init__(
         self,
+        name: str,
         config: ConfigParser,
     ) -> None:
         super().__init__()
+        self.name = name
         self.app_id = uuid.uuid4().hex
         self.add_event_handler("startup", self.on_startup)
         self.add_event_handler("shutdown", self.on_shutdown)
@@ -86,15 +89,16 @@ class ArbiterApiApp(FastAPI):
         )
         # app.add_middleware(BaseHTTPMiddleware, dispatch=log_middleware)
         self.include_router(auth_router)
-        self.db = Database.get_db()
+        self.db = Database.get_db(name=name)
         self.router_task: asyncio.Task = None
-        self.broker: RedisBroker = RedisBroker()
+        self.broker: RedisBroker = RedisBroker(name=name)
     
     async def on_startup(self):
         await self.db.connect()
         await self.broker.connect()
         self.router_task = asyncio.create_task(self.router_handler())
-        master_nodes = await self.db.search_data(Node, is_master=True, state=ServiceState.ACTIVE)
+        master_nodes = await self.db.search_data(
+            Node, name=self.name, is_master=True, state=ServiceState.ACTIVE)
         assert len(master_nodes) == 1, "There must be only one master node"
         
         # TODO FIX get master node
@@ -367,16 +371,15 @@ class ArbiterApiApp(FastAPI):
                         if not receive_data: 
                             continue
                         # target은 믿는다.
-                        try:
+                        try:                            
                             json_data = json.loads(receive_data)
-                            
                             to_remove_tasks = [
                                 key for key, value in message_tasks.items() if value.done()
                             ]
                             for key in to_remove_tasks:
                                 message_tasks.pop(key)
                                 
-                            stream_message = ArbiterStreamMessage.model_validate_json(json_data)
+                            stream_message = ArbiterStreamMessage.model_validate(json_data)
                                                             
                             match stream_message.command:
                                 case StreamCommand.UNSUBSCRIBE:
@@ -497,9 +500,9 @@ class ArbiterApiApp(FastAPI):
 
 
 def get_app() -> ArbiterApiApp:
-    
     from arbiter.cli import CONFIG_FILE
     from arbiter.cli.utils import read_config
     config = read_config(CONFIG_FILE)
-    return ArbiterApiApp(config)
+    arbiter_name = os.getenv("ARBITER_NAME", "Danimoth")
+    return ArbiterApiApp(arbiter_name, config)
 
