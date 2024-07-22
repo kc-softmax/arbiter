@@ -18,15 +18,16 @@ T = TypeVar('T', bound=DefaultModel)
 
 class Database:
     # get singleton instance
-    _instance = None
+    _instance_maps: dict[str, Database] = {}
 
     @classmethod
-    def get_db(cls) -> Database:
-        if cls._instance is None:
-            cls._instance = Database()
-        return cls._instance
+    def get_db(cls, name: str) -> Database:
+        if name not in cls._instance_maps:
+            cls._instance_maps[name] = Database(name)
+        return cls._instance_maps[name]
 
-    def __init__(self):
+    def __init__(self, name: str):
+        self.name = name
         self.client: aioredis.Redis = None
 
     async def connect(self):
@@ -35,10 +36,11 @@ class Database:
         config = read_config(CONFIG_FILE)
         host = config.get("cache", "redis.url", fallback="localhost")
         port = config.get("cache", "cache", fallback="6379")
-        async_redis_connection_pool = aioredis.ConnectionPool(
-            host=host,
-            decode_responses=True,
-            port=port)
+        redis_url = f"redis://{host}:{port}/{self.name}"
+        async_redis_connection_pool = aioredis.ConnectionPool.from_url(
+            redis_url,
+            decode_responses=True
+        )
         self.client = aioredis.Redis.from_pool(async_redis_connection_pool)
 
     async def disconnect(self):

@@ -40,11 +40,9 @@ from arbiter.constants.enums import (
     ServiceState
 )
 from arbiter.utils import (
-    extract_annotation,
     find_python_files_in_path,
     get_all_subclasses,
     to_snake_case,
-
 )
 T = TypeVar('T')
 
@@ -71,14 +69,14 @@ class Arbiter:
     def __init__(self, name: str):
         self.name = name
         self.node: Node = None
-        self.broker: RedisBroker = None
+        self.broker: RedisBroker = RedisBroker(name)
+        self.db = Database.get_db(name)
         self.system_task: asyncio.Task = None
         self.health_check_task: asyncio.Task = None
         self.pending_service_queue: TypedQueue[Service] = TypedQueue()
         # 동기화 한다.
         self._warp_in_queue: asyncio.Queue = asyncio.Queue()
         self._shutdown_queue: asyncio.Queue = asyncio.Queue()
-        self.db = Database.get_db()
         self.shutdown_flag = False
 
     async def clear(self):
@@ -248,7 +246,6 @@ class Arbiter:
 
     @asynccontextmanager
     async def start(self, config: dict[str, str]={}) -> AsyncGenerator[Arbiter, Exception]:
-
         try:
             await self.db.connect()
             node_data = dict(
@@ -279,13 +276,13 @@ class Arbiter:
             await self._warp_in_queue.put(None)
             yield self
             return
-        await self._warp_in_queue.put(None)
         self.node = await self.db.create_data(
             Node,
             state=ServiceState.ACTIVE,
             **node_data
         )  # TODO Change
-        self.broker = RedisBroker()
+        await self._warp_in_queue.put(None)
+        self.broker = RedisBroker(self.name)
         await self.broker.connect()
         try:
             python_files_in_root = find_python_files_in_path()
