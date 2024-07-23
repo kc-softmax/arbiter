@@ -464,7 +464,7 @@ class ArbiterApiApp(FastAPI):
                                     if not to_subscribe_task:
                                         continue
                                     message_tasks[channel] = asyncio.create_task(message_subscribe_channel(websocket, channel.get_channel()))
-                                    destination = channel_name
+                                    destination = channel.get_channel()
                             target_task_function = task_function
                             await websocket.send_text('OK')
                         # excepe pydantic_core._pydantic_core.ValidationError as e:
