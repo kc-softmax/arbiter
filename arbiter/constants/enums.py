@@ -9,15 +9,10 @@ class ServiceState(IntEnum):
 
 class StreamCommand(IntEnum):
     SET_TARGET = 21
-    """메세지를 전달 대상을 설정하는 명령어"""
-    
-    # SET_TARGETS = 22
-    # """메세지를 전달 대상을 설정하는 명령어"""
-    
-    SUBSCRIBE = 24
+    """메세지를 전달 대상을 설정하는 명령어"""    
+    SUBSCRIBE = 22
     """특정 채널을 구독하는 명령어"""
-    
-    UNSUBSCRIBE = 25
+    UNSUBSCRIBE = 23
     """특정 채널을 구독 해제하는 명령어"""
 
 
@@ -29,10 +24,10 @@ class StreamMethod(IntEnum):
     """WebRTC를 통한 스트림 전송 방식."""
 
 class StreamCommunicationType(IntEnum):
-    SYNC = 1
+    SYNC_UNICAST = 1
     """Client가 메세지를 보내면, 동기적으로 단일 클라이언트에게 답장하는 방식"""
     
-    ASYNC = 2
+    ASYNC_UNICAST = 2
     """Client가 메세지를 보내면, 비동기적으로 단일 클라이언트에게 답장하는 방식"""
         
     MULTICAST = 3

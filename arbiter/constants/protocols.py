@@ -20,6 +20,7 @@ class StreamTaskProtocol(TaskProtocol):
     routing: bool
     connection: StreamMethod
     communication_type: StreamCommunicationType
+    num_of_channels: int
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         ...

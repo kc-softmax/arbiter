@@ -16,7 +16,8 @@ from arbiter.database.model import (
     Service,
     ServiceMeta, 
     Node,
-    TaskFunction,
+    HttpTaskFunction,
+    StreamTaskFunction
 )
 from arbiter.service import AbstractService
 from arbiter.constants import (
@@ -102,12 +103,19 @@ class Arbiter:
             )
             # add route in arbiter
             service_meta = service.service_meta
-            if routing_functions := await self.db.search_data(TaskFunction, service_meta=service_meta):
-                for routing_function in routing_functions:
+            if http_task_functions := await self.db.search_data(HttpTaskFunction, service_meta=service_meta):
+                for http_task_function in http_task_functions:
                     # add route in arbiter
                     await self.broker.broadcast(
                         ARBITER_API_CHANNEL, 
-                        routing_function.model_dump_json())
+                        http_task_function.model_dump_json())
+                    
+            if stream_task_functions := await self.db.search_data(StreamTaskFunction, service_meta=service_meta):
+                for stream_task_function in stream_task_functions:
+                    # add route in arbiter
+                    await self.broker.broadcast(
+                        ARBITER_API_CHANNEL, 
+                        stream_task_function.model_dump_json())                    
             return True
         return False
 
@@ -286,17 +294,18 @@ class Arbiter:
         await self.broker.connect()
         try:
             python_files_in_root = find_python_files_in_path()
-            # 프로젝트 root아래 있는 service.py 파일들을 import한다.
-            for python_file in python_files_in_root:
-                importlib.import_module(python_file)
-
+            try:
+                # 프로젝트 root아래 있는 service.py 파일들을 import한다.
+                for python_file in python_files_in_root:
+                    importlib.import_module(python_file)
+            except Exception as e:
+                print('importlib error in : ', e)
             # import 되었으므로 AbstractService의 subclasses로 접근 가능
             service_classes = get_all_subclasses(AbstractService)
             for service_class in service_classes:
                 assert issubclass(service_class, AbstractService)
                 if service_class.depth < 2:
                     continue
-                
                 service_meta = await self.db.create_data(
                     ServiceMeta,
                     node_id=self.node.id,
@@ -315,70 +324,79 @@ class Arbiter:
                                 queue_name=f"{to_snake_case(service_meta.name)}_{task.__name__}",
                                 service_meta=service_meta,
                                 auth=getattr(task, 'auth', False),
-                                method=getattr(task, 'method', None),
-                                connection=getattr(task, 'connection', None),
-                                communication_type=getattr(task, 'communication_type', None),
                             )
-                            request_models_params: list = []
-                            response_model_params = None
-                            is_list = False
-                            for param in signature.parameters.values():
-                                annotation = param.annotation
-                                if param.name == 'self':
-                                    continue
-                                if param.name == AUTH_PARAMETER:
-                                    continue
-                                name = param.name
-                                annotation = param.annotation
-                                
-                                # 타입 힌트를 가져와서 허용된 타입 중 하나인지 확인
-                                try:
-                                    if not isinstance(annotation, type):
-                                        annotation = get_type_hints(task).get(param.name, None)
-                                    assert annotation is not None, f"Parameter {param.name} should have a type annotation"
-                                    request_model_type = None
-                                    origin = get_origin(annotation)
+                            
+                            if getattr(task, 'communication_type', None):
+                                # stream task
+                                data.update(
+                                    connection=getattr(task, 'connection', None),
+                                    communication_type=getattr(task, 'communication_type', None),
+                                    num_of_channels=getattr(task, 'num_of_channels', 1),
+                                )
+                                await self.db.create_data(StreamTaskFunction, **data)
+                            else:
+                                # httpTask
+                                request_models_params: list = []
+                                response_model_params = None
+                                is_list = False
+                                for param in signature.parameters.values():
+                                    annotation = param.annotation
+                                    if param.name == 'self':
+                                        continue
+                                    if param.name == AUTH_PARAMETER:
+                                        continue
+                                    name = param.name
+                                    annotation = param.annotation
+                                    
+                                    # 타입 힌트를 가져와서 허용된 타입 중 하나인지 확인
+                                    try:
+                                        if not isinstance(annotation, type):
+                                            annotation = get_type_hints(task).get(param.name, None)
+                                        assert annotation is not None, f"Parameter {param.name} should have a type annotation"
+                                        request_model_type = None
+                                        origin = get_origin(annotation)
+                                        if origin is list or origin is List:
+                                            is_list = True
+                                            request_model_type = get_args(annotation)[0]
+                                        else:
+                                            is_list = False
+                                            request_model_type = annotation
+                                        assert isinstance(request_model_type, type), f"Parameter {param.name} annotation must be a type"
+                                        assert issubclass(request_model_type, ALLOWED_TYPE), f"Parameter {param.name} should be one of {ALLOWED_TYPE}"
+                                        if issubclass(request_model_type, BaseModel):
+                                            request_model_params = request_model_type.model_json_schema()
+                                        else:
+                                            request_model_params = request_model_type.__name__
+                                        if is_list:
+                                            request_model_params = [request_model_params]
+                                        request_models_params.append((name, request_model_params))
+                                    except Exception as e:
+                                        print('ex h: ', e)
+                                        
+                                if response_model := getattr(task, 'response_model', None):
+                                    is_list = False
+                                    response_model_type = None
+                                    origin = get_origin(response_model)
                                     if origin is list or origin is List:
                                         is_list = True
-                                        request_model_type = get_args(annotation)[0]
+                                        response_model_type = get_args(response_model)[0]
                                     else:
                                         is_list = False
-                                        request_model_type = annotation
-                                    assert isinstance(request_model_type, type), f"Parameter {param.name} annotation must be a type"
-                                    assert issubclass(request_model_type, ALLOWED_TYPE), f"Parameter {param.name} should be one of {ALLOWED_TYPE}"
-                                    if issubclass(request_model_type, BaseModel):
-                                        request_model_params = request_model_type.model_json_schema()
+                                        response_model_type = response_model
+                                    assert isinstance(response_model_type, type), f"{response_model_type} annotation must be a type"
+                                    assert issubclass(response_model_type, ALLOWED_TYPE), f"{response_model_type} should be one of {ALLOWED_TYPE}"
+                                    if issubclass(response_model_type, BaseModel):
+                                        response_model_params = response_model_type.model_json_schema()
                                     else:
-                                        request_model_params = request_model_type.__name__
+                                        response_model_params = response_model_type.__name__
                                     if is_list:
-                                        request_model_params = [request_model_params]
-                                    request_models_params.append((name, request_model_params))
-                                except Exception as e:
-                                    print('ex h: ', e)
-                                    
-                            if response_model := getattr(task, 'response_model', None):
-                                is_list = False
-                                response_model_type = None
-                                origin = get_origin(response_model)
-                                if origin is list or origin is List:
-                                    is_list = True
-                                    response_model_type = get_args(response_model)[0]
-                                else:
-                                    is_list = False
-                                    response_model_type = response_model
-                                assert isinstance(response_model_type, type), f"{response_model_type} annotation must be a type"
-                                assert issubclass(response_model_type, ALLOWED_TYPE), f"{response_model_type} should be one of {ALLOWED_TYPE}"
-                                if issubclass(response_model_type, BaseModel):
-                                    response_model_params = response_model_type.model_json_schema()
-                                else:
-                                    response_model_params = response_model_type.__name__
-                                if is_list:
-                                    response_model_params = [response_model_params]
-                            data.update(
-                                request_models=json.dumps(request_models_params),
-                                response_model=json.dumps(response_model_params) if response_model_params else None,
-                            )
-                            await self.db.create_data(TaskFunction, **data)
+                                        response_model_params = [response_model_params]
+                                data.update(
+                                    method=getattr(task, 'method', None),
+                                    request_models=json.dumps(request_models_params),
+                                    response_model=json.dumps(response_model_params) if response_model_params else None,
+                                )
+                                await self.db.create_data(HttpTaskFunction, **data)
                         except Exception as e:
                             print('ex: ', e)
                         

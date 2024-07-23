@@ -15,5 +15,5 @@ class ArbiterBroadcastMessage(BaseModel):
     data: str | bytes = Field(default='')
 
 class ArbiterStreamMessage(BaseModel):
-    command: Optional[StreamCommand] = Field(default=None)
-    data: str | bytes = Field(default="")
+    channel: str
+    target: str = Field(default="")

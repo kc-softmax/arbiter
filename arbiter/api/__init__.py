@@ -7,7 +7,8 @@ import asyncio
 import pickle
 import base64
 from datetime import datetime
-from pydantic import create_model, BaseModel
+from pydantic import create_model, BaseModel, ValidationError
+from dataclasses import dataclass
 from configparser import ConfigParser
 from fastapi.routing import APIRoute
 from uvicorn.workers import UvicornWorker
@@ -24,11 +25,14 @@ from arbiter.broker import RedisBroker, MessageBrokerInterface
 from arbiter.constants.enums import ArbiterMessageType
 from arbiter.api.auth.utils import verify_token
 from arbiter.utils import to_snake_case
+from arbiter.database.model import (
+    Node,
+    HttpTaskFunction,
+    StreamTaskFunction
+)
 from arbiter.database import (
     User,
     Database,
-    Node,
-    TaskFunction
 )
 from arbiter.constants.messages import ArbiterStreamMessage
 from arbiter.constants.enums import (
@@ -92,6 +96,7 @@ class ArbiterApiApp(FastAPI):
         self.db = Database.get_db(name=name)
         self.router_task: asyncio.Task = None
         self.broker: RedisBroker = RedisBroker(name=name)
+        self.stream_routes: dict[str, dict[str, StreamTaskFunction]] = {}
     
     async def on_startup(self):
         await self.db.connect()
@@ -119,44 +124,53 @@ class ArbiterApiApp(FastAPI):
         # message 는 어떤 router로 등록해야 하는가?에 따른다?
         # TODO ADD router, remove Router?
         async for message in self.broker.subscribe(ARBITER_API_CHANNEL):
-            task_function = TaskFunction.model_validate_json(message)
-            service_name = task_function.service_meta.name
+            try:
+                http_task_function = HttpTaskFunction.model_validate_json(message)
+                service_name = http_task_function.service_meta.name
+            except Exception as e: # TODO Exception type more detail
+                print(e)
+            try:
+                stream_task_function = StreamTaskFunction.model_validate_json(message)
+                service_name = stream_task_function.service_meta.name
+            except Exception as e: # TODO Exception type more detail
+                print(e)
             
-            assert not (
-                task_function.method and task_function.connection
-            ), "Both method and connection cannot be true at the same time."
+            assert http_task_function or stream_task_function, "Task function is not valid"   
+            
             
             # 이미 라우터에 등록되어 있다면 무시한다.
-            already_registered = False
-            for route in self.routes:
-                route: APIRoute
-                path = f"/{to_snake_case(service_name)}/{task_function.name}"
-                if route.path == path:
-                    already_registered = True
+            # already_registered = False
+            # for route in self.routes:
+            #     route: APIRoute
+            #     path = f"/{to_snake_case(service_name)}/{task_function.name}"
+            #     if route.path == path:
+            #         already_registered = True
                 # print(path)
                 # print(route.path, route.methods)
                 # # if path in router.pat:
                 #     # continue
-            if already_registered:
-                continue
-            match task_function.method:
-                case HttpMethod.POST:
-                    self.generate_post_function(
-                        service_name,
-                        task_function
-                    )
-            match task_function.connection:
-                case StreamMethod.WEBSOCKET:
-                    self.generate_websocket_function(
-                        service_name,
-                        task_function)
+            # if already_registered:
+            #     continue
+            if http_task_function:
+                match http_task_function.method:
+                    case HttpMethod.POST:
+                        self.generate_post_function(
+                            service_name,
+                            http_task_function
+                        )
+            if stream_task_function:
+                match stream_task_function.connection:
+                    case StreamMethod.WEBSOCKET:
+                        self.generate_websocket_function(
+                            service_name,
+                            stream_task_function)
 
             self.openapi_schema = None
 
     def generate_post_function(
         self,
         service_name: str,
-        task_function: TaskFunction,
+        task_function: HttpTaskFunction,
     ):
         def create_model_from_schema(schema: dict) -> BaseModel:
             type_mapping = {
@@ -176,7 +190,7 @@ class ArbiterApiApp(FastAPI):
                 fields[name] = (field_type, ...)
             return create_model(schema['title'], **fields)     
 
-        def get_task_function() -> TaskFunction:
+        def get_task_function() -> HttpTaskFunction:
             return task_function
         def get_app() -> ArbiterApiApp:
             return self
@@ -235,7 +249,7 @@ class ArbiterApiApp(FastAPI):
 
         async def dynamic_function_no_request(
             app: ArbiterApiApp = Depends(get_app),
-            task_function: TaskFunction = Depends(get_task_function),
+            task_function: HttpTaskFunction = Depends(get_task_function),
         ) -> Union[dict, list[dict], None]:
             response_required = True if DynamicResponseModel else False
             response = await app.broker.send_message(
@@ -254,7 +268,7 @@ class ArbiterApiApp(FastAPI):
         async def dynamic_auth_function_no_request(
             user: User = Depends(get_user),
             app: ArbiterApiApp = Depends(get_app),
-            task_function: TaskFunction = Depends(get_task_function),
+            task_function: HttpTaskFunction = Depends(get_task_function),
         ) -> Union[dict, list[dict], None]:
             response_required = True if DynamicResponseModel else False
             response = await app.broker.send_message(
@@ -274,7 +288,7 @@ class ArbiterApiApp(FastAPI):
         async def dynamic_function(
             data: Type[BaseModel] = Depends(DynamicRequestModel),  # 동적으로 생성된 Pydantic 모델 사용 # type: ignore
             app: ArbiterApiApp = Depends(get_app),
-            task_function: TaskFunction = Depends(get_task_function),
+            task_function: HttpTaskFunction = Depends(get_task_function),
         ) -> Union[dict, list[dict], None]:
             response_required = True if DynamicResponseModel else False
             response = await app.broker.send_message(
@@ -295,7 +309,7 @@ class ArbiterApiApp(FastAPI):
             data: Type[BaseModel] = Depends(DynamicRequestModel),  # 동적으로 생성된 Pydantic 모델 사용 # type: ignore
             user: User = Depends(get_user),
             app: ArbiterApiApp = Depends(get_app),
-            task_function: TaskFunction = Depends(get_task_function),
+            task_function: HttpTaskFunction = Depends(get_task_function),
         ) -> Union[dict, list[dict], None]:
             data_dict = data.model_dump()
             data_dict["user_id"] = user.id
@@ -334,172 +348,173 @@ class ArbiterApiApp(FastAPI):
     def generate_websocket_function(
             self,
             service_name: str,
-            task_function: TaskFunction,
-        ):        
-            async def message_listen_queue(websocket: WebSocket, queue: str, time_out: int = 10):
-                async for data in self.broker.listen_bytes(queue, time_out):
-                    if data is None:
-                        data = {"from": queue, "data": 'LEAVE'}
-                        await websocket.send_text(json.dumps(data))
-                        break
-                    data = {"from": queue, "data": data.decode()}
-                    await websocket.send_text(json.dumps(data))
-
-            async def message_subscribe_channel(websocket: WebSocket, channel: str):
-                async for data in self.broker.subscribe(channel):
-                    data = {"from": channel, "data": data}
-                    await websocket.send_text(json.dumps(data))
-                    
+            task_function: StreamTaskFunction,
+        ):                            
             async def async_websocket_function(
                 websocket: WebSocket,
                 user_id: str = None
             ):
+                class Channel:
+                    
+                    def __init__(self, channel: str, target: int | str = None):
+                        self.channel = channel
+                        self.target = target
+                        
+                    def get_channel(self):
+                        if self.target:
+                            return f"{self.channel}_{self.target}"
+                        return self.channel
+                        
+                async def message_listen_queue(websocket: WebSocket, queue: str, time_out: int = 10):
+                    # print(f"Start of message_listen_queue {queue}")
+                    try:
+                        async for data in self.broker.listen_bytes(queue, time_out):
+                            if data is None:
+                                data = {"from": queue, "data": 'LEAVE'}
+                                await websocket.send_text(json.dumps(data))
+                                break
+                            data = {"from": queue, "data": data.decode()}
+                            await websocket.send_text(json.dumps(data))
+                    except asyncio.CancelledError:
+                        pass
+                        # print(f"listen to {queue} cancelled")
+                    # finally:
+                        # print(f"End of message_listen_queue {queue}")
+                        
+
+                async def message_subscribe_channel(websocket: WebSocket, channel: str):
+                    # print(f"Start of message_subscribe_channel {channel}")
+                    try:
+                        async for data in self.broker.subscribe(channel):
+                            data = {"from": channel, "data": data.decode()}
+                            await websocket.send_text(json.dumps(data))
+                    except asyncio.CancelledError:
+                        pass
+                        # print(f"Subscription to {channel} cancelled")
+                    # finally:
+                        # print(f"End of message_subscribe_channel {channel}")
+                
+                stream_route = self.stream_routes[service_name]
                 await websocket.accept()
                 
                 response_queue = uuid.uuid4().hex
                 if user_id:
                     if user:= await self.db.get_data(User, user_id):
                         response_queue = user.unique_channel
-                # stream communication type 수에 따라서 response_queue를 생성한다.                
+                                        
                 # response task가 만들어질때, response_queue를 인자로 넘겨준다.
-                message_tasks: dict[str, asyncio.Task] = {}
-                message_tasks[response_queue] = asyncio.create_task(message_listen_queue(websocket, response_queue))
+                message_tasks: dict[Channel, asyncio.Task] = {}
+                response_task = asyncio.create_task(message_listen_queue(websocket, response_queue, 0))
                 try:
-                    target = None
+                    destination: str | None = None
+                    target_task_function: StreamTaskFunction | None = None
                     while True:
                         receive_data = await websocket.receive_text()
                         if not receive_data: 
                             continue
-                        # target은 믿는다.
                         try:                            
                             json_data = json.loads(receive_data)
+                            
                             to_remove_tasks = [
                                 key for key, value in message_tasks.items() if value.done()
                             ]
                             for key in to_remove_tasks:
                                 message_tasks.pop(key)
-                                
                             stream_message = ArbiterStreamMessage.model_validate(json_data)
-                                                            
-                            match stream_message.command:
-                                case StreamCommand.UNSUBSCRIBE:
-                                    channel = stream_message.data
-                                    if not channel:
+                            channel = Channel(stream_message.channel, stream_message.target)
+                            # get StreamTaskFunction from channel
+                            task_function = stream_route.get(channel.channel)
+                            if not task_function:
+                                await websocket.send_text(f"Channel {channel.channel} is not valid")
+                                await websocket.send_text(f"Valid channels are {list(stream_route.keys())}")
+                                continue
+                            match task_function.communication_type:
+                                case StreamCommunicationType.SYNC_UNICAST:
+                                    if channel.target:
+                                        destination = channel.target
+                                    else:
+                                        destination = response_queue
+                                case StreamCommunicationType.ASYNC_UNICAST:
+                                    if channel.target:
+                                        destination = channel.target
+                                    else:
+                                        destination = response_queue
+                                case StreamCommunicationType.BROADCAST:
+                                    # validate target
+                                    if target:= channel.target:
+                                        try:
+                                            target = int(target)
+                                        except ValueError:
+                                            await websocket.send_text(f"in broadcast type, Target must be integer")
+                                            continue
+                                        if target > task_function.num_of_channels:
+                                            await websocket.send_text(f"Target must be less than {task_function.num_of_channels}")
+                                            continue
+                                    channel_name = channel.channel
+                                    to_subscribe_task = True
+                                    for message_channel in message_tasks:
+                                        if message_channel.channel != channel.channel:
+                                            continue
+                                        if message_channel.get_channel() == channel.get_channel():
+                                            await websocket.send_text(f"Already subscribed to {channel.get_channel()}")
+                                            to_subscribe_task = False
+                                            break
+                                        message_tasks[message_channel].cancel()
+                                        await message_tasks[message_channel]
+                                    if not to_subscribe_task:
                                         continue
-                                    if channel not in message_tasks:
-                                        await websocket.send_text(f"Already unsubscribed to {channel}")
-                                        continue
-                                    if not message_tasks[channel].done():
-                                        message_tasks[channel].cancel()
-                                case StreamCommand.SUBSCRIBE:
-                                    channel = stream_message.data
-                                    if not channel:
-                                        continue
-                                    if channel in message_tasks and not message_tasks[channel].done():
-                                        await websocket.send_text(f"Already subscribed to {channel}")
-                                        continue
-                                    message_tasks[channel] = asyncio.create_task(message_subscribe_channel(websocket, channel))
-                                    target = channel
-                                case StreamCommand.SET_TARGET:
-                                    new_target = stream_message.data
-                                    # target validation
-                                    target = new_target
+                                    message_tasks[channel] = asyncio.create_task(message_subscribe_channel(websocket, channel.get_channel()))
+                                    destination = channel_name
+                            target_task_function = task_function
+                            await websocket.send_text('OK')
+                        # excepe pydantic_core._pydantic_core.ValidationError as e:
+                        except ValidationError as e:
+                            await websocket.send_text(f"Data is not valid {e}")
                         except json.JSONDecodeError:
                             # receive_data should be bytes and str
-                            assert isinstance(receive_data, (bytes, str)), "Data must be bytes or str"
-                            
-                            # target 종류에 따라서 다른 처리방법을 사용해야 한다.
-                            # target이 broadcast인 경우, response_queue는 없어도 된다.
+                            if not isinstance(receive_data, (bytes, str)):
+                                await websocket.send_text(f"Data must be bytes or str")
+                                continue
+                            if not target_task_function or not destination:
+                                # server error 확률 높
+                                await websocket.send_text(f"Target is not set")
+                                continue
+                                # data
                             await self.broker.push_message(
-                                task_function.queue_name,
+                                target_task_function.queue_name,
                                 pickle.dumps(
-                                    (
-                                        None if target in message_tasks else response_queue,
-                                        target, 
-                                        receive_data)
-                                )
-                            )
+                                    (destination, receive_data)))
                 except WebSocketDisconnect:
                     pass
-                results = await asyncio.gather(*message_tasks.values(), return_exceptions=True)
+                if response_task:
+                    response_task.cancel()
+                await asyncio.gather(*message_tasks.values(), return_exceptions=True)
                 if not websocket.client_state == WebSocketState.DISCONNECTED:
                     await websocket.close()
 
-            async def sync_websocket_function(
-                websocket: WebSocket,
-                user_id: str = None
-            ):
-                await websocket.accept()
-                try:
-                    response_queue = uuid.uuid4().hex
-                    try:
-                        if user_id:
-                            if user:= await self.db.get_data(User, user_id):
-                                response_queue = user.unique_channel
-                    except Exception as e:
-                        print(e, 'err - code ws-1')
-                        
-                    target = None
-                    while True:
-                        # target은 믿는다.
-                        try:
-                            receive_data = await websocket.receive_text()
-                            json_data = json.loads(receive_data)
-                            
-                            stream_message = ArbiterStreamMessage.model_validate_json(json_data)
-                                                            
-                            match stream_message.command:
-                                case StreamCommand.SET_TARGET:
-                                    new_target = stream_message.data
-                                    # target validation
-                                    if new_target:
-                                        target = new_target
-                        except json.JSONDecodeError:
-                            # receive_data should be bytes and str
-                            assert isinstance(receive_data, (bytes, str)), "Data must be bytes or str"
-                            
-                            await self.broker.push_message(
-                                task_function.queue_name,
-                                pickle.dumps((response_queue, target, receive_data))
-                            )
-                            try:
-                                message = await self.broker.get_message(response_queue)
-                            except TimeoutError:
-                                
-                                break
-                            await websocket.send_text(message.decode())
-                except WebSocketDisconnect:
-                    pass
-                if not websocket.client_state == WebSocketState.DISCONNECTED:
-                    await websocket.close()
-
-            async def websocket_endpoint(websocket: WebSocket):
-                match task_function.communication_type:
-                    case StreamCommunicationType.SYNC:
-                        await sync_websocket_function(websocket)
-                    case StreamCommunicationType.ASYNC:
-                        await async_websocket_function(websocket)
             
-            async def auth_websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
+            async def websocket_endpoint(websocket: WebSocket, token: str = Query(None)):
                 # response channel must be unique for each websocket
-                token_data = verify_token(token)
-                user_id = token_data.sub
-                match task_function.communication_type:
-                    case StreamCommunicationType.SYNC:
-                        await sync_websocket_function(websocket, user_id)
-                    case StreamCommunicationType.ASYNC:
-                        await async_websocket_function(websocket, user_id)
+                if token:
+                    token_data = verify_token(token)
+                    user_id = token_data.sub
+                else:
+                    user_id = None
+                await async_websocket_function(websocket, user_id)
 
-            if task_function.auth:
-                end_point = auth_websocket_endpoint
-            else:
-                end_point = websocket_endpoint
-            self.router.websocket(
-                f"/{to_snake_case(service_name)}/{task_function.name}",
-            )(end_point)
+            if service_name not in self.stream_routes:
+                self.stream_routes[service_name] = {}            
+                self.router.websocket(
+                    f"/stream/{to_snake_case(service_name)}",
+                )(websocket_endpoint)
+                                
+            self.stream_routes[service_name][task_function.name] = task_function
+            
+                
 
 
 def get_app() -> ArbiterApiApp:
+    
     from arbiter.cli import CONFIG_FILE
     from arbiter.cli.utils import read_config
     config = read_config(CONFIG_FILE)

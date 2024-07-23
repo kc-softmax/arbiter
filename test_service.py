@@ -6,6 +6,7 @@ from arbiter.service import RedisService
 from arbiter.constants.enums import (
     HttpMethod,
     StreamMethod,
+    StreamCommunicationType
 )
 from arbiter.database import User
 from arbiter.broker import (
@@ -13,7 +14,6 @@ from arbiter.broker import (
     periodic_task, 
     http_task, 
     stream_task,
-    async_stream_task
 )
 
 
@@ -41,10 +41,6 @@ class TestService(RedisService):
         pass
         # print(f"hello_world: {messages}")
 
-    # @http_task(method=HttpMethod.POST, response_model=TestModel, auth=True)
-    # async def get_message_auth(self, message: TestModel, member: int) -> TestModel:
-    #     return message
-
     @http_task(method=HttpMethod.POST)
     async def get_message_auth_no_request(self) -> DefaultResponseModel:
         return 'hihi'
@@ -53,18 +49,34 @@ class TestService(RedisService):
     async def get_message(self, message: list[TestModel], member: list[int]) -> list[TestModel]:
         return message[0]
     
-    # @http_task(method=HttpMethod.POST)
-    # async def get_message_no_requset(self) -> int:
-    #     return 486
-    
-    @async_stream_task(connection=StreamMethod.WEBSOCKET)
-    async def get_message_async(self, message: str) -> AsyncGenerator[str, None]:
+    @stream_task(
+        connection=StreamMethod.WEBSOCKET,
+        communication_type=StreamCommunicationType.ASYNC_UNICAST)
+    async def on_stream(self, message: str) -> AsyncGenerator[str, None]:
         yield 'hiu' + message
+
+    @stream_task(
+        connection=StreamMethod.WEBSOCKET,
+        communication_type=StreamCommunicationType.SYNC_UNICAST)
+    async def whisper(self, message: str) -> str:
+        return 'hiu' + message
+
+    @stream_task(
+        connection=StreamMethod.WEBSOCKET,
+        communication_type=StreamCommunicationType.BROADCAST)
+    async def trade(self, message: str) -> str:
+        return 'hiu' + message
+
+    @stream_task(
+        connection=StreamMethod.WEBSOCKET,
+        communication_type=StreamCommunicationType.BROADCAST,
+        num_of_channels=5)
+    async def villiage(self, message: str) -> str:
+        return 'hiu' + message
+
+    @stream_task(
+        connection=StreamMethod.WEBSOCKET,
+        communication_type=StreamCommunicationType.BROADCAST)
+    async def world(self, message: str) -> str:
+        return 'hiu' + message
         
-    @stream_task(connection=StreamMethod.WEBSOCKET)
-    async def get_message_sync(self, message: str) -> str:
-        # target을 
-        # 사용자가 관여하는 부분은 이 부분이기 때문에 여기서 해야한다.
-        # 이 함수에 들어왔다는 말은 사용자가 멀티케스트를 쓰겠다는 뜻이므로, 변수로 받는 부분도 좋을 것이다.
-        # 현재 접속한 사용자 별로 채널이 디비등 어디에 있어야 할것이다.
-        return 'hiu' + message + 'sync'
