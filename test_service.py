@@ -41,13 +41,13 @@ class TestService(RedisService):
         pass
         # print(f"hello_world: {messages}")
 
-    @http_task(method=HttpMethod.POST)
-    async def get_message_auth_no_request(self) -> DefaultResponseModel:
-        return 'hihi'
+    # @http_task(method=HttpMethod.POST)
+    # async def get_message_auth_no_request(self) -> DefaultResponseModel:
+    #     return 'hihi'
     
-    @http_task(method=HttpMethod.POST, response_model=TestModel)
-    async def get_message(self, message: list[TestModel], member: list[int]) -> list[TestModel]:
-        return message[0]
+    # @http_task(method=HttpMethod.POST, response_model=TestModel)
+    # async def get_message(self, message: list[TestModel], member: list[int]) -> list[TestModel]:
+    #     return message[0]
     
     @stream_task(
         connection=StreamMethod.WEBSOCKET,
@@ -80,3 +80,5 @@ class TestService(RedisService):
     async def world(self, message: str) -> str:
         return message
         
+        
+

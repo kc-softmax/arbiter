@@ -5,7 +5,6 @@ import arbiter.api.auth.schemas as AuthSchemas
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 from http import HTTPStatus
-from arbiter.constants import GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET
 from arbiter.database import Database
 from arbiter.database.model import User
 from arbiter.api.auth.schemas import OAuthRequest
@@ -22,28 +21,6 @@ router = APIRouter(
     prefix="/auth",
 )
 
-@router.post(
-    "/github/callback",
-    tags=[AuthRouterTag.TOKEN],
-)
-async def github_callback(request: OAuthRequest):
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            "https://github.com/login/oauth/access_token",
-            data={
-                "client_id": GITHUB_CLIENT_ID,
-                "client_secret": GITHUB_CLIENT_SECRET,
-                "code": request.code
-            },
-            headers={"Accept": "application/json"}
-        )
-
-    if response.status_code == 200:
-        print(response.json())
-        return response.json()
-    else:
-        raise HTTPException(status_code=400, detail="Failed to exchange code for token")
-    
 @router.post(
     "/token/refresh",
     tags=[AuthRouterTag.TOKEN],
