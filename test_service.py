@@ -53,30 +53,30 @@ class TestService(RedisService):
         connection=StreamMethod.WEBSOCKET,
         communication_type=StreamCommunicationType.ASYNC_UNICAST)
     async def on_stream(self, message: str) -> AsyncGenerator[str, None]:
-        yield 'hiu' + message
+        yield message
 
     @stream_task(
         connection=StreamMethod.WEBSOCKET,
         communication_type=StreamCommunicationType.SYNC_UNICAST)
     async def whisper(self, message: str) -> str:
-        return 'hiu' + message
+        return message
 
     @stream_task(
         connection=StreamMethod.WEBSOCKET,
         communication_type=StreamCommunicationType.BROADCAST)
     async def trade(self, message: str) -> str:
-        return 'hiu' + message
+        return message
 
     @stream_task(
         connection=StreamMethod.WEBSOCKET,
         communication_type=StreamCommunicationType.BROADCAST,
         num_of_channels=5)
     async def villiage(self, message: str) -> str:
-        return 'hiu' + message
+        return message
 
     @stream_task(
         connection=StreamMethod.WEBSOCKET,
         communication_type=StreamCommunicationType.BROADCAST)
     async def world(self, message: str) -> str:
-        return 'hiu' + message
+        return message
         
