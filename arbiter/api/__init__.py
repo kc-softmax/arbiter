@@ -13,7 +13,7 @@ from configparser import ConfigParser
 from fastapi.routing import APIRoute
 from uvicorn.workers import UvicornWorker
 from typing import Optional, Union, get_args, Type
-from fastapi import FastAPI, Query, WebSocket, Depends, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, WebSocket, Depends, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -493,8 +493,33 @@ class ArbiterApiApp(FastAPI):
                     await websocket.close()
 
             
+#             async def check_auth_and_notify(websocket: WebSocket, task_function, token: str):
+#     if task_function.auth and not token:
+#         # HTTP 예외를 발생시켜 웹소켓 연결 거부
+#         raise HTTPException(status_code=400, detail="Token is required")
+
+# @app.websocket("/ws/{channel}")
+# async def websocket_endpoint(websocket: WebSocket, channel: str, token: str = None):
+#     handler = MyWebSocketHandler()
+    
+#     # 토큰 검사 및 알림
+#     try:
+#         await check_auth_and_notify(websocket, task_function, token)
+#     except HTTPException as e:
+#         # 연결을 거부하는 HTTP 응답
+#         await websocket.close(code=4000, reason=e.detail)
+#         return
+            
             async def websocket_endpoint(websocket: WebSocket, token: str = Query(None)):
                 # response channel must be unique for each websocket
+                try:
+                    if task_function.auth and not token:
+                        # HTTP 예외를 발생시켜 웹소켓 연결 거부
+                        raise HTTPException(status_code=400, detail="Token is required")
+                except HTTPException as e:
+                    # 연결을 거부하는 HTTP 응답
+                    await websocket.close(code=4000, reason=e.detail)
+                    return
                 if token:
                     token_data = verify_token(token)
                     user_id = token_data.sub
