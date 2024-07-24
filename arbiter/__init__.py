@@ -71,6 +71,7 @@ class Arbiter:
         self.name = name
         self.node: Node = None
         self.broker: RedisBroker = RedisBroker(name)
+        self.client = None
         self.db = Database.get_db(name)
         self.system_task: asyncio.Task = None
         self.health_check_task: asyncio.Task = None
@@ -93,7 +94,7 @@ class Arbiter:
         if self.db:
             await self.db.disconnect()
         if self.broker:
-            await self.broker.disconnect()
+            await self.broker.disconnect(self.client)
 
     async def register_service(self, service_id: str):
         if service := await self.db.get_data(Service, service_id):
@@ -107,6 +108,7 @@ class Arbiter:
                 for http_task_function in http_task_functions:
                     # add route in arbiter
                     await self.broker.broadcast(
+                        self.client,
                         ARBITER_API_CHANNEL, 
                         http_task_function.model_dump_json())
                     
@@ -114,6 +116,7 @@ class Arbiter:
                 for stream_task_function in stream_task_functions:
                     # add route in arbiter
                     await self.broker.broadcast(
+                        self.client,
                         ARBITER_API_CHANNEL, 
                         stream_task_function.model_dump_json())                    
             return True
@@ -135,6 +138,7 @@ class Arbiter:
         try:
             if not self.is_replica:
                 await self.broker.broadcast(
+                    self.client,
                     ARBITER_SYSTEM_CHANNEL,
                     ArbiterBroadcastMessage(
                         type=ArbiterMessageType.MASTER_SHUTDOWN,
@@ -149,12 +153,14 @@ class Arbiter:
                 ):
                     for replica_node in replica_nodes:
                         await self.broker.send_message(
+                            self.client,
                             replica_node.unique_id,
                             ArbiterMessage(
                                 data=ArbiterMessageType.SHUTDOWN,
                                 sender_id=replica_node.shutdown_code))
             else:
                 await self.broker.broadcast(
+                    self.client,
                     ARBITER_SYSTEM_CHANNEL,
                     ArbiterBroadcastMessage(
                         type=ArbiterMessageType.SHUTDOWN,
@@ -202,6 +208,7 @@ class Arbiter:
                     break
                 yield message
             await self.broker.send_message(
+                self.client,
                 self.node.unique_id,
                 ArbiterMessage(
                     data=ArbiterMessageType.SHUTDOWN,
@@ -291,7 +298,7 @@ class Arbiter:
         )  # TODO Change
         await self._warp_in_queue.put(None)
         self.broker = RedisBroker(self.name)
-        await self.broker.connect()
+        self.client = await self.broker.connect()
         try:
             python_files_in_root = find_python_files_in_path()
             try:
@@ -470,6 +477,7 @@ class Arbiter:
 
     async def system_task_func(self):
         async for message in self.broker.listen(
+            self.client,
             self.node.unique_id, 
             ARBITER_SYSTEM_TIMEOUT
         ):
@@ -529,6 +537,7 @@ class Arbiter:
             finally:
                 if response and message.response:
                     await self.broker.push_message(
+                        self.client,
                         message.id,
                         response.value
                     )

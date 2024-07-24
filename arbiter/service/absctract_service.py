@@ -115,6 +115,7 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
         self.force_stop = False
         self.broker_type = broker_type
         self.broker = broker_type(name)
+        self.client = None
 
         self.health_check_task: asyncio.Task = None
         self.health_check_time = 0
@@ -158,6 +159,7 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
                     break
                 if start_time - self.health_check_time > ARBITER_SERVICE_HEALTH_CHECK_INTERVAL:
                     response = await self.broker.send_message(
+                        self.client,
                         self.node_id,
                         ArbiterMessage(
                             data=ArbiterMessageType.PING,
@@ -185,12 +187,13 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
 
         self.health_check_task and self.health_check_task.cancel()
         await self.broker.send_message(
+            self.client,
             self.node_id,
             ArbiterMessage(
                 data=ArbiterMessageType.ARBITER_SERVICE_UNREGISTER,
                 sender_id=self.service_id,
                 response=False))
-        await self.broker.disconnect()
+        await self.broker.disconnect(self.client)
 
     async def start(self):
         """
@@ -198,10 +201,11 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
         initialize가 완료되면 consuming_task와 start_task를 실행합니다.
         """
         assert self.service_id, "Service ID is not set"
-        await self.broker.connect()
+        self.client = await self.broker.connect()
         dynamic_tasks: list[asyncio.Task] = []
         try:
             response = await self.broker.send_message(
+                self.client,
                 self.node_id,
                 ArbiterMessage(
                     data=ArbiterMessageType.ARBITER_SERVICE_REGISTER,
