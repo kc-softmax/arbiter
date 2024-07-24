@@ -6,6 +6,7 @@ import uuid
 import asyncio
 import pickle
 import base64
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pydantic import create_model, BaseModel, ValidationError
 from dataclasses import dataclass
@@ -18,21 +19,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.websockets import WebSocketState
-from arbiter.api.auth.router import router as auth_router
 from arbiter.api.exceptions import BadRequest
-from arbiter.api.auth.dependencies import get_user
 from arbiter.broker import RedisBroker, MessageBrokerInterface
 from arbiter.constants.enums import ArbiterMessageType
-from arbiter.api.auth.utils import verify_token
 from arbiter.utils import to_snake_case
 from arbiter.database.model import (
     Node,
     HttpTaskFunction,
     StreamTaskFunction
-)
-from arbiter.database import (
-    User,
-    Database,
 )
 from arbiter.constants.messages import ArbiterStreamMessage
 from arbiter.constants.enums import (
@@ -70,13 +64,13 @@ class ArbiterApiApp(FastAPI):
     def __init__(
         self,
         name: str,
+        node_id: str,
         config: ConfigParser,
     ) -> None:
-        super().__init__()
+        super().__init__(lifespan=self.lifespan)
         self.name = name
+        self.node_id = node_id
         self.app_id = uuid.uuid4().hex
-        self.add_event_handler("startup", self.on_startup)
-        self.add_event_handler("shutdown", self.on_shutdown)
         self.add_exception_handler(
             RequestValidationError,
             lambda request, exc: JSONResponse(
@@ -92,32 +86,23 @@ class ArbiterApiApp(FastAPI):
             allow_credentials=config.get("api", "allow_credentials", fallback=True),
         )
         # app.add_middleware(BaseHTTPMiddleware, dispatch=log_middleware)
-        self.include_router(auth_router)
-        self.db = Database.get_db(name=name)
         self.router_task: asyncio.Task = None
         self.broker: RedisBroker = RedisBroker(name=name)
         self.stream_routes: dict[str, dict[str, StreamTaskFunction]] = {}
     
-    async def on_startup(self):
-        await self.db.connect()
+    @asynccontextmanager
+    async def lifespan(self, app: ArbiterApiApp):
         await self.broker.connect()
         self.router_task = asyncio.create_task(self.router_handler())
-        master_nodes = await self.db.search_data(
-            Node, name=self.name, is_master=True, state=ServiceState.ACTIVE)
-        assert len(master_nodes) == 1, "There must be only one master node"
-        
-        # TODO FIX get master node
-        # DB를 Arbiter 이름으로 생성하면 하나밖에 검색이 안된다.
         await self.broker.send_message(
-            master_nodes[0].unique_id,
+            self.node_id,
             ArbiterMessage(
                 data=ArbiterMessageType.API_REGISTER,
-                sender_id=self.app_id
+                sender_id=self.app_id,
+                response=False
             ))
-
-    async def on_shutdown(self):
+        yield
         self.router_task and self.router_task.cancel()
-        await self.db.disconnect()
         await self.broker.disconnect()
 
     async def router_handler(self):
@@ -265,26 +250,6 @@ class ArbiterApiApp(FastAPI):
                 response_model_type = DynamicResponseModel
             return await process_response(response, response_model_type)
 
-        async def dynamic_auth_function_no_request(
-            user: User = Depends(get_user),
-            app: ArbiterApiApp = Depends(get_app),
-            task_function: HttpTaskFunction = Depends(get_task_function),
-        ) -> Union[dict, list[dict], None]:
-            response_required = True if DynamicResponseModel else False
-            response = await app.broker.send_message(
-                task_function.queue_name,
-                ArbiterMessage(
-                    data=json.dumps(dict(user_id=user.id)),
-                    sender_id=self.app_id,
-                    response=response_required))
-            if not DynamicResponseModel:
-                return response
-            if list_response:
-                response_model_type = get_args(DynamicResponseModel)[0]
-            else:
-                response_model_type = DynamicResponseModel
-            return await process_response(response, response_model_type)
-
         async def dynamic_function(
             data: Type[BaseModel] = Depends(DynamicRequestModel),  # 동적으로 생성된 Pydantic 모델 사용 # type: ignore
             app: ArbiterApiApp = Depends(get_app),
@@ -304,46 +269,19 @@ class ArbiterApiApp(FastAPI):
             else:
                 response_model_type = DynamicResponseModel
             return await process_response(response, response_model_type)
-        
-        async def dynamic_auth_function(
-            data: Type[BaseModel] = Depends(DynamicRequestModel),  # 동적으로 생성된 Pydantic 모델 사용 # type: ignore
-            user: User = Depends(get_user),
-            app: ArbiterApiApp = Depends(get_app),
-            task_function: HttpTaskFunction = Depends(get_task_function),
-        ) -> Union[dict, list[dict], None]:
-            data_dict = data.model_dump()
-            data_dict["user_id"] = user.id
-            response_required = True if DynamicResponseModel else False
-            response = await app.broker.send_message(
-                task_function.queue_name,
-                ArbiterMessage(
-                    data=json.dumps(data_dict),
-                    sender_id=self.app_id,
-                    response=response_required))                    
-            if not DynamicResponseModel:
-                return response
-            if list_response:
-                response_model_type = get_args(DynamicResponseModel)[0]
-            else:
-                response_model_type = DynamicResponseModel
-            return await process_response(response, response_model_type)
 
-
-        if task_function.auth:
-            end_point = dynamic_auth_function if DynamicRequestModel else dynamic_auth_function_no_request
+        end_point = dynamic_function if DynamicRequestModel else dynamic_function_no_request
+        if DynamicResponseModel:
+            self.router.post(
+                f'/{to_snake_case(service_name)}/{task_function.name}',
+                tags=[service_name],
+                response_model=DynamicResponseModel
+            )(end_point)
         else:
-            end_point = dynamic_function if DynamicRequestModel else dynamic_function_no_request
-            if DynamicResponseModel:
-                self.router.post(
-                    f'/{to_snake_case(service_name)}/{task_function.name}',
-                    tags=[service_name],
-                    response_model=DynamicResponseModel
-                )(end_point)
-            else:
-                self.router.post(
-                    f'/{to_snake_case(service_name)}/{task_function.name}',
-                    tags=[service_name]
-                )(end_point)
+            self.router.post(
+                f'/{to_snake_case(service_name)}/{task_function.name}',
+                tags=[service_name]
+            )(end_point)
                     
     def generate_websocket_function(
             self,
@@ -352,10 +290,9 @@ class ArbiterApiApp(FastAPI):
         ):                            
             async def async_websocket_function(
                 websocket: WebSocket,
-                user_id: str = None
+                query: str = None
             ):
                 class Channel:
-                    
                     def __init__(self, channel: str, target: int | str = None):
                         self.channel = channel
                         self.target = target
@@ -381,7 +318,6 @@ class ArbiterApiApp(FastAPI):
                     # finally:
                         # print(f"End of message_listen_queue {queue}")
                         
-
                 async def message_subscribe_channel(websocket: WebSocket, channel: str):
                     # print(f"Start of message_subscribe_channel {channel}")
                     try:
@@ -395,13 +331,12 @@ class ArbiterApiApp(FastAPI):
                         # print(f"End of message_subscribe_channel {channel}")
                 
                 stream_route = self.stream_routes[service_name]
+                #broker 할당 받은 받기
+                # 할당 못받으면 GG
+                
                 await websocket.accept()
                 
-                response_queue = uuid.uuid4().hex
-                if user_id:
-                    if user:= await self.db.get_data(User, user_id):
-                        response_queue = user.unique_channel
-                                        
+                response_queue = uuid.uuid4().hex                          
                 # response task가 만들어질때, response_queue를 인자로 넘겨준다.
                 message_tasks: dict[Channel, asyncio.Task] = {}
                 response_task = asyncio.create_task(message_listen_queue(websocket, response_queue, 0))
@@ -492,22 +427,9 @@ class ArbiterApiApp(FastAPI):
                 if not websocket.client_state == WebSocketState.DISCONNECTED:
                     await websocket.close()
             
-            async def websocket_endpoint(websocket: WebSocket, token: str = Query(None)):
+            async def websocket_endpoint(websocket: WebSocket, query: str = Query(None)):
                 # response channel must be unique for each websocket
-                try:
-                    if task_function.auth and not token:
-                        # HTTP 예외를 발생시켜 웹소켓 연결 거부
-                        raise HTTPException(status_code=400, detail="Token is required")
-                except HTTPException as e:
-                    # 연결을 거부하는 HTTP 응답
-                    await websocket.close(code=4000, reason=e.detail)
-                    return
-                if token:
-                    token_data = verify_token(token)
-                    user_id = token_data.sub
-                else:
-                    user_id = None
-                await async_websocket_function(websocket, user_id)
+                await async_websocket_function(websocket, query)
 
             if service_name not in self.stream_routes:
                 self.stream_routes[service_name] = {}            
@@ -526,5 +448,8 @@ def get_app() -> ArbiterApiApp:
     from arbiter.cli.utils import read_config
     config = read_config(CONFIG_FILE)
     arbiter_name = os.getenv("ARBITER_NAME", "Danimoth")
-    return ArbiterApiApp(arbiter_name, config)
+    node_id = os.getenv("NODE_ID", "")
+    assert node_id, "NODE_ID is not set"
+    
+    return ArbiterApiApp(arbiter_name, node_id, config)
 

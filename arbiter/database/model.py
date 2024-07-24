@@ -24,22 +24,25 @@ class Node(DefaultModel):
 
     def __str__(self):
         return self.unique_id
-        
-class User(DefaultModel):
-    email: str
-    password: str
-    created_at: datetime
-    updated_at: datetime
-    unique_channel: str
-    description: Optional[str] = Field(default=None)
-    access_token: Optional[str] = Field(default=None)
-    refresh_token: Optional[str] = Field(default=None)
-
 
 class ServiceMeta(DefaultModel):
     node_id: int
     module_name: str
-
+    
+class TaskFunction(DefaultModel):
+    queue_name: str
+    service_meta: ServiceMeta
+    
+class HttpTaskFunction(TaskFunction):
+    method: HttpMethod | None = Field(default=None)
+    request_models: str | None = Field(default=None)
+    response_model: str | None = Field(default=None)
+    
+class StreamTaskFunction(TaskFunction):
+    connection: StreamMethod | None = Field(default=None)
+    communication_type: StreamCommunicationType | None = Field(default=None)
+    num_of_channels: int = Field(default=1)    
+    
 class Service(DefaultModel):
     node_id: int
     state: ServiceState
@@ -47,19 +50,3 @@ class Service(DefaultModel):
     updated_at: datetime
     service_meta: ServiceMeta
     description: Optional[str] = Field(default=None)
-
-class TaskFunction(DefaultModel):
-    queue_name: str
-    service_meta: ServiceMeta
-    auth: bool
-    
-class HttpTaskFunction(TaskFunction):
-    method: HttpMethod | None = Field(default=None)
-    request_models: str | None = Field(default=None)
-    response_model: str | None = Field(default=None)
-    
-
-class StreamTaskFunction(TaskFunction):
-    connection: StreamMethod | None = Field(default=None)
-    communication_type: StreamCommunicationType | None = Field(default=None)
-    num_of_channels: int = Field(default=1)

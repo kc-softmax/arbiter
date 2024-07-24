@@ -417,7 +417,6 @@ class Arbiter:
             yield e
             return
         self.system_task = asyncio.create_task(self.system_task_func())
-
         # TODO 확인해야 한다, 서비스가 정상적으로 켜진건지 할 수  있다면
         # 만약 켜지지 않았다면, new_service 객체를 바탕으로 조정해야 한다.
         # process = asyncio.create_task(self.start_service(new_service))

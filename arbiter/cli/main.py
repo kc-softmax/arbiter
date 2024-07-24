@@ -210,13 +210,11 @@ def dev(
 ):
     from arbiter import Arbiter, TypedQueue, Service
     command_queue: asyncio.Queue[Annotated[str, "command"]] = asyncio.Queue()
-    processes: list[asyncio.subprocess.Process] = []
     async def arbiter_manager(
         arbiter: Arbiter,
         service_queue: TypedQueue[Service],
         command_queue: asyncio.Queue[Annotated[str, "command"]]
     ):
-        nonlocal processes
         while True:
             service = await service_queue.get()
             try:
@@ -225,6 +223,7 @@ def dev(
                     break
             except Exception as e:
                 print(e, ': manager')
+                
             command = get_running_command(
                 service.service_meta.module_name,
                 service.service_meta.name,
@@ -232,10 +231,10 @@ def dev(
                 arbiter.node.unique_id,
                 arbiter.name
             )
+            
             process = await start_process(
                 f'{sys.executable} -c "{command}"',
                 f"{service.service_meta.name}: {service.id}")
-            processes.append(process)
             # start service success message
             console.print(
                 f"[bold green]{arbiter.name}[/bold green]'s [bold yellow]{service.service_meta.name}[/bold yellow] has warped in.")
@@ -268,6 +267,7 @@ def dev(
         try:
             manager_task = None
             failed_to_warp_in = False
+            gunicorn_process = None
             async with Arbiter(name=name).start(config) as arbiter:
                 async for result, message in arbiter.warp_in(WarpInPhase.INITIATION):
                     match result:
@@ -281,12 +281,12 @@ def dev(
                             failed_to_warp_in = True
                 if failed_to_warp_in:
                     return
-                gunicorn_process = None
                 if not arbiter.is_replica:
                     # env에 넣어야 한다.
                     # start gunicorn process, and check it is running
                     gunicorn_command = ' '.join([
-                        f'ARBITER_NAME={name}',
+                        f'ARBITER_NAME={name},',
+                        f'NODE_ID={arbiter.node.unique_id}',
                         'gunicorn',
                         '-w', f"{worker_count}",  # Number of workers
                         '--bind', f"{host}:{port}",  # Bind to port 8080
@@ -295,9 +295,7 @@ def dev(
                         'arbiter.api:get_app'  # Application module and variable
                     ])
                     gunicorn_process = await start_process(gunicorn_command, 'gunicorn')
-                    processes.append(gunicorn_process)
                     registered_gunicorn_worker_count = 0
-
                     # must be set timeout
                     async for result, message in arbiter.warp_in(WarpInPhase.CHANNELING):
                         match result:
@@ -305,7 +303,10 @@ def dev(
                                 registered_gunicorn_worker_count += 1
                             case WarpInTaskResult.FAIL:
                                 console.print(f"[bold red]Failed to warp in[/bold red] {message}")
-                                return
+                                if gunicorn_process:
+                                    console.print(f"[bold red]{arbiter.name}[/bold red] terminating gunicorn process...")
+                                    await terminate_process(gunicorn_process)
+                                    return        
                             # has warped in.
                         if int(worker_count) == registered_gunicorn_worker_count:
                             console.print(f"[bold green]{arbiter.name}[/bold green]'s [bold yellow]WebServer[/bold yellow] has warped in with [bold green]{worker_count}[/bold green] workers.")
@@ -354,6 +355,7 @@ def dev(
 
                 if gunicorn_process:
                     try:
+                        console.print(f"[bold red]{arbiter.name}[/bold red] terminating gunicorn process...")
                         await terminate_process(gunicorn_process)               
                     except Exception as e:
                         console.print(f"[bold red]{arbiter.name}[/bold red] {e}")
@@ -377,16 +379,15 @@ def dev(
     def shutdown_signal_handler():
         asyncio.ensure_future(async_shutdown_signal_handler())
     
-    async def terminate_all_processes():
-        for process in processes:
-            try:
-                await terminate_process(process)               
-            except ProcessLookupError as e:
-                pass
-            except Exception as e:
-                console.print(f"Error during termination: {e}")
+    # async def terminate_all_processes():
+    #     for process in processes:
+    #         try:
+    #             await terminate_process(process)               
+    #         except ProcessLookupError as e:
+    #             pass
+    #         except Exception as e:
+    #             console.print(f"Error during termination: {e}")
         
-    
     sys.path.insert(0, os.getcwd())
     """
     Read the config file.
@@ -410,8 +411,8 @@ def dev(
         console.print("KeyboardInterrupt caught in main")
     except Exception as e:
         console.print(f"Unhandled exception in main: {e}")
-    finally:
-        asyncio.run(terminate_all_processes())
+    # finally:
+    #     asyncio.run(terminate_all_processes())
 
 if __name__ == "__main__":
     app()

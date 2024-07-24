@@ -3,10 +3,7 @@ import redis.asyncio as aioredis
 from typing import Optional, TypeVar, Type
 from datetime import datetime, timezone
 from arbiter.utils import to_snake_case
-from arbiter.database.model import (
-    DefaultModel,
-    User,
-)
+from arbiter.database.model import DefaultModel
 
 T = TypeVar('T', bound=DefaultModel)
 
@@ -108,18 +105,4 @@ class Database:
                 # if all conditions is true then append to results
                 if all(conditions):
                     results.append(model_data)
-        return results
-    
-     ################ User management ################
-    async def fetch_user_channels(self, user_ids: list[int]) -> list[str]:
-        results = []
-        keys = [
-            f'user:{user_id}'
-            for user_id in user_ids
-        ]
-        values = await self.client.mget(*keys)
-        for value in values:
-            if value:
-                data = User.model_validate_json(value)
-                results.append(data)
         return results

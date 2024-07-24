@@ -8,7 +8,6 @@ from arbiter.constants.enums import (
     StreamMethod,
     StreamCommunicationType
 )
-from arbiter.database import User
 from arbiter.broker import (
     subscribe_task, 
     periodic_task, 
@@ -41,13 +40,13 @@ class TestService(RedisService):
         pass
         # print(f"hello_world: {messages}")
 
-    # @http_task(method=HttpMethod.POST)
-    # async def get_message_auth_no_request(self) -> DefaultResponseModel:
-    #     return 'hihi'
+    @http_task(method=HttpMethod.POST)
+    async def get_message_auth_no_request(self) -> DefaultResponseModel:
+        return 'hihi'
     
-    # @http_task(method=HttpMethod.POST, response_model=TestModel)
-    # async def get_message(self, message: list[TestModel], member: list[int]) -> list[TestModel]:
-    #     return message[0]
+    @http_task(method=HttpMethod.POST, response_model=TestModel)
+    async def get_message(self, message: list[TestModel], member: list[int]) -> list[TestModel]:
+        return message[0]
     
     @stream_task(
         connection=StreamMethod.WEBSOCKET,
@@ -57,7 +56,8 @@ class TestService(RedisService):
 
     @stream_task(
         connection=StreamMethod.WEBSOCKET,
-        communication_type=StreamCommunicationType.SYNC_UNICAST)
+        communication_type=StreamCommunicationType.SYNC_UNICAST,
+        auth=True)
     async def whisper(self, message: str) -> str:
         return message
 

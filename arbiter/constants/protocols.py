@@ -16,7 +16,6 @@ class TaskProtocol(Protocol):
 
 
 class StreamTaskProtocol(TaskProtocol):
-    auth: bool
     routing: bool
     connection: StreamMethod
     communication_type: StreamCommunicationType
@@ -27,7 +26,6 @@ class StreamTaskProtocol(TaskProtocol):
 
 
 class HttpTaskProtocol(TaskProtocol):
-    auth: bool
     routing: bool
     method: HttpMethod
     response_model: BaseModel
