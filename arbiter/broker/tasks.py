@@ -66,8 +66,9 @@ class StreamTask(Task):
         async def wrapper(self, *args: Any, **kwargs: Any):
             func_queue = f'{to_snake_case(self.__class__.__name__)}_{func.__name__}'
             broker = getattr(self, "broker", None)
+            client = await broker.connect()
             assert isinstance(broker, MessageBrokerInterface)
-            async for message in broker.listen_bytes(func_queue):# 이 채널은 함수의 채널 
+            async for message in broker.listen_bytes(client, func_queue):# 이 채널은 함수의 채널 
                 try:
                     target, receive_data = pickle.loads(message)
                     if isinstance(receive_data, bytes) and request_type == str:
@@ -77,15 +78,16 @@ class StreamTask(Task):
                     match func.communication_type:
                         case StreamCommunicationType.SYNC_UNICAST:
                             result = await func(self, receive_data)
-                            await broker.push_message(target, result)
+                            await broker.push_message(client, target, result)
                         case StreamCommunicationType.ASYNC_UNICAST:
                             async for result in func(self, receive_data):
-                                await broker.push_message(target, result)
+                                await broker.push_message(client, target, result)
                         case StreamCommunicationType.BROADCAST:
                             result = await func(self, receive_data)
-                            await broker.broadcast(target, result)
+                            await broker.broadcast(client, target, result)
                 except Exception as e:
                     print(e)
+            await broker.disconnect(client)
         return wrapper
 
 
@@ -123,8 +125,9 @@ class HttpTask(Task):
         async def wrapper(self, *args: Any, **kwargs: Any):
             channel = f'{to_snake_case(self.__class__.__name__)}_{func.__name__}'
             broker = getattr(self, "broker", None)
+            client = await broker.connect()
             assert isinstance(broker, MessageBrokerInterface)
-            async for message in broker.listen(channel):
+            async for message in broker.listen(client, channel):
                 try:
                     message: ArbiterMessage
                     try:
@@ -168,10 +171,12 @@ class HttpTask(Task):
                             results = results.model_dump_json()
                     if results and message.id:
                         await broker.push_message(
+                            client,
                             message.id, 
                             results)
                 except Exception as e:
                     print(e)
+            await broker.disconnect(client)
         return wrapper
 
 
@@ -196,9 +201,11 @@ class PeriodicTask(Task):
             else:
                 periodic_queue = f'{to_snake_case(self.__class__.__name__)}_{func.__name__}'
             broker = getattr(self, "broker", None)
+            client = await broker.connect()
             assert isinstance(broker, MessageBrokerInterface)
-            async for messages in broker.periodic_listen(periodic_queue, period):
+            async for messages in broker.periodic_listen(client, periodic_queue, period):
                 await func(self, messages)
+            await broker.disconnect(client)
         return wrapper
 
 
@@ -215,8 +222,10 @@ class SubscribeTask(Task):
         @functools.wraps(func)
         async def wrapper(self, *args, **kwargs):
             broker = getattr(self, "broker", None)
+            client = await broker.connect()
             assert isinstance(broker, MessageBrokerInterface)
-            async for message in broker.subscribe(channel):
+            async for message in broker.subscribe(client, channel):
                 # TODO MARK 
                 await func(self, message)
+            await broker.disconnect(client)
         return wrapper
