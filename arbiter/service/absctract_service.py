@@ -193,7 +193,7 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
                 data=ArbiterMessageType.ARBITER_SERVICE_UNREGISTER,
                 sender_id=self.service_id,
                 response=False))
-        await self.broker.disconnect(self.client)
+        await self.broker.disconnect()
 
     async def start(self):
         """

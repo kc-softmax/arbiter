@@ -30,9 +30,13 @@ class RedisBroker(MessageBrokerInterface):
         client = aioredis.Redis.from_pool(self.async_redis_connection_pool)
         return client
 
-    async def disconnect(self, client: aioredis.Redis):
+    async def withdraw_connection(self, client: aioredis.Redis):
         if client:
             await client.aclose()
+
+    async def disconnect(self):
+        await self.async_redis_connection_pool.disconnect()
+        await self.async_redis_connection_pool.aclose()
 
     async def send_message(
         self,
