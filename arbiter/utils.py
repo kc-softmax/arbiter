@@ -1,9 +1,36 @@
 import re
+import types
 import importlib
 from inspect import Parameter
 from pathlib import Path
-from typing import Union, get_origin, get_args
+from typing import Union, get_origin, get_args, Any
 
+def get_default_type_value(param: Parameter) -> any:
+    annotation = param.annotation
+    if get_origin(annotation) is Union or isinstance(annotation, types.UnionType):
+        # Handle Union types
+        args = get_args(annotation)
+        if type(None) in args:
+            non_none_args = [arg for arg in args if arg is not type(None)]
+            if non_none_args:
+                # Recursively get the default value for the non-None type
+                return get_default_type_value(Parameter(name=param.name, kind=param.kind, default=param.default, annotation=non_none_args[0]))
+            else:
+                return None
+    elif annotation == str:
+        return ""
+    elif annotation == int:
+        return 0
+    elif annotation == float:
+        return 0.0
+    elif annotation == list:
+        return []
+    elif annotation == dict:
+        return {}
+    elif annotation == bool:
+        return False
+    else:
+        return None  # Default value for unspecified types
 
 def extract_annotation(param: Parameter) -> str:
     annotation = param.annotation

@@ -361,70 +361,77 @@ class ArbiterApiApp(FastAPI):
                             for key in to_remove_tasks:
                                 message_tasks.pop(key)
                             stream_message = ArbiterStreamMessage.model_validate(json_data)
-                            network_channel = NetworkChannel(stream_message.channel, stream_message.target)
-                            # get StreamTaskFunction from channel
-                            task_function = stream_route.get(network_channel.channel)
-                            if not task_function:
-                                await websocket.send_text(f"Channel {network_channel.channel} is not valid")
-                                await websocket.send_text(f"Valid channels are {list(stream_route.keys())}")
-                                continue
-                            match task_function.communication_type:
-                                case StreamCommunicationType.SYNC_UNICAST:
-                                    if network_channel.target:
-                                        destination = network_channel.target
-                                    else:
-                                        destination = response_queue
-                                case StreamCommunicationType.ASYNC_UNICAST:
-                                    if network_channel.target:
-                                        destination = network_channel.target
-                                    else:
-                                        destination = response_queue
-                                case StreamCommunicationType.BROADCAST:
-                                    # validate target
-                                    if target:= network_channel.target:
-                                        try:
-                                            target = int(target)
-                                        except ValueError:
-                                            await websocket.send_text(f"in broadcast type, Target must be integer")
-                                            continue
-                                        if target > task_function.num_of_channels:
-                                            await websocket.send_text(f"Target must be less than {task_function.num_of_channels}")
-                                            continue
-                                    channel_name = network_channel.channel
-                                    to_subscribe_task = True
-                                    for message_channel in message_tasks:
-                                        if message_channel.channel != network_channel.channel:
-                                            continue
-                                        if message_channel.get_channel() == network_channel.get_channel():
-                                            await websocket.send_text(f"Already subscribed to {network_channel.get_channel()}")
-                                            to_subscribe_task = False
-                                            break
-                                        message_tasks[message_channel].cancel()
-                                        await message_tasks[message_channel]
-                                    if not to_subscribe_task:
-                                        continue
-                                    message_tasks[network_channel] = asyncio.create_task(
-                                        message_subscribe_channel(websocket, network_channel.get_channel()))
-                                    destination = network_channel.get_channel()
-                            target_task_function = task_function
-                            await websocket.send_text('OK')
+                            if stream_message.channel:
+                                network_channel = NetworkChannel(stream_message.channel, stream_message.target)
+                                # get StreamTaskFunction from channel
+                                task_function = stream_route.get(network_channel.channel)
+                                if not task_function:
+                                    await websocket.send_text(f"Channel {network_channel.channel} is not valid")
+                                    await websocket.send_text(f"Valid channels are {list(stream_route.keys())}")
+                                    continue
+                                match task_function.communication_type:
+                                    case StreamCommunicationType.SYNC_UNICAST:
+                                        if network_channel.target:
+                                            destination = network_channel.target
+                                        else:
+                                            destination = response_queue
+                                    case StreamCommunicationType.ASYNC_UNICAST:
+                                        if network_channel.target:
+                                            destination = network_channel.target
+                                        else:
+                                            destination = response_queue
+                                    case StreamCommunicationType.BROADCAST:
+                                        # validate target
+                                        if target:= network_channel.target:
+                                            try:
+                                                target = int(target)
+                                            except ValueError:
+                                                await websocket.send_text(f"in broadcast type, Target must be integer")
+                                                continue
+                                            if target > task_function.num_of_channels:
+                                                await websocket.send_text(f"Target must be less than {task_function.num_of_channels}")
+                                                continue
+                                        to_subscribe_task = True
+                                        for message_channel in message_tasks:
+                                            if message_channel.channel != network_channel.channel:
+                                                continue
+                                            if message_channel.get_channel() == network_channel.get_channel():
+                                                # await websocket.send_text(f"Already subscribed to {network_channel.get_channel()}")
+                                                to_subscribe_task = False
+                                                break
+                                            message_tasks[message_channel].cancel()
+                                            await message_tasks[message_channel]
+                                        if to_subscribe_task:
+                                            message_tasks[network_channel] = asyncio.create_task(
+                                                message_subscribe_channel(websocket, network_channel.get_channel()))
+                                            destination = network_channel.get_channel()
+                                target_task_function = task_function
+                                if not stream_message.message:
+                                    await websocket.send_text('OK')
+                            if stream_message.message:
+                                if not isinstance(stream_message.message, (bytes, str)):
+                                    await websocket.send_text(f"message must be bytes or str")
+                                    continue
+                                if not target_task_function or not destination:
+                                    # server error 확률 높
+                                    await websocket.send_text(f"Target is not set")
+                                    continue
+                                    # data
+                                await self.broker.push_message(
+                                    target_task_function.queue_name,
+                                    pickle.dumps(
+                                        (
+                                            destination, 
+                                            stream_message.message,
+                                            stream_message.info
+                                        )
+                                    ))
+                            
                         # excepe pydantic_core._pydantic_core.ValidationError as e:
                         except ValidationError as e:
                             await websocket.send_text(f"Data is not valid {e}")
                         except json.JSONDecodeError:
-                            # receive_data should be bytes and str
-                            if not isinstance(receive_data, (bytes, str)):
-                                await websocket.send_text(f"Data must be bytes or str")
-                                continue
-                            if not target_task_function or not destination:
-                                # server error 확률 높
-                                await websocket.send_text(f"Target is not set")
-                                continue
-                                # data
-                            await self.broker.push_message(
-                                target_task_function.queue_name,
-                                pickle.dumps(
-                                    (destination, receive_data)))
+                            await websocket.send_text(f"Data is not valid json")
                 except WebSocketDisconnect:
                     await self.broker.punsubscribe(pubsub_id)
                     pass

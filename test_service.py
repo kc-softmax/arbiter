@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime
 from pydantic import BaseModel
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 from arbiter.service import RedisService
 from arbiter.constants.enums import (
     HttpMethod,
@@ -71,13 +71,13 @@ class TestService(RedisService):
         connection=StreamMethod.WEBSOCKET,
         communication_type=StreamCommunicationType.BROADCAST,
         num_of_channels=5)
-    async def village(self, message: str) -> str:
-        return message
+    async def village(self, message: str, user_id: str | None) -> str:
+        return message + user_id
 
     @stream_task(
         connection=StreamMethod.WEBSOCKET,
         communication_type=StreamCommunicationType.BROADCAST)
-    async def world(self, message: str) -> str:
+    async def world(self, message: str, user_id: Optional[str]) -> str:
         return message
         
         
