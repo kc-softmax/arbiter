@@ -4,6 +4,7 @@ import pickle
 from typing import Generic, TypeVar, Any
 from arbiter.constants import (
     ArbiterMessage,
+    HEALTH_CHECK_RETRY,
     ARBITER_SERVICE_HEALTH_CHECK_INTERVAL,
     ARBITER_SERVICE_TIMEOUT,
     ARBITER_SYSTEM_CHANNEL,
@@ -151,6 +152,7 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
     async def health_check_func(self) -> str:
         if not self.health_check_time:
             self.health_check_time = asyncio.get_event_loop().time()
+        health_check_retry = 0
         while True and not self.force_stop:
             try:
                 start_time = asyncio.get_event_loop().time()
@@ -165,12 +167,18 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
                     if response:
                         self.health_check_time = asyncio.get_event_loop().time()
                     else:
-                        print(
-                            f"{self.__class__.__name__} Response Empty, Health Check Failed")
-                        break
+                        health_check_retry += 1
+                        if health_check_retry > HEALTH_CHECK_RETRY:
+                            print(
+                                f"{self.__class__.__name__} Response Empty, Health Check Failed")
+                            break
+                        else:
+                            print(
+                                f"{self.__class__.__name__} Response Empty, Retry {health_check_retry}")
                 await asyncio.sleep(0.5)
             except asyncio.CancelledError:
                 return "Health Check Cancelled"
+        print(f"{self.__class__.__name__} Health Check Finished")
         if self.force_stop:
             return 'Force Stop from System'
         return 'Health Check Finished'

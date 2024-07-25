@@ -22,9 +22,6 @@ class Node(DefaultModel):
     created_at: datetime
     updated_at: datetime
 
-    def __str__(self):
-        return self.unique_id
-
 class ServiceMeta(DefaultModel):
     node_id: int
     module_name: str
