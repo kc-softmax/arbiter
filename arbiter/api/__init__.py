@@ -103,14 +103,12 @@ class ArbiterApiApp(FastAPI):
         self.router_task: asyncio.Task = None
         self.broker: RedisBroker = RedisBroker(name=name)
         self.stream_routes: dict[str, dict[str, StreamTaskFunction]] = {}
-        self.client: aioredis.Redis = None
     
     @asynccontextmanager
     async def lifespan(self, app: ArbiterApiApp):
-        self.client = await self.broker.connect()
+        await self.broker.connect()
         self.router_task = asyncio.create_task(self.router_handler())
         await self.broker.send_message(
-            self.client,
             self.node_id,
             ArbiterMessage(
                 data=ArbiterMessageType.API_REGISTER,
@@ -124,7 +122,7 @@ class ArbiterApiApp(FastAPI):
     async def router_handler(self):
         # message 는 어떤 router로 등록해야 하는가?에 따른다?
         # TODO ADD router, remove Router?
-        async for message in self.broker.subscribe(self.client, ARBITER_API_CHANNEL):
+        async for message in self.broker.subscribe(ARBITER_API_CHANNEL):
             try:
                 http_task_function = HttpTaskFunction.model_validate_json(message)
                 service_name = http_task_function.service_meta.name
@@ -254,7 +252,6 @@ class ArbiterApiApp(FastAPI):
         ) -> Union[dict, list[dict], None]:
             response_required = True if DynamicResponseModel else False
             response = await app.broker.send_message(
-                self.client,
                 task_function.queue_name,
                 ArbiterMessage(
                     sender_id=self.app_id,
@@ -274,7 +271,6 @@ class ArbiterApiApp(FastAPI):
         ) -> Union[dict, list[dict], None]:
             response_required = True if DynamicResponseModel else False
             response = await app.broker.send_message(
-                self.client,
                 task_function.queue_name,
                 ArbiterMessage(
                     data=data.model_dump_json(), 
@@ -305,18 +301,16 @@ class ArbiterApiApp(FastAPI):
             self,
             service_name: str,
             task_function: StreamTaskFunction,
-        ):                            
+        ):
             async def async_websocket_function(
                 websocket: WebSocket,
                 query: str = None
             ):
-                # get broker connection
-                client = await self.broker.connect()
-                        
-                async def message_listen_queue(websocket: WebSocket, client: aioredis.Redis, queue: str, time_out: int = 10):
+                pubsub_id = None
+                async def message_listen_queue(websocket: WebSocket, queue: str, time_out: int = 10):
                     # print(f"Start of message_listen_queue {queue}")
                     try:
-                        async for data in self.broker.listen_bytes(client, queue, time_out):
+                        async for data in self.broker.listen_bytes(queue, time_out):
                             if data is None:
                                 data = {"from": queue, "data": 'LEAVE'}
                                 await websocket.send_text(json.dumps(data))
@@ -330,12 +324,17 @@ class ArbiterApiApp(FastAPI):
                         # print(f"End of message_listen_queue {queue}")
                         
 
-                async def message_subscribe_channel(websocket: WebSocket, client: aioredis.Redis, channel: str):
+                async def message_subscribe_channel(websocket: WebSocket, channel: str):
                     # print(f"Start of message_subscribe_channel {channel}")
                     try:
-                        async for data in self.broker.subscribe(client, channel):
-                            data = {"from": channel, "data": data.decode()}
-                            await websocket.send_text(json.dumps(data))
+                        nonlocal pubsub_id
+                        async for data in self.broker.subscribe(channel, chat=True):
+                            if not pubsub_id:
+                                pubsub_id, pubsub = data
+                                self.broker.pubsub_map[pubsub_id] = pubsub
+                            else:
+                                data = {"from": channel, "data": data.decode()}
+                                await websocket.send_text(json.dumps(data))
                     except asyncio.CancelledError:
                         pass
                         # print(f"Subscription to {channel} cancelled")
@@ -347,11 +346,11 @@ class ArbiterApiApp(FastAPI):
                 # 할당 못받으면 GG
                 
                 await websocket.accept()
-                
+
                 response_queue = uuid.uuid4().hex                          
                 # response task가 만들어질때, response_queue를 인자로 넘겨준다.
                 message_tasks: dict[NetworkChannel, asyncio.Task] = {}
-                response_task = asyncio.create_task(message_listen_queue(websocket, client, response_queue, 0))
+                response_task = asyncio.create_task(message_listen_queue(websocket, response_queue, 0))
                 try:
                     destination: str | None = None
                     target_task_function: StreamTaskFunction | None = None
@@ -411,7 +410,7 @@ class ArbiterApiApp(FastAPI):
                                     if not to_subscribe_task:
                                         continue
                                     message_tasks[network_channel] = asyncio.create_task(
-                                        message_subscribe_channel(websocket, client, network_channel.get_channel()))
+                                        message_subscribe_channel(websocket, network_channel.get_channel()))
                                     destination = network_channel.get_channel()
                             target_task_function = task_function
                             await websocket.send_text('OK')
@@ -429,18 +428,17 @@ class ArbiterApiApp(FastAPI):
                                 continue
                                 # data
                             await self.broker.push_message(
-                                client,
                                 target_task_function.queue_name,
                                 pickle.dumps(
                                     (destination, receive_data)))
                 except WebSocketDisconnect:
+                    await self.broker.punsubscribe(pubsub_id)
                     pass
                 if response_task:
                     response_task.cancel()
                 await asyncio.gather(*message_tasks.values(), return_exceptions=True)
                 if not websocket.client_state == WebSocketState.DISCONNECTED:
                     await websocket.close()
-                await self.broker.withdraw_connection(client)
             
             async def websocket_endpoint(websocket: WebSocket, query: str = Query(None)):
                 # response channel must be unique for each websocket
