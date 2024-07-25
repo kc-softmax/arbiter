@@ -6,8 +6,8 @@ import functools
 from typing import Any, Type, get_origin, get_args, List, Union
 from pydantic import BaseModel, Field
 from arbiter.constants.messages import ArbiterMessage
-from arbiter.broker.base import MessageBrokerInterface
-from arbiter.utils import to_snake_case, get_default_type_value
+from arbiter.interface.base import ArbiterInterface
+from arbiter.utils import to_snake_case
 from arbiter.constants.enums import (
     HttpMethod,
     StreamMethod,
@@ -70,9 +70,9 @@ class StreamTask(Task):
         @functools.wraps(func)
         async def wrapper(self, *args: Any, **kwargs: Any):
             func_queue = f'{to_snake_case(self.__class__.__name__)}_{func.__name__}'
-            broker = getattr(self, "broker", None)
-            assert isinstance(broker, MessageBrokerInterface)
-            async for message in broker.listen_bytes(func_queue):# 이 채널은 함수의 채널 
+            arbiter = getattr(self, "arbiter", None)
+            assert isinstance(arbiter, ArbiterInterface)
+            async for message in arbiter.listen_bytes(func_queue):# 이 채널은 함수의 채널 
                 try:
                     target, message, info = pickle.loads(message)
                     if not message_type and not extra_params:
@@ -120,13 +120,13 @@ class StreamTask(Task):
                     match func.communication_type:
                         case StreamCommunicationType.SYNC_UNICAST:
                             result = await func(**kwargs)
-                            await broker.push_message(target, result)
+                            await arbiter.push_message(target, result)
                         case StreamCommunicationType.ASYNC_UNICAST:
                             async for result in func(**kwargs):
-                                await broker.push_message(target, result)
+                                await arbiter.push_message(target, result)
                         case StreamCommunicationType.BROADCAST:
                             result = await func(**kwargs)
-                            await broker.broadcast(target, result)
+                            await arbiter.broadcast(target, result)
                 except Exception as e:
                     print(e)
         return wrapper
@@ -165,9 +165,9 @@ class HttpTask(Task):
         @functools.wraps(func)
         async def wrapper(self, *args: Any, **kwargs: Any):
             channel = f'{to_snake_case(self.__class__.__name__)}_{func.__name__}'
-            broker = getattr(self, "broker", None)
-            assert isinstance(broker, MessageBrokerInterface)
-            async for message in broker.listen(channel):
+            arbiter = getattr(self, "arbiter", None)
+            assert isinstance(arbiter, ArbiterInterface)
+            async for message in arbiter.listen(channel):
                 try:
                     message: ArbiterMessage
                     try:
@@ -210,7 +210,7 @@ class HttpTask(Task):
                         if isinstance(results, BaseModel):
                             results = results.model_dump_json()
                     if results and message.id:
-                        await broker.push_message(
+                        await arbiter.push_message(
                             message.id, 
                             results)
                 except Exception as e:
@@ -238,9 +238,9 @@ class PeriodicTask(Task):
                 periodic_queue = queue
             else:
                 periodic_queue = f'{to_snake_case(self.__class__.__name__)}_{func.__name__}'
-            broker = getattr(self, "broker", None)
-            assert isinstance(broker, MessageBrokerInterface)
-            async for messages in broker.periodic_listen(periodic_queue, period):
+            arbiter = getattr(self, "arbiter", None)
+            assert isinstance(arbiter, ArbiterInterface)
+            async for messages in arbiter.periodic_listen(periodic_queue, period):
                 await func(self, messages)
         return wrapper
 
@@ -257,9 +257,9 @@ class SubscribeTask(Task):
         channel = self.channel
         @functools.wraps(func)
         async def wrapper(self, *args, **kwargs):
-            broker = getattr(self, "broker", None)
-            assert isinstance(broker, MessageBrokerInterface)
-            async for message in broker.subscribe(channel):
+            arbiter = getattr(self, "arbiter", None)
+            assert isinstance(arbiter, ArbiterInterface)
+            async for message in arbiter.subscribe(channel):
                 # TODO MARK 
                 await func(self, message)
         return wrapper

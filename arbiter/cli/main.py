@@ -210,10 +210,10 @@ def dev(
     log_level: str = typer.Option(
         "info", "--log-level", help="Log level for arbiter.")
 ):
-    from arbiter import Arbiter, TypedQueue, Service
+    from arbiter.runner.arbiter_runner import ArbiterRunner, TypedQueue, Service
     command_queue: asyncio.Queue[Annotated[str, "command"]] = asyncio.Queue()
     async def arbiter_manager(
-        arbiter: Arbiter,
+        arbiter_runner: ArbiterRunner,
         service_queue: TypedQueue[Service],
         command_queue: asyncio.Queue[Annotated[str, "command"]]
     ):
@@ -230,8 +230,8 @@ def dev(
                 service.service_meta.module_name,
                 service.service_meta.name,
                 service.id,
-                arbiter.node.unique_id,
-                arbiter.name
+                arbiter_runner.node.unique_id,
+                arbiter_runner.name
             )
             
             process = await start_process(
@@ -239,7 +239,7 @@ def dev(
                 f"{service.service_meta.name}: {service.id}")
             # start service success message
             console.print(
-                f"[bold green]{arbiter.name}[/bold green]'s [bold yellow]{service.service_meta.name}[/bold yellow] has warped in.")
+                f"[bold green]{arbiter_runner.name}[/bold green]'s [bold yellow]{service.service_meta.name}[/bold yellow] has warped in.")
        
     async def arbiter_run(
         name: str,
@@ -271,25 +271,25 @@ def dev(
             manager_task = None
             failed_to_warp_in = False
             gunicorn_process = None
-            async with Arbiter(name=name).start(config) as arbiter:
-                async for result, message in arbiter.warp_in(WarpInPhase.INITIATION):
+            async with ArbiterRunner(name=name).start(config) as arbiter_runner:
+                async for result, message in arbiter_runner.warp_in(WarpInPhase.INITIATION):
                     match result:
                         # Danimoth is the warp-in master.
                         case WarpInTaskResult.IS_MASTER:
-                            console.print(f"[bold green]{arbiter.name}[/bold green] is the [bold green]Master[/bold green].")
+                            console.print(f"[bold green]{arbiter_runner.name}[/bold green] is the [bold green]Master[/bold green].")
                         case WarpInTaskResult.IS_REPLICA:
-                            console.print(f"[bold green]{arbiter.name}[/bold green] is the [bold blue]Replica[/bold blue].")
+                            console.print(f"[bold green]{arbiter_runner.name}[/bold green] is the [bold blue]Replica[/bold blue].")
                         case WarpInTaskResult.FAIL:
                             console.print(f"[bold red]Failed to warp in[/bold red] {message}")
                             failed_to_warp_in = True
                 if failed_to_warp_in:
                     return
-                if not arbiter.is_replica:
+                if not arbiter_runner.is_replica:
                     # env에 넣어야 한다.
                     # start gunicorn process, and check it is running
                     gunicorn_command = ' '.join([
                         f'ARBITER_NAME={name},',
-                        f'NODE_ID={arbiter.node.unique_id}',
+                        f'NODE_ID={arbiter_runner.node.unique_id}',
                         'gunicorn',
                         '-w', f"{worker_count}",  # Number of workers
                         '--bind', f"{host}:{port}",  # Bind to port 8080
@@ -300,35 +300,35 @@ def dev(
                     gunicorn_process = await start_process(gunicorn_command, 'gunicorn')
                     registered_gunicorn_worker_count = 0
                     # must be set timeout
-                    async for result, message in arbiter.warp_in(WarpInPhase.CHANNELING):
+                    async for result, message in arbiter_runner.warp_in(WarpInPhase.CHANNELING):
                         match result:
                             case WarpInTaskResult.API_REGISTER_SUCCESS:
                                 registered_gunicorn_worker_count += 1
                             case WarpInTaskResult.FAIL:
                                 console.print(f"[bold red]Failed to warp in[/bold red] {message}")
                                 if gunicorn_process:
-                                    console.print(f"[bold red]{arbiter.name}[/bold red] terminating gunicorn process...")
+                                    console.print(f"[bold red]{arbiter_runner.name}[/bold red] terminating gunicorn process...")
                                     await terminate_process(gunicorn_process)
                                     return        
                             # has warped in.
                         if int(worker_count) == registered_gunicorn_worker_count:
-                            console.print(f"[bold green]{arbiter.name}[/bold green]'s [bold yellow]WebServer[/bold yellow] has warped in with [bold green]{worker_count}[/bold green] workers.")
+                            console.print(f"[bold green]{arbiter_runner.name}[/bold green]'s [bold yellow]WebServer[/bold yellow] has warped in with [bold green]{worker_count}[/bold green] workers.")
                             break                            
                             
                 manager_task = asyncio.create_task(
                     arbiter_manager(
-                        arbiter, 
-                        arbiter.pending_service_queue,
+                        arbiter_runner, 
+                        arbiter_runner.pending_service_queue,
                         command_queue
                     ))
                 
                 # process manager? task 를 실행한다.
-                async for result, message in arbiter.warp_in(WarpInPhase.MATERIALIZATION):
+                async for result, message in arbiter_runner.warp_in(WarpInPhase.MATERIALIZATION):
                     # print progress message
                     match result:
                         case WarpInTaskResult.SUCCESS:
                             console.print(
-                                f"[bold green]{arbiter.name}[/bold green]'s warp-in [bold green]Completed[bold green].")
+                                f"[bold green]{arbiter_runner.name}[/bold green]'s warp-in [bold green]Completed[bold green].")
                             break
                         case WarpInTaskResult.FAIL:
                             console.print(f"[bold red]Failed to warp in[/bold red] {message}")
@@ -342,7 +342,7 @@ def dev(
                     async with interact(command_queue=command_queue):
                         # replica의 경우 마스터의 명령을 받아야한다.
                         # 종료메세지만 알려주도록 하자,
-                        show_shortcut_info(arbiter.is_replica)
+                        show_shortcut_info(arbiter_runner.is_replica)
                         while True:
                             command = await command_queue.get()
                             if command is None:
@@ -354,24 +354,24 @@ def dev(
                                     console.print(
                                         f"[bold red]Invalid command {command}[/bold red]")
                 
-                console.print(f"[bold red]{arbiter.name}[/bold red] is warp out...")
+                console.print(f"[bold red]{arbiter_runner.name}[/bold red] is warp out...")
 
                 if gunicorn_process:
                     try:
-                        console.print(f"[bold red]{arbiter.name}[/bold red] terminating gunicorn process...")
+                        console.print(f"[bold red]{arbiter_runner.name}[/bold red] terminating gunicorn process...")
                         await terminate_process(gunicorn_process)               
                     except Exception as e:
-                        console.print(f"[bold red]{arbiter.name}[/bold red] {e}")
+                        console.print(f"[bold red]{arbiter_runner.name}[/bold red] {e}")
                 try:
-                    async for result, message in arbiter.shutdown_task():
+                    async for result, message in arbiter_runner.shutdown_task():
                         match result:
                             case ArbiterShutdownTaskResult.SUCCESS:
                                 # Danimoth's warp-out completed.
-                                console.print(f"[bold green]{arbiter.name}[/bold green]'s warp-out [bold green]Completed[bold green].")
+                                console.print(f"[bold green]{arbiter_runner.name}[/bold green]'s warp-out [bold green]Completed[bold green].")
                             case ArbiterShutdownTaskResult.WARNING:
-                                console.log(f"[bold yellow]{arbiter.name}[/bold yellow]'s warp-out catch warning {message}")
+                                console.log(f"[bold yellow]{arbiter_runner.name}[/bold yellow]'s warp-out catch warning {message}")
                 except Exception as e:
-                    console.print(f"[bold red]{arbiter.name}[/bold red] e{e}")
+                    console.print(f"[bold red]{arbiter_runner.name}[/bold red] e{e}")
         except Exception as e:
             console.print("[bold red]An error occurred while running the arbiter[/bold red]")
         manager_task and manager_task.cancel()

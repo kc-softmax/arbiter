@@ -473,4 +473,3 @@ def get_app() -> ArbiterApiApp:
     assert node_id, "NODE_ID is not set"
     
     return ArbiterApiApp(arbiter_name, node_id, config)
-

@@ -8,7 +8,7 @@ from arbiter.api.auth.utils import verify_token
 from arbiter.api.auth.schemas import UserSchema
 from arbiter.api.stream.common import extra_query_params
 from arbiter.api.stream.connections import ArbiterConnection, ArbiterWebsocket
-from arbiter.broker import RedisBroker
+from arbiter import Arbiter
 
 
 class ArbiterStream:
@@ -16,12 +16,12 @@ class ArbiterStream:
         self,
         user: UserSchema,
         connection: ArbiterConnection,
-        redis_broker: RedisBroker,
+        arbiter: Arbiter,
         extra: dict = None,
     ) -> None:
         self.user = user
         self.connection = connection
-        self.redis_broker = redis_broker
+        self.arbiter = arbiter
         self.extra = extra
         self.on_connection_open_handler: Callable[[], Awaitable[None]] = None
         self.on_connection_close_handler: Callable[[], Awaitable[None]] = None
@@ -29,7 +29,7 @@ class ArbiterStream:
             bytes], Awaitable[None]] = None
 
     @ classmethod
-    async def create(cls, websocket: WebSocket, token: str, redis_broker: RedisBroker):
+    async def create(cls, websocket: WebSocket, token: str, arbiter: Arbiter):
         # Perform some async operation
         token_data = verify_token(token)
         user = await get_db().user.find_unique(where={"id": int(token_data.sub)})
@@ -44,7 +44,7 @@ class ArbiterStream:
         instance = cls(
             UserSchema(**user.__dict__),
             connection,
-            redis_broker,
+            arbiter,
             extra)
         return instance
 

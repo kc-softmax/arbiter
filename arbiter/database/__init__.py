@@ -101,7 +101,7 @@ class Database:
                 for index_field, value in kwargs.items():
                     conditions.append(
                         hasattr(model_data, index_field) and getattr(model_data, index_field) == value
-                    )                        
+                    )
                 # if all conditions is true then append to results
                 if all(conditions):
                     results.append(model_data)

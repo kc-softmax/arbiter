@@ -10,7 +10,7 @@ from arbiter.constants import ArbiterMessage
 """
 
 
-class MessageBrokerInterface(ABC):
+class ArbiterInterface(ABC):
 
     @abstractmethod
     async def connect(self):
