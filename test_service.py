@@ -71,7 +71,7 @@ class TestService(RedisService):
         connection=StreamMethod.WEBSOCKET,
         communication_type=StreamCommunicationType.BROADCAST,
         num_of_channels=5)
-    async def villiage(self, message: str) -> str:
+    async def village(self, message: str) -> str:
         return message
 
     @stream_task(

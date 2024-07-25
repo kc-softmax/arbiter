@@ -1,9 +1,7 @@
 from __future__ import annotations
 import time
-import pickle
+import uuid
 import redis.asyncio as aioredis
-from warnings import warn
-from pydantic import BaseModel
 from redis.asyncio.client import PubSub
 from typing import AsyncGenerator, Any
 from arbiter.broker.base import MessageBrokerInterface
@@ -17,22 +15,20 @@ from arbiter.constants.messages import (
 class RedisBroker(MessageBrokerInterface):
     def __init__(self, name: str):
         super().__init__()
+        self.name = name
+        self.client: aioredis.Redis = None
+        self.pubsub_map: dict[str, PubSub] = {}
+        
+
+    async def connect(self):
         from arbiter.cli import CONFIG_FILE
         from arbiter.cli.utils import read_config
-        self.name = name
         config = read_config(CONFIG_FILE)
         host = config.get("cache", "redis.url", fallback="localhost")
         port = config.get("cache", "cache", fallback="6379")
         redis_url = f"redis://{host}:{port}/{self.name}"
         self.async_redis_connection_pool = aioredis.ConnectionPool.from_url(redis_url)
-
-    async def connect(self) -> aioredis.Redis:
-        client = aioredis.Redis.from_pool(self.async_redis_connection_pool)
-        return client
-
-    async def withdraw_connection(self, client: aioredis.Redis):
-        if client:
-            await client.aclose()
+        self.client = aioredis.Redis.from_pool(self.async_redis_connection_pool)
 
     async def disconnect(self):
         await self.async_redis_connection_pool.disconnect()
@@ -40,59 +36,65 @@ class RedisBroker(MessageBrokerInterface):
 
     async def send_message(
         self,
-        client: aioredis.Redis,
         receiver_id: str,
         message: ArbiterMessage,
         timeout: float = ARIBTER_DEFAULT_TASK_TIMEOUT
     ):
-        await client.rpush(receiver_id, message.model_dump_json())
+        await self.client.rpush(receiver_id, message.model_dump_json())
         if not message.response:
             return None
-        response_data = await client.blpop(message.id, timeout=timeout)
+        response_data = await self.client.blpop(message.id, timeout=timeout)
         if response_data:
             response_data = response_data[1].decode()
         else:
             response_data = None
         # TODO MARK Test ref check
-        await self.delete_message(client, message.id)
+        await self.delete_message(message.id)
         return response_data
 
-    async def push_message(self, client: aioredis.Redis, target: str, message: Any):
-        await client.rpush(target, message)
+    async def push_message(self, target: str, message: Any):
+        await self.client.rpush(target, message)
 
-    async def get_message(self, client: aioredis.Redis, queue: str, timeout: int = ARIBTER_DEFAULT_TASK_TIMEOUT) -> bytes:
-        response_data = await client.blpop(queue, timeout=timeout)
+    async def get_message(self, queue: str, timeout: int = ARIBTER_DEFAULT_TASK_TIMEOUT) -> bytes:
+        response_data = await self.client.blpop(queue, timeout=timeout)
         if response_data:
             return response_data[1]
         raise TimeoutError(f"Timeout in getting message from {queue}")
 
-    async def delete_message(self, client: aioredis.Redis, message_id: str):
-        await client.delete(message_id)
+    async def delete_message(self, message_id: str):
+        await self.client.delete(message_id)
 
     async def subscribe(
         self,
-        client: aioredis.Redis,
-        channel: str
+        channel: str,
+        chat: bool = False
     ) -> AsyncGenerator[str, None]:
-        pubsub = client.pubsub()
+        # pubsub이 생성되고 id를 생성한 후에 구독 시작
+        pubsub = self.client.pubsub()
+        if chat:
+            pubsub_id = uuid.uuid4().hex
+            yield pubsub_id, pubsub
+
         await pubsub.subscribe(channel)
         async for message in pubsub.listen():
             if message['type'] == 'message':
                 yield message['data']
-        await pubsub.unsubscribe(channel)
-        await pubsub.aclose()
+
+    async def punsubscribe(self, pusbusb_id: str):
+        if self.pubsub_map.get(pusbusb_id):
+            await self.pubsub_map[pusbusb_id].punsubscribe("*")
+            await self.pubsub_map[pusbusb_id].aclose()
+            self.pubsub_map.pop(pusbusb_id)
 
     async def broadcast(
         self,
-        client: aioredis.Redis,
         topic: str, 
         message: str | bytes,
     ):
-        await client.publish(topic, message)
+        await self.client.publish(topic, message)
 
     async def listen_bytes(
         self,
-        client: aioredis.Redis,
         channel: str,
         timeout: int = 0
     ) -> AsyncGenerator[
@@ -101,7 +103,7 @@ class RedisBroker(MessageBrokerInterface):
     ]:
         try:
             while True:
-                message = await client.blpop(channel, timeout)
+                message = await self.client.blpop(channel, timeout)
                 if message:
                     yield message[1]
                 else:
@@ -113,7 +115,6 @@ class RedisBroker(MessageBrokerInterface):
 
     async def listen(
         self,
-        client: aioredis.Redis,
         channel: str,
         timeout: int = 0
     ) -> AsyncGenerator[
@@ -122,7 +123,7 @@ class RedisBroker(MessageBrokerInterface):
     ]:
         try:
             while True:
-                message = await client.blpop(channel, timeout)
+                message = await self.client.blpop(channel, timeout)
                 if message:
                     yield ArbiterMessage.model_validate_json(message[1])
                 else:
@@ -133,7 +134,6 @@ class RedisBroker(MessageBrokerInterface):
 
     async def periodic_listen(
         self,
-        client: aioredis.Redis,
         queue: str,
         period: float = 1
     ) -> AsyncGenerator[list[ArbiterMessage], None]:
@@ -146,7 +146,7 @@ class RedisBroker(MessageBrokerInterface):
                 if timeout <= 0:
                     break
                 # 비동기적으로 메시지를 가져옴
-                response = await client.blpop(queue, timeout=1)
+                response = await self.client.blpop(queue, timeout=1)
                 if response:
                     message = ArbiterMessage.model_validate_json(response[1])
                 else:
