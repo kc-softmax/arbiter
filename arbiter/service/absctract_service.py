@@ -101,6 +101,7 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
     service_id: str = None
 
     initial_processes = 1
+    master_only = False
     auto_start = True
 
     def __init__(

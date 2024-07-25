@@ -25,6 +25,8 @@ class TestModel(BaseModel):
     time: datetime
 
 class TestService(RedisService):
+    
+    master_only = True
 
     @subscribe_task(channel='test')
     async def on_message_test(self, message: bytes):

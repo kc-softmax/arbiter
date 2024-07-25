@@ -57,27 +57,41 @@ def to_snake_case(name: str) -> str:
 # NOTE _new_service로 찾는 것은 루트 경로 내에서 서비스 파일을 찾기 위한 임시 조치
 
 
-def find_python_files_in_path(dir_path: str = './'):
+def find_python_files_in_path(dir_path: str = './', master_only: bool = False):
     current_path = Path(dir_path)
     python_files = []
+    
+    def check_file(p):
+        with open(p, 'r') as file:
+            content = file.read()
+            if re.search(r'class\s+\w+\(RedisService\)', content):
+                if not master_only:
+                    if re.search(r'master_only\s*=\s*True', content):
+                        return False
+                    if re.search(r'master_only=True', content):
+                        return False
+                    if re.search(r'master_only\s*=True', content):
+                        return False
+                    if re.search(r'master_only=/s*True', content):
+                        return False
+                else:
+                    return True
+        return False
+
     # Check root directory files
     for p in current_path.iterdir():
         if p.is_file() and p.suffix == '.py':
-            with open(p, 'r') as file:
-                content = file.read()
-                if re.search(r'class\s+\w+\(RedisService\)', content):
-                    python_files.append(str(p).split('.py')[0])
+            if check_file(p):
+                python_files.append(str(p).split('.py')[0])
 
     # Check 'services' directory files
     services_path = current_path / 'services'
     if services_path.exists() and services_path.is_dir():
         for p in services_path.iterdir():
             if p.is_file() and p.suffix == '.py' and p.name != '__init__.py':
-                with open(p, 'r') as file:
-                    content = file.read()
-                    if re.search(r'class\s+\w+\(RedisService\)', content):
-                        file_name = str(p).replace('/', '.').split('.py')[0]
-                        python_files.append(file_name)
+                if check_file(p):
+                    file_name = str(p).replace('/', '.').split('.py')[0]
+                    python_files.append(file_name)
 
     return python_files
 
