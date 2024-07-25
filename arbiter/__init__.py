@@ -94,7 +94,7 @@ class Arbiter:
         if self.db:
             await self.db.disconnect()
         if self.broker:
-            await self.broker.disconnect(self.client)
+            await self.broker.disconnect()
 
     async def register_service(self, service_id: str):
         if service := await self.db.get_data(Service, service_id):

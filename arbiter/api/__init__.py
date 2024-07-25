@@ -72,6 +72,7 @@ class NetworkChannel:
             return f"{self.channel}_{self.target}"
         return self.channel
 
+
 class ArbiterApiApp(FastAPI):
 
     def __init__(
@@ -118,8 +119,7 @@ class ArbiterApiApp(FastAPI):
             ))
         yield
         self.router_task and self.router_task.cancel()
-        await self.db.disconnect()
-        await self.broker.disconnect(self.client)
+        await self.broker.disconnect()
 
     async def router_handler(self):
         # message 는 어떤 router로 등록해야 하는가?에 따른다?
@@ -440,7 +440,7 @@ class ArbiterApiApp(FastAPI):
                 await asyncio.gather(*message_tasks.values(), return_exceptions=True)
                 if not websocket.client_state == WebSocketState.DISCONNECTED:
                     await websocket.close()
-                await self.broker.disconnect(client)
+                await self.broker.withdraw_connection(client)
             
             async def websocket_endpoint(websocket: WebSocket, query: str = Query(None)):
                 # response channel must be unique for each websocket
