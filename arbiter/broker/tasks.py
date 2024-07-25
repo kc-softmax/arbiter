@@ -1,12 +1,13 @@
 import inspect
 import pickle
+import types
 import json
 import functools
-from typing import Any, Type, get_origin, get_args, List
+from typing import Any, Type, get_origin, get_args, List, Union
 from pydantic import BaseModel, Field
 from arbiter.constants.messages import ArbiterMessage
 from arbiter.broker.base import MessageBrokerInterface
-from arbiter.utils import to_snake_case
+from arbiter.utils import to_snake_case, get_default_type_value
 from arbiter.constants.enums import (
     HttpMethod,
     StreamMethod,
@@ -52,16 +53,20 @@ class StreamTask(Task):
     def __call__(self, func: StreamTaskProtocol) -> StreamTaskProtocol:
         super().__call__(func)
         signature = inspect.signature(func)
-        request_type = None
-        for param in signature.parameters.values():
+        message_type = None
+        extra_params: dict[str, inspect.Parameter] = {}
+        for i, param in enumerate(signature.parameters.values()):
             if param.name == 'self':
                 continue
-            if param.annotation not in [bytes, str]:
-                raise ValueError(f"Invalid parameter type: {param.annotation}, stream task only supports bytes and str")
-            if request_type:
-                continue
-                # raise ValueError("Stream task only supports one parameter")
-            request_type = param.annotation
+            if i == 1:
+                if param.annotation not in [bytes, str]:
+                    raise ValueError(f"Invalid parameter type: {param.annotation}, stream task only supports bytes and str")
+                message_type = param
+            else:
+                if param.name in extra_params:
+                    raise ValueError(f"Duplicate parameter name: {param.name}")
+                extra_params[param.name] = param
+                
         @functools.wraps(func)
         async def wrapper(self, *args: Any, **kwargs: Any):
             func_queue = f'{to_snake_case(self.__class__.__name__)}_{func.__name__}'
@@ -69,20 +74,58 @@ class StreamTask(Task):
             assert isinstance(broker, MessageBrokerInterface)
             async for message in broker.listen_bytes(func_queue):# 이 채널은 함수의 채널 
                 try:
-                    target, receive_data = pickle.loads(message)
-                    if isinstance(receive_data, bytes) and request_type == str:
-                        receive_data = receive_data.decode()
-                    if isinstance(receive_data, str) and request_type == bytes:
-                        receive_data = receive_data.encode()
+                    target, message, info = pickle.loads(message)
+                    if not message_type and not extra_params:
+                        await func(self)
+                        continue
+                    if not isinstance(info, dict):
+                        raise ValueError(f"Invalid info type: {type(info)}, info should be dict")
+                    if not extra_params and info:
+                        raise ValueError(f"Invalid info: {info}, info should be empty, {func.__name__} has no extra parameters")
+                    kwargs = {'self': self, message_type.name: message}
+                    """
+                        방식 변경
+                        extra_params 와 info를 검사한다.
+                        - extra_params에 없는 key가 info에 있다면 에러를 발생시킨다.
+                        - extra_params에 있는 key가 info에 없다면
+                        -  extra_params의 default value가 있는지 확인
+                        -  extra_params의 type 이 Optional인지 확인
+                    """
+                    for param_key, param in extra_params.items():
+                        if param_key not in info:
+                            if param.default != inspect.Parameter.empty:
+                                kwargs[param_key] = param.default
+                            elif (
+                                get_origin(param.annotation) is Union or
+                                isinstance(param.annotation, types.UnionType)
+                            ):
+                                if type(None) not in get_args(param.annotation):
+                                    raise ValueError(
+                                        f"Invalid parameter: {param_key}, {param_key} is required")
+                                # Optional type
+                                kwargs[param_key] = get_default_type_value(param)                            
+                            else:
+                                raise ValueError(
+                                    f"Invalid parameter: {param_key}, {param_key} is required"
+                                )
+                        else:
+                            # 검사를 해야한다?
+                            kwargs[param_key] = info.pop(param_key, None)
+                    if info:
+                        raise ValueError(f"Invalid info: {info}, extra parameters: {extra_params.keys()}")
+                    if isinstance(message, bytes) and message_type.annotation == str:
+                        message = message.decode()
+                    if isinstance(message, str) and message_type.annotation == bytes:
+                        message = message.encode()
                     match func.communication_type:
                         case StreamCommunicationType.SYNC_UNICAST:
-                            result = await func(self, receive_data)
+                            result = await func(**kwargs)
                             await broker.push_message(target, result)
                         case StreamCommunicationType.ASYNC_UNICAST:
-                            async for result in func(self, receive_data):
+                            async for result in func(**kwargs):
                                 await broker.push_message(target, result)
                         case StreamCommunicationType.BROADCAST:
-                            result = await func(self, receive_data)
+                            result = await func(**kwargs)
                             await broker.broadcast(target, result)
                 except Exception as e:
                     print(e)

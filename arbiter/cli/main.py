@@ -206,7 +206,9 @@ def dev(
     name: str = typer.Option(
         "Danimoth", "--name", help="Name of the arbiter to run."),
     reload: bool = typer.Option(
-        False, "--reload", help="Enable auto-reload for code changes.")
+        False, "--reload", help="Enable auto-reload for code changes."),
+    log_level: str = typer.Option(
+        "info", "--log-level", help="Log level for arbiter.")
 ):
     from arbiter import Arbiter, TypedQueue, Service
     command_queue: asyncio.Queue[Annotated[str, "command"]] = asyncio.Queue()
@@ -243,6 +245,7 @@ def dev(
         name: str,
         config: dict[str, str],
         command_queue: asyncio.Queue[Annotated[str, "command"]],
+        log_level: str,
         reload: bool
     ):          
         """
@@ -291,7 +294,7 @@ def dev(
                         '-w', f"{worker_count}",  # Number of workers
                         '--bind', f"{host}:{port}",  # Bind to port 8080
                         '-k', 'arbiter.api.ArbiterUvicornWorker',  # Uvicorn worker class
-                        '--log-level', 'error',  # Log level
+                        '--log-level', log_level,  # Log level
                         'arbiter.api:get_app'  # Application module and variable
                     ])
                     gunicorn_process = await start_process(gunicorn_command, 'gunicorn')
@@ -404,7 +407,12 @@ def dev(
         signal.signal(signal.SIGTERM, lambda s, f: shutdown_signal_handler())
     
         asyncio.run(
-            arbiter_run(name, config, command_queue, reload))
+            arbiter_run(
+                name,
+                config,
+                command_queue,
+                log_level,
+                reload))
     except SystemExit as e:
         console.print(f"SystemExit caught in main: {e.code}")
     except KeyboardInterrupt:
