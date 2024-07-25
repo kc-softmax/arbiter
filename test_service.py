@@ -8,7 +8,7 @@ from arbiter.constants.enums import (
     StreamMethod,
     StreamCommunicationType
 )
-from arbiter.broker import (
+from arbiter.interface import (
     subscribe_task, 
     periodic_task, 
     http_task, 

@@ -1,8 +1,8 @@
 from arbiter.service import AbstractService
-from arbiter.broker import RedisBroker
+from arbiter import Arbiter
 
 
-class RedisService(AbstractService[RedisBroker]):
+class RedisService(AbstractService[Arbiter]):
 
     def __init__(
         self,
@@ -14,7 +14,7 @@ class RedisService(AbstractService[RedisBroker]):
             name,
             node_id, 
             service_id,
-            RedisBroker)
+            Arbiter)
 
     # async def incoming_task_func(self) -> str:
     #     # RPC
