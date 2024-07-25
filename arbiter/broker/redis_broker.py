@@ -73,7 +73,8 @@ class RedisBroker(MessageBrokerInterface):
         pubsub = self.client.pubsub()
         if chat:
             pubsub_id = uuid.uuid4().hex
-            yield pubsub_id, pubsub
+            self.pubsub_map[pubsub_id] = pubsub
+            yield pubsub_id
 
         await pubsub.subscribe(channel)
         async for message in pubsub.listen():

@@ -330,8 +330,7 @@ class ArbiterApiApp(FastAPI):
                         nonlocal pubsub_id
                         async for data in self.broker.subscribe(channel, chat=True):
                             if not pubsub_id:
-                                pubsub_id, pubsub = data
-                                self.broker.pubsub_map[pubsub_id] = pubsub
+                                pubsub_id = data
                             else:
                                 data = {"from": channel, "data": data.decode()}
                                 await websocket.send_text(json.dumps(data))
