@@ -10,7 +10,7 @@ from pydantic import create_model, BaseModel, ValidationError
 from configparser import ConfigParser
 from uvicorn.workers import UvicornWorker
 from typing import Optional, Union, get_args, Type
-from fastapi import FastAPI, Query, WebSocket, Depends, WebSocketDisconnect
+from fastapi import FastAPI, Query, WebSocket, Depends, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -231,7 +231,8 @@ class ArbiterApiApp(FastAPI):
             response: Union[str, list[str], None], 
             response_model_type: Optional[type[BaseModel]]) -> Union[dict, list[dict], None]:
             if not response:
-                raise Exception("Failed to get response")
+                # todo error handling
+                raise HTTPException(status_code=400, detail="Failed to get response")
             # response 가 다른 타입일수 있을까? int, etc,
             response = json.loads(response) if isinstance(response, str) else response
             if not response_model_type:

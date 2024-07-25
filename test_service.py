@@ -26,8 +26,6 @@ class TestModel(BaseModel):
 
 class TestService(RedisService):
     
-    master_only = True
-
     @subscribe_task(channel='test')
     async def on_message_test(self, message: bytes):
         print(f"on_message_test: {message}")
@@ -48,6 +46,7 @@ class TestService(RedisService):
     
     @http_task(method=HttpMethod.POST, response_model=TestModel)
     async def get_message(self, message: list[TestModel], member: list[int]) -> list[TestModel]:
+        # await asyncio.sleep(10)
         return message[0]
     
     @stream_task(
