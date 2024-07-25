@@ -298,8 +298,9 @@ class Arbiter:
         await self.broker.connect()
         try:
             python_files_in_root = find_python_files_in_path(
-                master_only=self.node.is_master
+                is_master=self.node.is_master
             )
+            
             try:
                 # 프로젝트 root아래 있는 service.py 파일들을 import한다.
                 for python_file in python_files_in_root:

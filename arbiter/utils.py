@@ -57,26 +57,27 @@ def to_snake_case(name: str) -> str:
 # NOTE _new_service로 찾는 것은 루트 경로 내에서 서비스 파일을 찾기 위한 임시 조치
 
 
-def find_python_files_in_path(dir_path: str = './', master_only: bool = False):
+def find_python_files_in_path(dir_path: str = './', is_master: bool = False):
     current_path = Path(dir_path)
     python_files = []
-    
     def check_file(p):
+        is_arbiter_service = False
+        only_master_service = False
         with open(p, 'r') as file:
             content = file.read()
             if re.search(r'class\s+\w+\(RedisService\)', content):
-                if not master_only:
-                    if re.search(r'master_only\s*=\s*True', content):
-                        return False
-                    if re.search(r'master_only=True', content):
-                        return False
-                    if re.search(r'master_only\s*=True', content):
-                        return False
-                    if re.search(r'master_only=/s*True', content):
-                        return False
-                else:
-                    return True
-        return False
+                is_arbiter_service = True
+            if re.search(r'master_only\s*=\s*True', content):
+                only_master_service = True
+            if re.search(r'master_only=True', content):
+                only_master_service = True
+            if re.search(r'master_only\s*=True', content):
+                only_master_service = True
+            if re.search(r'master_only=/s*True', content):
+                only_master_service = True
+        if only_master_service:
+            return is_arbiter_service and is_master
+        return is_arbiter_service  
 
     # Check root directory files
     for p in current_path.iterdir():
