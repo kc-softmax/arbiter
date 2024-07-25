@@ -67,11 +67,11 @@ class RedisBroker(MessageBrokerInterface):
     async def subscribe(
         self,
         channel: str,
-        chat: bool = False
+        managed: bool = False
     ) -> AsyncGenerator[str, None]:
         # pubsub이 생성되고 id를 생성한 후에 구독 시작
         pubsub = self.client.pubsub()
-        if chat:
+        if managed:
             pubsub_id = uuid.uuid4().hex
             self.pubsub_map[pubsub_id] = pubsub
             yield pubsub_id
