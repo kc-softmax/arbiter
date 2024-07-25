@@ -323,7 +323,7 @@ class ArbiterApiApp(FastAPI):
                     # print(f"Start of message_subscribe_channel {channel}")
                     try:
                         nonlocal pubsub_id
-                        async for data in self.broker.subscribe(channel, chat=True):
+                        async for data in self.broker.subscribe(channel, managed=True):
                             if not pubsub_id:
                                 pubsub_id = data
                             else:
