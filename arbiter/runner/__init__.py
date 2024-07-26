@@ -1,11 +1,11 @@
 from __future__ import annotations
+
 import asyncio
 import uuid
 import importlib
 import time
 import json
 import inspect
-import pickle
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 from warnings import warn
@@ -45,11 +45,11 @@ from arbiter.utils import (
     get_all_subclasses,
     to_snake_case,
 )
-V = TypeVar('V')
+T = TypeVar('T')
 
 
-class TypedQueue(asyncio.Queue, Generic[V]):
-    async def get(self) -> V:
+class TypedQueue(asyncio.Queue, Generic[T]):
+    async def get(self) -> T:
         return await super().get()
 
 
@@ -70,8 +70,8 @@ class ArbiterRunner:
     def __init__(self, name: str):
         self.name = name
         self.node: Node = None
+        # arbiter와 database merge
         self.arbiter: Arbiter = Arbiter(name)
-        # arbiter가 DB역할을 하고있다
         # self.db = Database.get_db(name)
         self.system_task: asyncio.Task = None
         self.health_check_task: asyncio.Task = None
@@ -163,23 +163,29 @@ class ArbiterRunner:
                     ).model_dump_json()
                 )
             start_time = time.time()
-            while True:
-                try:
-                    if time.time() - start_time > ARBITER_SERVICE_SHUTDOWN_TIMEOUT:
-                        # 서비스가 종료되지 않았기 때문에 확인하는 메세지를 보내야한다.
-                        # 종료되지 않은 서비스들이 있기 때문에 확인해야 한다.
-                        await self._shutdown_queue.put(
-                            (ArbiterShutdownTaskResult.WARNING, None)
-                        )
-                        break
-                    if not await self.active_services:
-                        await self._shutdown_queue.put(
-                            (ArbiterShutdownTaskResult.SUCCESS, None)
-                        )
-                        break
-                except Exception as e:
-                    print(e)
-                await asyncio.sleep(0.3)
+            if not self.system_task.done():
+                while True:
+                    try:
+                        # system_task 가 먼저 종료되었다면, 확인할 수 없다.
+                        if time.time() - start_time > ARBITER_SERVICE_SHUTDOWN_TIMEOUT:
+                            # 서비스가 종료되지 않았기 때문에 확인하는 메세지를 보내야한다.
+                            # 종료되지 않은 서비스들이 있기 때문에 확인해야 한다.
+                            await self._shutdown_queue.put(
+                                (ArbiterShutdownTaskResult.WARNING, None)
+                            )
+                            break
+                        if not await self.active_services:
+                            await self._shutdown_queue.put(
+                                (ArbiterShutdownTaskResult.SUCCESS, None)
+                            )
+                            break
+                    except Exception as e:
+                        print(e)
+                    await asyncio.sleep(0.3)
+            else:
+                await self._shutdown_queue.put(
+                    (ArbiterShutdownTaskResult.WARNING, "System Task is already done.")
+                )                
         except Exception as e:
             print('Error: ', e)
         await self._shutdown_queue.put(None)
@@ -208,7 +214,6 @@ class ArbiterRunner:
                     data=ArbiterMessageType.SHUTDOWN,
                     sender_id=self.node.shutdown_code, 
                     response=False))
-            self.shutdown_flag = True
             await self.system_task
             await self.health_check_task
         except Exception as e:
@@ -291,8 +296,12 @@ class ArbiterRunner:
             **node_data
         )  # TODO Change
         await self._warp_in_queue.put(None)
+        await self.arbiter.connect()
         try:
-            python_files_in_root = find_python_files_in_path()
+            python_files_in_root = find_python_files_in_path(
+                is_master=self.node.is_master
+            )
+            
             try:
                 # 프로젝트 root아래 있는 service.py 파일들을 import한다.
                 for python_file in python_files_in_root:
@@ -435,7 +444,7 @@ class ArbiterRunner:
             if service and service.state == ServiceState.ACTIVE:
                 target = f"{to_snake_case(service.service_meta.name)}_listener"
                 print('stop service not working')
-                # await self.arbiter.send_message(
+                # await self.broker.send_message(
                 #     target,
                     
                 #     ArbiterMessageType.ARBITER_SERVICE_UNREGISTER)
@@ -468,70 +477,76 @@ class ArbiterRunner:
             await asyncio.sleep(0.5)
 
     async def system_task_func(self):
-        async for message in self.arbiter.listen(
-            self.node.unique_id, 
-            ARBITER_SYSTEM_TIMEOUT
-        ):
-            try:
-                if message is None:
-                    break
-                sender_id = message.sender_id
-                message_type = ArbiterMessageType(int(message.data))
-                response: ArbiterMessageType = None
-                match message_type:
-                    case ArbiterMessageType.API_REGISTER:
-                        await self._warp_in_queue.put((
-                            WarpInTaskResult.API_REGISTER_SUCCESS,
-                            sender_id))
-                    case ArbiterMessageType.API_UNREGISTER:
-                        await self._warp_in_queue.put((
-                            WarpInTaskResult.API_REGISTER_SUCCESS,
-                            sender_id))
-                    case ArbiterMessageType.PING:
-                        # health check의 경우 한번에 모아서 업데이트 하는 경우를 생각해봐야한다.
-                        if service := await self.arbiter.get_data(Service, sender_id):
-                            if service.state == ServiceState.PENDING:
-                                warn('Service is not registered yet.')
-                            elif service.state == ServiceState.INACTIVE:
-                                warn(
-                                    """
-                                    Service is inactive, but service try
-                                    to send ping message.
-                                    please check the service and
-                                    service shutdown process.
-                                    """)
+        try:
+            async for message in self.arbiter.listen(
+                self.node.unique_id, 
+                ARBITER_SYSTEM_TIMEOUT
+            ):
+                try:
+                    response: ArbiterMessageType = None
+                    if message is None:
+                        print("Timeout in system task")
+                        break
+                    sender_id = message.sender_id
+                    message_type = ArbiterMessageType(int(message.data))
+                    match message_type:
+                        case ArbiterMessageType.API_REGISTER:
+                            await self._warp_in_queue.put((
+                                WarpInTaskResult.API_REGISTER_SUCCESS,
+                                sender_id))
+                        case ArbiterMessageType.API_UNREGISTER:
+                            await self._warp_in_queue.put((
+                                WarpInTaskResult.API_REGISTER_SUCCESS,
+                                sender_id))
+                        case ArbiterMessageType.PING:
+                            # health check의 경우 한번에 모아서 업데이트 하는 경우를 생각해봐야한다.
+                            if service := await self.arbiter.get_data(Service, sender_id):
+                                if service.state == ServiceState.PENDING:
+                                    warn('Service is not registered yet.')
+                                elif service.state == ServiceState.INACTIVE:
+                                    warn(
+                                        """
+                                        Service is inactive, but service try
+                                        to send ping message.
+                                        please check the service and
+                                        service shutdown process.
+                                        """)
+                                else:
+                                    await self.arbiter.update_data(service)
+                                    response = ArbiterMessageType.PONG
+                        case ArbiterMessageType.ARBITER_SERVICE_REGISTER:
+                            if await self.register_service(sender_id):
+                                response = ArbiterMessageType.ARBITER_SERVICE_REGISTER_ACK
+                        case ArbiterMessageType.ARBITER_SERVICE_UNREGISTER:
+                            if unregistered_service := await self.arbiter.get_data(Service, sender_id):
+                                await self.unregister_service(unregistered_service)
+                                response = ArbiterMessageType.ARBITER_SERVICE_UNREGISTER_ACK
                             else:
-                                await self.arbiter.update_data(service)
-                                response = ArbiterMessageType.PONG
-                    case ArbiterMessageType.ARBITER_SERVICE_REGISTER:
-                        if await self.register_service(sender_id):
-                            response = ArbiterMessageType.ARBITER_SERVICE_REGISTER_ACK
-                    case ArbiterMessageType.ARBITER_SERVICE_UNREGISTER:
-                        if unregistered_service := await self.arbiter.get_data(Service, sender_id):
-                            await self.unregister_service(unregistered_service)
-                            response = ArbiterMessageType.ARBITER_SERVICE_UNREGISTER_ACK
-                        else:
-                            print('Service is not found')
-                    case ArbiterMessageType.SHUTDOWN:
-                        if self.node.shutdown_code == sender_id:
-                            if not self.shutdown_flag:
-                                # pending_service_queue에 None을 넣어서
-                                # cli의 종료를 유도하여 shutdown_task를 실행한다.
-                                await self.pending_service_queue.put(None)
-                                response = ArbiterMessageType.ACK
-                            else:
-                                break
-            except Exception as e:
-                print('Error: ', e)
-                print('Message: ', message_type, sender_id)
-                response = ArbiterMessageType.ERROR
-            finally:
-                if response and message.response:
-                    await self.arbiter.push_message(
-                        message.id,
-                        response.value
-                    )
-
+                                print('Service is not found')
+                        case ArbiterMessageType.SHUTDOWN:
+                            if self.node.shutdown_code == sender_id:
+                                if not self.shutdown_flag:
+                                    # pending_service_queue에 None을 넣어서
+                                    # cli의 종료를 유도하여 shutdown_task를 실행한다.
+                                    await self.pending_service_queue.put(None)
+                                    response = ArbiterMessageType.ACK
+                                else:
+                                    break
+                except Exception as e:
+                    print('Error process message: ', e)
+                    print('Message: ', message_type, sender_id)
+                    response = ArbiterMessageType.ERROR
+                finally:
+                    if response and message.response:
+                        await self.arbiter.push_message(
+                            message.id,
+                            response.value
+                        )
+            if not self.shutdown_flag:
+                print("System Task is done, before shutdown")
+            await self.pending_service_queue.put(None)
+        except Exception as e:
+            print("Error in system task: ", e)
 
 
 # atexit.register(arbiter.clear)

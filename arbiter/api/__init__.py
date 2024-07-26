@@ -16,7 +16,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.websockets import WebSocketState
 from arbiter.api.exceptions import BadRequest
-from arbiter.broker import RedisBroker
+from arbiter import Arbiter
 from arbiter.constants.enums import ArbiterMessageType
 from arbiter.utils import to_snake_case
 from arbiter.database.model import (
@@ -96,14 +96,14 @@ class ArbiterApiApp(FastAPI):
         )
         # app.add_middleware(BaseHTTPMiddleware, dispatch=log_middleware)
         self.router_task: asyncio.Task = None
-        self.broker: RedisBroker = RedisBroker(name=name)
+        self.arbiter: Arbiter = Arbiter(name=name)
         self.stream_routes: dict[str, dict[str, StreamTaskFunction]] = {}
     
     @asynccontextmanager
     async def lifespan(self, app: ArbiterApiApp):
-        await self.broker.connect()
+        await self.arbiter.connect()
         self.router_task = asyncio.create_task(self.router_handler())
-        await self.broker.send_message(
+        await self.arbiter.send_message(
             self.node_id,
             ArbiterMessage(
                 data=ArbiterMessageType.API_REGISTER,
@@ -112,12 +112,12 @@ class ArbiterApiApp(FastAPI):
             ))
         yield
         self.router_task and self.router_task.cancel()
-        await self.broker.disconnect()
+        await self.arbiter.disconnect()
 
     async def router_handler(self):
         # message 는 어떤 router로 등록해야 하는가?에 따른다?
         # TODO ADD router, remove Router?
-        async for message in self.broker.subscribe(ARBITER_API_CHANNEL):
+        async for message in self.arbiter.subscribe(ARBITER_API_CHANNEL):
             try:
                 http_task_function = HttpTaskFunction.model_validate_json(message)
                 service_name = http_task_function.service_meta.name
@@ -249,7 +249,7 @@ class ArbiterApiApp(FastAPI):
         ) -> Union[dict, list[dict], None]:
             try:
                 response_required = True if DynamicResponseModel else False
-                response = await app.broker.send_message(
+                response = await app.arbiter.send_message(
                     task_function.queue_name,
                     ArbiterMessage(
                         sender_id=self.app_id,
@@ -272,7 +272,7 @@ class ArbiterApiApp(FastAPI):
         ) -> Union[dict, list[dict], None]:
             try:
                 response_required = True if DynamicResponseModel else False
-                response = await app.broker.send_message(
+                response = await app.arbiter.send_message(
                     task_function.queue_name,
                     ArbiterMessage(
                         data=data.model_dump_json(), 
@@ -314,7 +314,7 @@ class ArbiterApiApp(FastAPI):
                 async def message_listen_queue(websocket: WebSocket, queue: str, time_out: int = 10):
                     # print(f"Start of message_listen_queue {queue}")
                     try:
-                        async for data in self.broker.listen_bytes(queue, time_out):
+                        async for data in self.arbiter.listen_bytes(queue, time_out):
                             if data is None:
                                 data = {"from": queue, "data": 'LEAVE'}
                                 await websocket.send_text(json.dumps(data))
@@ -332,7 +332,7 @@ class ArbiterApiApp(FastAPI):
                     # print(f"Start of message_subscribe_channel {channel}")
                     try:
                         nonlocal pubsub_id
-                        async for data in self.broker.subscribe(channel, managed=True):
+                        async for data in self.arbiter.subscribe(channel, managed=True):
                             if not pubsub_id:
                                 pubsub_id = data
                             else:
@@ -442,7 +442,7 @@ class ArbiterApiApp(FastAPI):
                         except json.JSONDecodeError:
                             await websocket.send_text(f"Data is not valid json")
                 except WebSocketDisconnect:
-                    await self.broker.punsubscribe(pubsub_id)
+                    await self.arbiter.punsubscribe(pubsub_id)
                     pass
                 if response_task:
                     response_task.cancel()
