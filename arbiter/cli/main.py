@@ -117,8 +117,6 @@ async def check_redis_running(name: str) -> bool:
         config = read_config(CONFIG_FILE)
         host = config.get("cache", "redis.url", fallback="localhost")
         port = config.get("cache", "cache", fallback="6379")
-        host = config.get("cache", "redis.url", fallback="localhost")
-        port = config.get("cache", "cache", fallback="6379")
         redis_url = f"redis://{host}:{port}/{name}"
         async_redis_connection_pool = ConnectionPool.from_url(
             redis_url,
@@ -210,7 +208,7 @@ def dev(
     log_level: str = typer.Option(
         "info", "--log-level", help="Log level for arbiter.")
 ):
-    from arbiter.runner.arbiter_runner import ArbiterRunner, TypedQueue, Service
+    from arbiter.runner import ArbiterRunner, TypedQueue, Service
     command_queue: asyncio.Queue[Annotated[str, "command"]] = asyncio.Queue()
     async def arbiter_manager(
         arbiter_runner: ArbiterRunner,
