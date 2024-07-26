@@ -426,7 +426,7 @@ class ArbiterApiApp(FastAPI):
                                     await websocket.send_text(f"Target is not set")
                                     continue
                                     # data
-                                await self.broker.push_message(
+                                await self.arbiter.push_message(
                                     target_task_function.queue_name,
                                     pickle.dumps(
                                         (

@@ -7,7 +7,7 @@ from typing import Any, Type, get_origin, get_args, List, Union
 from pydantic import BaseModel, Field
 from arbiter.constants.messages import ArbiterMessage
 from arbiter.interface.base import ArbiterInterface
-from arbiter.utils import to_snake_case
+from arbiter.utils import to_snake_case, get_default_type_value
 from arbiter.constants.enums import (
     HttpMethod,
     StreamMethod,
