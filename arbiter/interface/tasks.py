@@ -49,7 +49,7 @@ class StreamTask(Task):
         self.communication_type = communication_type
         self.num_of_channels = num_of_channels
         self.routing = True
-        
+
     def __call__(self, func: StreamTaskProtocol) -> StreamTaskProtocol:
         super().__call__(func)
         signature = inspect.signature(func)
