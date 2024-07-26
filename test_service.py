@@ -45,6 +45,11 @@ class TestService(RedisService):
         return 'hihi'
     
     @http_task(method=HttpMethod.POST, response_model=TestModel)
+    async def get_message_test(self, message: TestModel) -> list[TestModel]:
+        # await asyncio.sleep(10)
+        return message
+    
+    @http_task(method=HttpMethod.POST, response_model=TestModel)
     async def get_message(self, message: list[TestModel], member: list[int]) -> list[TestModel]:
         # await asyncio.sleep(10)
         return message[0]

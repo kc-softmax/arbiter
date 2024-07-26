@@ -229,11 +229,12 @@ class ArbiterApiApp(FastAPI):
             
         async def process_response(
             response: Union[str, list[str], None], 
-            response_model_type: Optional[type[BaseModel]]) -> Union[dict, list[dict], None]:
+            response_model_type: Optional[type[BaseModel]]) -> Union[BaseModel, None]:
             if not response:
+                return 'timeout'
                 # todo error handling
-                raise HTTPException(status_code=400, detail="Failed to get response")
             # response 가 다른 타입일수 있을까? int, etc,
+            
             response = json.loads(response) if isinstance(response, str) else response
             if not response_model_type:
                 return response
@@ -246,39 +247,46 @@ class ArbiterApiApp(FastAPI):
             app: ArbiterApiApp = Depends(get_app),
             task_function: HttpTaskFunction = Depends(get_task_function),
         ) -> Union[dict, list[dict], None]:
-            response_required = True if DynamicResponseModel else False
-            response = await app.broker.send_message(
-                task_function.queue_name,
-                ArbiterMessage(
-                    sender_id=self.app_id,
-                    response=response_required))
-            if not DynamicResponseModel:
-                return response
-            if list_response:
-                response_model_type = get_args(DynamicResponseModel)[0]
-            else:
-                response_model_type = DynamicResponseModel
-            return await process_response(response, response_model_type)
+            try:
+                response_required = True if DynamicResponseModel else False
+                response = await app.broker.send_message(
+                    task_function.queue_name,
+                    ArbiterMessage(
+                        sender_id=self.app_id,
+                        response=response_required))
+                if not DynamicResponseModel:
+                    return response
+                if list_response:
+                    response_model_type = get_args(DynamicResponseModel)[0]
+                else:
+                    response_model_type = DynamicResponseModel
+                return await process_response(response, response_model_type)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Failed to get response {e}")
+
 
         async def dynamic_function(
             data: Type[BaseModel] = Depends(DynamicRequestModel),  # 동적으로 생성된 Pydantic 모델 사용 # type: ignore
             app: ArbiterApiApp = Depends(get_app),
             task_function: HttpTaskFunction = Depends(get_task_function),
         ) -> Union[dict, list[dict], None]:
-            response_required = True if DynamicResponseModel else False
-            response = await app.broker.send_message(
-                task_function.queue_name,
-                ArbiterMessage(
-                    data=data.model_dump_json(), 
-                    sender_id=self.app_id,
-                    response=response_required))                    
-            if not DynamicResponseModel:
-                return response
-            if list_response:
-                response_model_type = get_args(DynamicResponseModel)[0]
-            else:
-                response_model_type = DynamicResponseModel
-            return await process_response(response, response_model_type)
+            try:
+                response_required = True if DynamicResponseModel else False
+                response = await app.broker.send_message(
+                    task_function.queue_name,
+                    ArbiterMessage(
+                        data=data.model_dump_json(), 
+                        sender_id=self.app_id,
+                        response=response_required))                    
+                if not DynamicResponseModel:
+                    return response
+                if list_response:
+                    response_model_type = get_args(DynamicResponseModel)[0]
+                else:
+                    response_model_type = DynamicResponseModel
+                return await process_response(response, response_model_type)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Failed to get response {e}")
 
         end_point = dynamic_function if DynamicRequestModel else dynamic_function_no_request
         if DynamicResponseModel:
