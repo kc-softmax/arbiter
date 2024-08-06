@@ -1,12 +1,11 @@
 from __future__ import annotations
-
 import time
 import uuid
+import pickle
 import redis.asyncio as aioredis
 from datetime import timezone, datetime
 from redis.asyncio.client import PubSub
 from typing import AsyncGenerator, Any, TypeVar, Optional, Type
-from arbiter.interface.base import ArbiterInterface
 from arbiter.database.model import DefaultModel
 from arbiter.utils import to_snake_case
 from arbiter.constants import (
@@ -18,7 +17,7 @@ from arbiter.constants.messages import (
 
 T = TypeVar('T', bound=DefaultModel)
 
-class Arbiter(ArbiterInterface):
+class Arbiter:
     def __init__(self, name: str):
         super().__init__()
         self.name = name
@@ -109,14 +108,21 @@ class Arbiter(ArbiterInterface):
         self,
         receiver_id: str,
         message: ArbiterMessage,
-        timeout: float = ARIBTER_DEFAULT_TASK_TIMEOUT
+        response_with_pickle: bool = True,
+        timeout: float = ARIBTER_DEFAULT_TASK_TIMEOUT,
     ):
         await self.client.rpush(receiver_id, message.model_dump_json())
         if not message.response:
             return None
-        response_data = await self.client.blpop(message.id, timeout=timeout)
+        try:
+            response_data = await self.client.blpop(message.id, timeout=timeout)
+        except Exception as e:
+            print(f"Error in getting response from {receiver_id}: {e}")
         if response_data:
-            response_data = response_data[1].decode()
+            if response_with_pickle:
+                response_data = pickle.loads(response_data[1])
+            else:
+                response_data = response_data[1].decode()
         else:
             response_data = None
         # TODO MARK Test ref check
@@ -190,12 +196,12 @@ class Arbiter(ArbiterInterface):
         channel: str,
         timeout: int = 0
     ) -> AsyncGenerator[
-        ArbiterMessage,
+        Optional[ArbiterMessage],
         None
     ]:
         try:
             while True:
-                message = await self.client.blpop(channel, timeout)
+                message: Optional[tuple[str, str]] = await self.client.blpop(channel, timeout)
                 if message:
                     yield ArbiterMessage.model_validate_json(message[1])
                 else:

@@ -1,9 +1,107 @@
 import re
 import types
+import inspect
 import importlib
+from datetime import datetime
+from pydantic import BaseModel, create_model
+from warnings import warn
 from inspect import Parameter
 from pathlib import Path
-from typing import Union, get_origin, get_args, Any
+from typing import Union, get_origin, get_args, Any, List
+
+def get_type_from_type_name(type_name: str, default_type=None) -> type | None:
+    type_mapping = {
+        'str': str,
+        'int': int,
+        'float': float,
+        'bool': bool,
+        'string': str,
+        'integer': int,
+        'number': float,
+        'boolean': bool,
+        'datetime': datetime,
+        'Any': Any,
+    }
+    return type_mapping.get(type_name, default_type)
+
+def create_model_from_schema(schema: dict) -> BaseModel:
+    fields = {}
+    for name, details in schema['properties'].items():
+        # datetime 형식의 문자열을 인식하여 datetime 타입으로 변환
+        if details.get('format') == 'date-time':
+            field_type = datetime
+        else:
+            field_type = get_type_from_type_name(details['type'])
+        fields[name] = (field_type, ...)
+    return create_model(schema['title'], **fields)  
+
+def convert_param(param_type: type, request_param: Any) -> Any:
+    if issubclass(param_type, BaseModel):
+        return param_type.model_validate(request_param)
+    else:
+        if param_type == bool:
+            # 특별 처리 로직
+            return request_param.lower() in ('true', '1', 'yes')
+        elif param_type == Any:
+            return request_param
+        return param_type(request_param)
+
+def parse_request_body(
+    request_body: dict[str, Any],
+    func_params: dict[str, Parameter],
+) -> dict[str, Any]:
+    """
+        사용자 부터 받은 request_body를 func_params에 맞게 파싱합니다. 
+    """
+    params = {}
+    for param_name, param in func_params.items():
+        if param_name not in request_body:
+            # 사용자로 부터 받은 request_body에 param_name이 없다면
+            if param.default != inspect.Parameter.empty:
+                # 기본값이 있는 경우
+                params[param_name] = param.default
+            elif (
+                get_origin(param.annotation) is Union or
+                isinstance(param.annotation, types.UnionType)
+            ):
+                # Union type 이지만 None이 없는 경우
+                if type(None) not in get_args(param.annotation):
+                    raise ValueError(
+                        f"Invalid parameter: {param_name}, {param_name} is required")
+                # Optional type
+                params[param_name] = get_default_type_value(param)                            
+            else:
+                raise ValueError(
+                    f"Invalid parameter: {param_name}, {param_name} is required"
+                )
+        else:
+            #사용자로 부터 받은 request_body에 param_name이 있다.
+            request_param = request_body.pop(param_name, None)
+            param_type = param.annotation
+            is_list = False
+            origin = get_origin(param_type)
+            if origin is list or origin is List:
+                if not isinstance(request_param, list):
+                    raise ValueError(
+                        f"Invalid parameter: {param_name}, {param_name} must be a list of {param_type.__name__}")
+                param_type = get_args(param_type)[0]
+                is_list = True
+            try:
+                if is_list:
+                    params[param_name] = [
+                        convert_param(item)
+                        for item in request_param]
+                else:
+                    params[param_name] = convert_param(param_type, request_param)
+            except Exception as e:
+                print(e)
+                raise ValueError(
+                    f"Invalid parameter: {param_name}, {e}")
+            
+    if request_body:
+        warn(f"Unexpected parameters: {request_body.keys()}")
+    
+    return params
 
 def get_default_type_value(param: Parameter) -> any:
     annotation = param.annotation

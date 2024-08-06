@@ -1,4 +1,5 @@
-from enum import IntEnum
+from enum import IntEnum, StrEnum
+
 
 
 class ServiceState(IntEnum):

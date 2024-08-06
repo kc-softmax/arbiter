@@ -1,15 +1,14 @@
 from __future__ import annotations
-
 import asyncio
 import uuid
 import importlib
 import time
 import json
-import inspect
+from inspect import Parameter
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 from warnings import warn
-from typing import AsyncGenerator, TypeVar, Generic, get_type_hints, get_origin, get_args, List
+from typing import AsyncGenerator, TypeVar, Generic, Union, get_origin, get_args, List
 from arbiter import Arbiter
 # from arbiter.database import Database
 from arbiter.database.model import (
@@ -30,8 +29,6 @@ from arbiter.constants import (
     ARBITER_SERVICE_SHUTDOWN_TIMEOUT,
     ARBITER_SYSTEM_CHANNEL,
     ARBITER_API_CHANNEL,
-    ALLOWED_TYPE,
-    AUTH_PARAMETER,
 )
 from arbiter.constants.enums import (
     WarpInTaskResult,
@@ -153,7 +150,8 @@ class ArbiterRunner:
                             replica_node.unique_id,
                             ArbiterMessage(
                                 data=ArbiterMessageType.SHUTDOWN,
-                                sender_id=replica_node.shutdown_code))
+                                sender_id=replica_node.shutdown_code,
+                                response=False))
             else:
                 await self.arbiter.broadcast(
                     ARBITER_SYSTEM_CHANNEL,
@@ -259,7 +257,7 @@ class ArbiterRunner:
                 yield (WarpInTaskResult.FAIL, f"Warp In Timeout in {phase.name} phase.")
 
     @asynccontextmanager
-    async def start(self, config: dict[str, str]={}) -> AsyncGenerator[Arbiter, Exception]:
+    async def start(self, config: dict[str, str]={}) -> AsyncGenerator[ArbiterRunner, Exception]:
         try:
             await self.arbiter.connect()
             node_data = dict(
@@ -321,19 +319,25 @@ class ArbiterRunner:
                     module_name=service_class.__module__)
                 
                 if tasks := service_class.tasks:
-                    for task in tasks:
-                        try:
+                    try:
+                        for task in tasks:
                             if not getattr(task, 'routing', False):
                                 continue
-                            signature = inspect.signature(task)
-                            
+                            task_name = task.__name__
+                            task_queue = f"{to_snake_case(service_meta.name)}_{task.__name__}"
                             data = dict(
-                                name=task.__name__,
-                                queue_name=f"{to_snake_case(service_meta.name)}_{task.__name__}",
                                 service_meta=service_meta,
+                                name=task_name,
                                 auth=getattr(task, 'auth', False),
+                                task_queue=task_queue,
                             )
-                            
+                            task_function_cls = None
+                            if getattr(task, 'method', None):
+                                # httpTask
+                                data.update(
+                                    method=getattr(task, 'method', None),
+                                )
+                                task_function_cls = HttpTaskFunction
                             if getattr(task, 'communication_type', None):
                                 # stream task
                                 data.update(
@@ -341,72 +345,64 @@ class ArbiterRunner:
                                     communication_type=getattr(task, 'communication_type', None),
                                     num_of_channels=getattr(task, 'num_of_channels', 1),
                                 )
-                                await self.arbiter.create_data(StreamTaskFunction, **data)
-                            else:
-                                # httpTask
-                                request_models_params: list = []
-                                response_model_params = None
-                                is_list = False
-                                for param in signature.parameters.values():
-                                    annotation = param.annotation
-                                    if param.name == 'self':
-                                        continue
-                                    if param.name == AUTH_PARAMETER:
-                                        continue
-                                    name = param.name
-                                    annotation = param.annotation
+                                task_function_cls = StreamTaskFunction
+
+                            assert task_function_cls is not None, 'Task Function Class is not found'
+                            task_params = getattr(task, 'task_params', {})
+                            assert task_params is not None, 'Task Params is not found'
+                            task_response_type = getattr(task, 'response_type', None)
+                            task_has_response = getattr(task, 'has_response', True)
+                            # response type 이 있을경우 has_response는 True여야 한다.
+                            assert task_response_type is None or task_has_response, 'Task has response but response type is not found'
+                            
+                            flatten_params = {}
+                            flatten_response = ''
+                            
+                            for param_name, parameter in task_params.items():
+                                assert isinstance(parameter, Parameter), f"{param_name} is not a parameter"
+                                annotation = parameter.annotation
+                                param_model_type = None
+                                flatten_param = None
+                                origin = get_origin(annotation)
+                                param_is_list = origin is list or origin is List
+                                if param_is_list:
+                                    param_model_type = get_args(annotation)[0]
+                                else:
+                                    param_model_type = annotation
+
+                                if get_origin(param_model_type) is Union:
+                                    flatten_param = param_model_type.__name__
+                                elif issubclass(param_model_type, BaseModel):
+                                    flatten_param = param_model_type.model_json_schema()
+                                else:
+                                    flatten_param = param_model_type.__name__
                                     
-                                    # 타입 힌트를 가져와서 허용된 타입 중 하나인지 확인
-                                    try:
-                                        if not isinstance(annotation, type):
-                                            annotation = get_type_hints(task).get(param.name, None)
-                                        assert annotation is not None, f"Parameter {param.name} should have a type annotation"
-                                        request_model_type = None
-                                        origin = get_origin(annotation)
-                                        if origin is list or origin is List:
-                                            is_list = True
-                                            request_model_type = get_args(annotation)[0]
-                                        else:
-                                            is_list = False
-                                            request_model_type = annotation
-                                        assert isinstance(request_model_type, type), f"Parameter {param.name} annotation must be a type"
-                                        assert issubclass(request_model_type, ALLOWED_TYPE), f"Parameter {param.name} should be one of {ALLOWED_TYPE}"
-                                        if issubclass(request_model_type, BaseModel):
-                                            request_model_params = request_model_type.model_json_schema()
-                                        else:
-                                            request_model_params = request_model_type.__name__
-                                        if is_list:
-                                            request_model_params = [request_model_params]
-                                        request_models_params.append((name, request_model_params))
-                                    except Exception as e:
-                                        print('ex h: ', e)
-                                        
-                                if response_model := getattr(task, 'response_model', None):
-                                    is_list = False
-                                    response_model_type = None
-                                    origin = get_origin(response_model)
-                                    if origin is list or origin is List:
-                                        is_list = True
-                                        response_model_type = get_args(response_model)[0]
-                                    else:
-                                        is_list = False
-                                        response_model_type = response_model
-                                    assert isinstance(response_model_type, type), f"{response_model_type} annotation must be a type"
-                                    assert issubclass(response_model_type, ALLOWED_TYPE), f"{response_model_type} should be one of {ALLOWED_TYPE}"
-                                    if issubclass(response_model_type, BaseModel):
-                                        response_model_params = response_model_type.model_json_schema()
-                                    else:
-                                        response_model_params = response_model_type.__name__
-                                    if is_list:
-                                        response_model_params = [response_model_params]
-                                data.update(
-                                    method=getattr(task, 'method', None),
-                                    request_models=json.dumps(request_models_params),
-                                    response_model=json.dumps(response_model_params) if response_model_params else None,
-                                )
-                                await self.arbiter.create_data(HttpTaskFunction, **data)
-                        except Exception as e:
-                            print('ex: ', e)
+                                if param_is_list:
+                                    flatten_param = [flatten_param]
+                                flatten_params.update({param_name: flatten_param})
+                                    
+                            if task_has_response and task_response_type:
+                                origin = get_origin(task_response_type)
+                                response_is_list = origin is list or origin is List
+                                response_model_type = None
+                                if response_is_list:
+                                    response_model_type = get_args(task_response_type)[0]
+                                else:
+                                    response_model_type = task_response_type
+                                if issubclass(response_model_type, BaseModel):
+                                    flatten_response = response_model_type.model_json_schema()
+                                else:
+                                    flatten_response = response_model_type.__name__
+                                if response_is_list:
+                                    flatten_response = [flatten_response]
+                            data.update(
+                                task_params=json.dumps(flatten_params),
+                                task_response=json.dumps(flatten_response),
+                            )
+                            await self.arbiter.create_data(task_function_cls, **data)
+                    except Exception as e:
+                        print('Error in creating task function: ', e)
+                        raise e
                         
                 if service_class.auto_start:
                     for _ in range(service_class.initial_processes):
