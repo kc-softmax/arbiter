@@ -8,6 +8,7 @@ from inspect import Parameter
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 from warnings import warn
+from types import UnionType
 from typing import (
     AsyncGenerator,
     TypeVar, 
@@ -377,14 +378,19 @@ class ArbiterRunner:
                                     param_model_type = get_args(annotation)[0]
                                 else:
                                     param_model_type = annotation
-
                                 if get_origin(param_model_type) is Union:
                                     flatten_param = param_model_type.__name__
+                                elif get_origin(param_model_type) is UnionType:
+                                    args = get_args(param_model_type)
+                                    param_type = args[0] if args else None
+                                    if not param_type:
+                                        flatten_param = 'Any'
+                                    else:
+                                        flatten_param = param_type.__name__
                                 elif issubclass(param_model_type, BaseModel):
                                     flatten_param = param_model_type.model_json_schema()
                                 else:
                                     flatten_param = param_model_type.__name__
-                                    
                                 if param_is_list:
                                     flatten_param = [flatten_param]
                                 flatten_params.update({param_name: flatten_param})

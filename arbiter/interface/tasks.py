@@ -5,8 +5,10 @@ import ast
 import inspect
 import json
 import functools
+from types import NoneType
 import warnings
-from typing import Any, get_origin, get_args, List, Callable, AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import Any, get_origin, get_args, List, Callable
 from pydantic import BaseModel
 from arbiter.constants.messages import ArbiterMessage
 from arbiter.utils import to_snake_case, parse_request_body
@@ -70,11 +72,18 @@ class BaseTask:
         return_annotation = signature.return_annotation
         if return_annotation != inspect.Signature.empty:
             # 반환 유형이 AsyncGenerator인지 확인하고 항목 유형 추출
-            if hasattr(return_annotation, '__origin__') and return_annotation.__origin__ is AsyncGenerator:
-                response_type = return_annotation.__args__[0]
+            # print(get_origin(return_annotation), '3424')
+            if get_origin(return_annotation) == AsyncGenerator:
+                args = get_args(return_annotation)
+                if len(args) > 2:
+                    raise ValueError(
+                        f"Invalid return type: {return_annotation}, expected: AsyncGenerator[Type, None]")
+                if args[1] is not NoneType:
+                    raise ValueError(
+                        f"Invalid return type: {return_annotation}, expected: AsyncGenerator[Type, None]")
+                response_type = args[0]
             else:
-                response_type = return_annotation
-
+                response_type = return_annotation                
             origin = get_origin(response_type)
             origin_type = response_type
             if origin is list or origin is List:
@@ -85,7 +94,6 @@ class BaseTask:
                 origin_type = params[0]
             if not (issubclass(origin_type, BaseModel) or origin_type in ALLOWED_TYPES):
                 raise ValueError(f"Invalid response type: {response_type}, allowed types: {ALLOWED_TYPES}")
-            
             self.response_type = response_type
 
         # 코드에서 return을 한번더 찾아 type을 확인한다.

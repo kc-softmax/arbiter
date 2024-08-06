@@ -11,8 +11,8 @@ from arbiter.constants import (
     ARBITER_SYSTEM_CHANNEL,
 )
 from arbiter.interface import subscribe_task, periodic_task
+from arbiter.database.model import TaskFunction
 from arbiter import Arbiter
-from arbiter.utils import to_snake_case
 T = TypeVar('T', bound=Arbiter)
 
 
@@ -240,8 +240,27 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
         finally:
             await self.shutdown(dynamic_tasks)
     
-    
-    
+    async def send_task(
+        self,
+        task_queue: str,
+        data: str | bytes,
+        wait_response: bool = False,
+    ):
+        # find task name
+        response = await self.arbiter.send_message(
+            receiver_id=task_queue,
+            data=data,
+            wait_response=wait_response)
+        # 결과를 기다려야 하는데, 결과가 없다면, 어떻게 처리할 것인가?
+        if wait_response:
+            if not response:
+                if not await self.arbiter.search_data(
+                    TaskFunction,
+                    task_queue=task_queue,
+                ):                
+                    raise Exception(f"Task Queue {task_queue} is not found")
+        return response
+
     @subscribe_task(channel=ARBITER_SYSTEM_CHANNEL) # Master Channel 인데 바꿔야 한다
     async def get_system_message(self, message: str):
         decoded_message = ArbiterTypedData.model_validate_json(message)

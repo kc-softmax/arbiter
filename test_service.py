@@ -28,12 +28,12 @@ class TestService(RedisService):
     # 일단 내부에서 사용하려면 이렇게 해야할 것 같다.    
     @task()
     async def return_task(self, data: Any):
-        return f"{data} return_task"
+        return f"{data} return_task qwer qwer"
     
     @http_task(method=HttpMethod.POST)
     async def task_chain(self):
-        response = await self.arbiter.send_message(
-            receiver_id="test_service_return_task",
+        response = await self.send_task(
+            task_queue="test_service_retur_task",
             data='3434',
             wait_response=True)
         return response
@@ -49,6 +49,16 @@ class TestService(RedisService):
     @http_task(method=HttpMethod.POST)
     async def return_pydantic_model(self) -> list[TestModel]:
         return TestModel(name="test", age=34, time=datetime.now())
+
+    @stream_task(
+        connection=StreamMethod.WEBSOCKET,
+        communication_type=StreamCommunicationType.ASYNC_UNICAST)
+    async def search_company_policy(
+        self,
+        message: str, 
+        user_id: int | None
+    ) -> AsyncGenerator[str, None]:
+        pass
 
     # @http_task(method=HttpMethod.POST)
     # async def return_pydantic_model_no_return_annotation(self, model: TestModel):
