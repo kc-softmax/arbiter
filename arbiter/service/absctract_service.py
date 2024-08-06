@@ -1,7 +1,7 @@
 import inspect
 import asyncio
 import pickle
-from typing import Generic, TypeVar, Any
+from typing import Generic, TypeVar, Any, Callable
 from arbiter.constants import (
     ArbiterMessage,
     HEALTH_CHECK_RETRY,
@@ -9,11 +9,11 @@ from arbiter.constants import (
     ARBITER_SERVICE_TIMEOUT,
     ARBITER_SYSTEM_CHANNEL,
 )
-from arbiter.constants.protocols import TaskProtocol
 from arbiter.constants import ArbiterMessageType, ArbiterBroadcastMessage
-from arbiter.interface import ArbiterInterface, subscribe_task, periodic_task
-
-T = TypeVar('T', bound=ArbiterInterface)
+from arbiter.interface import subscribe_task, periodic_task
+from arbiter import Arbiter
+from arbiter.utils import to_snake_case
+T = TypeVar('T', bound=Arbiter)
 
 
 class ServiceMeta(type):
@@ -22,7 +22,7 @@ class ServiceMeta(type):
 
         new_cls = super().__new__(cls, name, bases, class_dict)
 
-        tasks: list[TaskProtocol] = []
+        tasks: list[Callable] = []
 
         combined_attrs = set(class_dict.keys())
         for base in bases:
@@ -56,9 +56,13 @@ class ServiceMeta(type):
             raise AttributeError(
                 f"The class {name} must have a shutdown attribute.")
 
+        depth = len(new_cls.mro()) - 3
         # parameter type check
         for task in tasks:
+            if depth < 2:
+                continue
             signature = inspect.signature(task)
+            
             # Print the parameters of the function
             for index, param in enumerate(signature.parameters.values()):
                 if param.name == 'self':
@@ -77,9 +81,8 @@ class ServiceMeta(type):
                     #                 name} - {rpc_func.__name__} function must have a User instance as the second argument"
                     #         )
                     pass
-
         setattr(new_cls, 'tasks', tasks)
-        setattr(new_cls, 'depth', len(new_cls.mro()) - 3)  # TODO enum
+        setattr(new_cls, 'depth', depth)  # TODO enum
         return new_cls
 
 
@@ -164,7 +167,8 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
                         self.node_id,
                         ArbiterMessage(
                             data=ArbiterMessageType.PING,
-                            sender_id=self.service_id))
+                            sender_id=self.service_id),
+                        False)
                     if response:
                         self.health_check_time = asyncio.get_event_loop().time()
                     else:
@@ -214,7 +218,8 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
                 self.node_id,
                 ArbiterMessage(
                     data=ArbiterMessageType.ARBITER_SERVICE_REGISTER,
-                    sender_id=self.service_id))     
+                    sender_id=self.service_id),
+                False)  
             if not response:
                 raise Exception("Failed to regiqster service")
             response = ArbiterMessageType(int(response))
@@ -235,8 +240,9 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
             print(e, 'err')
         finally:
             await self.shutdown(dynamic_tasks)
-
-    # 구독을 동적으로 해야한다....
+    
+    
+    
     @subscribe_task(channel=ARBITER_SYSTEM_CHANNEL) # Master Channel 인데 바꿔야 한다
     async def get_system_message(self, message: str):
         decoded_message = ArbiterBroadcastMessage.model_validate_json(message)

@@ -4,8 +4,7 @@ from datetime import datetime
 from .enums import *
 from .messages import *
 
-ALLOWED_TYPE = (BaseModel, int, str, float, bool, datetime)
-AUTH_PARAMETER = "user_id"
+ALLOWED_TYPES = (BaseModel, list, int, str, float, bool, datetime)
 
 WARP_IN_TIMEOUT = 10
 

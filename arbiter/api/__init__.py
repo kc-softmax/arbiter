@@ -9,7 +9,7 @@ from datetime import datetime
 from pydantic import create_model, BaseModel, ValidationError
 from configparser import ConfigParser
 from uvicorn.workers import UvicornWorker
-from typing import Optional, Union, get_args, Type
+from typing import Optional, Union, get_args, Type, Any
 from fastapi import FastAPI, Query, WebSocket, Depends, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
@@ -18,45 +18,31 @@ from fastapi.websockets import WebSocketState
 from arbiter.api.exceptions import BadRequest
 from arbiter import Arbiter
 from arbiter.constants.enums import ArbiterMessageType
-from arbiter.utils import to_snake_case
+from arbiter.utils import (
+    to_snake_case,
+    create_model_from_schema,
+    get_type_from_type_name
+)
 from arbiter.database.model import (
-    Node,
     HttpTaskFunction,
     StreamTaskFunction
 )
 from arbiter.constants.messages import ArbiterStreamMessage
 from arbiter.constants.enums import (
     HttpMethod,
-    ServiceState,
-    StreamCommand,
     StreamMethod,
     StreamCommunicationType
 )
 from arbiter.constants import (
     ArbiterMessage,
     ARBITER_API_CHANNEL,
-    ARBITER_API_SHUTDOWN_TIMEOUT,
 )
 
-"""
-Service 처럼 취급해야한다.,
-하지만 서비스가 아니다, 나중에 추상화에 도전해볼까?
-Health Check, 핑퐁이 아니라, main으로 부터 핑만 받는다?
-만약 ping이 오지 않으면, Main App이 죽었다고 판단한다?
-
-마스터가 다운되면, 슬레이브를 마스터로 승격 시켜야 할까?
-마스터가 다운되면, 모든 서비스를 다운시켜야 할까?
-1번으로 먼저 고민해보자.
-
-API는 task 들을 받을 필요가 있다
-따라서 공통의 채널을 구독해야 한다.
-"""
 
 ArbiterUvicornWorker = UvicornWorker
 ArbiterUvicornWorker.CONFIG_KWARGS = {"loop": "asyncio", "http": "auto"}
 
-
-class NetworkChannel:
+class SubscribeChannel:
     
     def __init__(self, channel: str, target: int | str = None):
         self.channel = channel
@@ -66,6 +52,12 @@ class NetworkChannel:
         if self.target:
             return f"{self.channel}_{self.target}"
         return self.channel
+    
+    def __eq__(self, value: SubscribeChannel) -> bool:
+        return self.get_channel() == value.get_channel()
+
+    def __hash__(self):
+        return self.get_channel().__hash__()
 
 
 class ArbiterApiApp(FastAPI):
@@ -122,12 +114,12 @@ class ArbiterApiApp(FastAPI):
                 http_task_function = HttpTaskFunction.model_validate_json(message)
                 service_name = http_task_function.service_meta.name
             except Exception as e: # TODO Exception type more detail
-                print(e)
+                print(e, 'err')
             try:
                 stream_task_function = StreamTaskFunction.model_validate_json(message)
                 service_name = stream_task_function.service_meta.name
             except Exception as e: # TODO Exception type more detail
-                print(e)
+                print(e, 'errr')
             
             assert http_task_function or stream_task_function, "Task function is not valid"   
             
@@ -166,105 +158,49 @@ class ArbiterApiApp(FastAPI):
         service_name: str,
         task_function: HttpTaskFunction,
     ):
-        def create_model_from_schema(schema: dict) -> BaseModel:
-            type_mapping = {
-                'string': str,
-                'integer': int,
-                'number': float,
-                'boolean': bool,
-                'datetime': datetime
-            }
-            fields = {}
-            for name, details in schema['properties'].items():
-                # datetime 형식의 문자열을 인식하여 datetime 타입으로 변환
-                if details.get('format') == 'date-time':
-                    field_type = datetime
-                else:
-                    field_type = type_mapping.get(details['type'], str)  # 기본 타입을 str로 설정
-                fields[name] = (field_type, ...)
-            return create_model(schema['title'], **fields)     
-
         def get_task_function() -> HttpTaskFunction:
             return task_function
         def get_app() -> ArbiterApiApp:
             return self
         
-
+        path = f'/{to_snake_case(service_name)}/{task_function.name}'
         DynamicRequestModel = None
         DynamicResponseModel = None
         list_response = False
         list_request = False
-        
-        if task_function.response_model:
-            response_model = json.loads(task_function.response_model)
-            list_response = isinstance(response_model, list)
-            if list_response:
-                response_model = response_model[0]
-            if isinstance(response_model, dict):
-                DynamicResponseModel = create_model_from_schema(response_model)
-            else:
-                DynamicResponseModel = response_model
-                
-        if task_function.request_models != '[]':
-            dynamic_request_params = {}
-            request_models = json.loads(task_function.request_models)
-            for name, annotation in request_models:
-                request_model = None
-                list_request = isinstance(annotation, list)
-                if list_request:
-                    annotation = annotation[0]
-                if isinstance(annotation, dict):
-                    request_model = create_model_from_schema(annotation)
-                else:
-                    request_model = annotation
-                if list_request:
-                    request_model = list[request_model]
-                dynamic_request_params[name] = (request_model, ...)
-            DynamicRequestModel = create_model(task_function.name + "Model", **dynamic_request_params)
         try:
-            if list_response:
-                DynamicResponseModel = list[DynamicResponseModel]
+            if task_response := task_function.task_response:
+                response_type = json.loads(task_response)
+                list_response = isinstance(response_type, list)
+                if list_response:
+                    response_type = response_type[0]
+                if not response_type:
+                    DynamicResponseModel = None                    
+                elif isinstance(response_type, dict):
+                    DynamicResponseModel = create_model_from_schema(response_type)
+                else:
+                    DynamicResponseModel = get_type_from_type_name(response_type)
+                if list_response:
+                    DynamicResponseModel = list[DynamicResponseModel]
+            if task_params := task_function.task_params:
+                dynamic_params = {}
+                params: dict[str, str] = json.loads(task_params)
+                for name, flat_annotation in params.items():
+                    param = None
+                    list_param = isinstance(flat_annotation, list)
+                    if list_param:
+                        param = param[0]                        
+                    if isinstance(flat_annotation, dict):
+                        param_model = create_model_from_schema(flat_annotation)
+                    else:
+                        param_model = flat_annotation                        
+                    if list_request:
+                        param_model = list[param_model]
+                    dynamic_params[name] = (param_model, ...)
+                DynamicRequestModel = create_model(task_function.name + "Model", **dynamic_params)
         except Exception as e:
             print(e, 'err')
             
-        async def process_response(
-            response: Union[str, list[str], None], 
-            response_model_type: Optional[type[BaseModel]]) -> Union[BaseModel, None]:
-            if not response:
-                return 'timeout'
-                # todo error handling
-            # response 가 다른 타입일수 있을까? int, etc,
-            
-            response = json.loads(response) if isinstance(response, str) else response
-            if not response_model_type:
-                return response
-            if isinstance(response, list):
-                assert issubclass(response_model_type, BaseModel), "Response model must be subclass of Pydantic BaseModel"
-                return [response_model_type.model_validate_json(res) for res in response]
-            return response_model_type.model_validate(response)
-
-        async def dynamic_function_no_request(
-            app: ArbiterApiApp = Depends(get_app),
-            task_function: HttpTaskFunction = Depends(get_task_function),
-        ) -> Union[dict, list[dict], None]:
-            try:
-                response_required = True if DynamicResponseModel else False
-                response = await app.arbiter.send_message(
-                    task_function.queue_name,
-                    ArbiterMessage(
-                        sender_id=self.app_id,
-                        response=response_required))
-                if not DynamicResponseModel:
-                    return response
-                if list_response:
-                    response_model_type = get_args(DynamicResponseModel)[0]
-                else:
-                    response_model_type = DynamicResponseModel
-                return await process_response(response, response_model_type)
-            except Exception as e:
-                raise HTTPException(status_code=400, detail=f"Failed to get response {e}")
-
-
         async def dynamic_function(
             data: Type[BaseModel] = Depends(DynamicRequestModel),  # 동적으로 생성된 Pydantic 모델 사용 # type: ignore
             app: ArbiterApiApp = Depends(get_app),
@@ -273,34 +209,25 @@ class ArbiterApiApp(FastAPI):
             try:
                 response_required = True if DynamicResponseModel else False
                 response = await app.arbiter.send_message(
-                    task_function.queue_name,
+                    task_function.task_queue,
                     ArbiterMessage(
-                        data=data.model_dump_json(), 
-                        sender_id=self.app_id,
-                        response=response_required))                    
-                if not DynamicResponseModel:
-                    return response
-                if list_response:
-                    response_model_type = get_args(DynamicResponseModel)[0]
-                else:
-                    response_model_type = DynamicResponseModel
-                return await process_response(response, response_model_type)
+                        data=data.model_dump_json(),
+                        response=response_required))
+                # 검사해야 한다.
+                if DynamicResponseModel and DynamicResponseModel != Any:
+                    # 검사를 해야한다 두 타입이 일치 하는지
+                    if type(DynamicResponseModel) != type(response):
+                        raise HTTPException(status_code=400, detail=f"Response type is not valid")                    
+                return response
             except Exception as e:
                 raise HTTPException(status_code=400, detail=f"Failed to get response {e}")
 
-        end_point = dynamic_function if DynamicRequestModel else dynamic_function_no_request
-        if DynamicResponseModel:
-            self.router.post(
-                f'/{to_snake_case(service_name)}/{task_function.name}',
-                tags=[service_name],
-                response_model=DynamicResponseModel
-            )(end_point)
-        else:
-            self.router.post(
-                f'/{to_snake_case(service_name)}/{task_function.name}',
-                tags=[service_name]
-            )(end_point)
-                    
+        self.router.post(
+            path,
+            tags=[service_name],
+            response_model=DynamicResponseModel
+        )(dynamic_function)
+
     def generate_websocket_function(
             self,
             service_name: str,
@@ -345,14 +272,14 @@ class ArbiterApiApp(FastAPI):
                         # print(f"End of message_subscribe_channel {channel}")
                 
                 stream_route = self.stream_routes[service_name]
-                #broker 할당 받은 받기
-                # 할당 못받으면 GG
+                # query에 관한 처리가 있어야 한다.
+                # service의 handle query 같은것이 필요하다.
                 
                 await websocket.accept()
 
                 response_queue = uuid.uuid4().hex                          
                 # response task가 만들어질때, response_queue를 인자로 넘겨준다.
-                message_tasks: dict[NetworkChannel, asyncio.Task] = {}
+                subscribe_tasks: dict[SubscribeChannel, asyncio.Task] = {}
                 response_task = asyncio.create_task(message_listen_queue(websocket, response_queue, 0))
                 try:
                     destination: str | None = None
@@ -365,33 +292,36 @@ class ArbiterApiApp(FastAPI):
                             json_data = json.loads(receive_data)
                             
                             to_remove_tasks = [
-                                key for key, value in message_tasks.items() if value.done()
+                                key for key, value in subscribe_tasks.items() if value.done()
                             ]
                             for key in to_remove_tasks:
-                                message_tasks.pop(key)
+                                subscribe_tasks.pop(key)
                             stream_message = ArbiterStreamMessage.model_validate(json_data)
-                            if stream_message.channel:
-                                network_channel = NetworkChannel(stream_message.channel, stream_message.target)
+                            if channel:= stream_message.channel:
                                 # get StreamTaskFunction from channel
-                                task_function = stream_route.get(network_channel.channel)
+                                task_function = stream_route.get(channel)
                                 if not task_function:
-                                    await websocket.send_text(f"Channel {network_channel.channel} is not valid")
+                                    await websocket.send_text(f"Channel {channel} is not valid")
                                     await websocket.send_text(f"Valid channels are {list(stream_route.keys())}")
                                     continue
+
+                                target = stream_message.target
+                                if (
+                                    task_function.communication_type != StreamCommunicationType.BROADCAST and
+                                    not target
+                                ):
+                                    # if target is not set, use response_queue
+                                    target = response_queue
+                                                                    
                                 match task_function.communication_type:
                                     case StreamCommunicationType.SYNC_UNICAST:
-                                        if network_channel.target:
-                                            destination = network_channel.target
-                                        else:
-                                            destination = response_queue
+                                        destination = target
                                     case StreamCommunicationType.ASYNC_UNICAST:
-                                        if network_channel.target:
-                                            destination = network_channel.target
-                                        else:
-                                            destination = response_queue
+                                        destination = target
                                     case StreamCommunicationType.BROADCAST:
+                                        new_subscribe_channel = SubscribeChannel(channel, stream_message.target)
                                         # validate target
-                                        if target:= network_channel.target:
+                                        if target:
                                             try:
                                                 target = int(target)
                                             except ValueError:
@@ -401,38 +331,37 @@ class ArbiterApiApp(FastAPI):
                                                 await websocket.send_text(f"Target must be less than {task_function.num_of_channels}")
                                                 continue
                                         to_subscribe_task = True
-                                        for message_channel in message_tasks:
-                                            if message_channel.channel != network_channel.channel:
+                                        for subscribe_channel in subscribe_tasks:
+                                            if subscribe_channel.channel != channel:
                                                 continue
-                                            if message_channel.get_channel() == network_channel.get_channel():
+                                            if subscribe_channel == new_subscribe_channel:
                                                 # await websocket.send_text(f"Already subscribed to {network_channel.get_channel()}")
                                                 to_subscribe_task = False
                                                 break
-                                            message_tasks[message_channel].cancel()
-                                            await message_tasks[message_channel]
+                                            subscribe_tasks[subscribe_channel].cancel()
+                                            await subscribe_tasks[subscribe_channel]
+                                            
                                         if to_subscribe_task:
-                                            message_tasks[network_channel] = asyncio.create_task(
-                                                message_subscribe_channel(websocket, network_channel.get_channel()))
-                                            destination = network_channel.get_channel()
+                                            subscribe_tasks[new_subscribe_channel] = asyncio.create_task(
+                                                message_subscribe_channel(websocket, new_subscribe_channel.get_channel()))
+                                            destination = new_subscribe_channel.get_channel()
+                                            
                                 target_task_function = task_function
-                                if not stream_message.message:
+                                if not stream_message.data:
                                     await websocket.send_text('OK')
-                            if stream_message.message:
-                                if not isinstance(stream_message.message, (bytes, str)):
-                                    await websocket.send_text(f"message must be bytes or str")
-                                    continue
+                                    
+                            if stream_message.data:
                                 if not target_task_function or not destination:
                                     # server error 확률 높
                                     await websocket.send_text(f"Target is not set")
                                     continue
                                     # data
                                 await self.arbiter.push_message(
-                                    target_task_function.queue_name,
+                                    target_task_function.task_queue,
                                     pickle.dumps(
                                         (
                                             destination, 
-                                            stream_message.message,
-                                            stream_message.info
+                                            stream_message.data
                                         )
                                     ))
                             
@@ -446,7 +375,7 @@ class ArbiterApiApp(FastAPI):
                     pass
                 if response_task:
                     response_task.cancel()
-                await asyncio.gather(*message_tasks.values(), return_exceptions=True)
+                await asyncio.gather(*subscribe_tasks.values(), return_exceptions=True)
                 if not websocket.client_state == WebSocketState.DISCONNECTED:
                     await websocket.close()
             

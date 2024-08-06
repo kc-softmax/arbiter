@@ -27,17 +27,18 @@ class ServiceMeta(DefaultModel):
     module_name: str
     
 class TaskFunction(DefaultModel):
-    queue_name: str
+    auth: bool = Field(default=False)
     service_meta: ServiceMeta
-    
+    task_queue: str = Field(default='')
+    task_params: str = Field(default='')
+    task_response: str = Field(default='')
+
 class HttpTaskFunction(TaskFunction):
     method: HttpMethod | None = Field(default=None)
-    request_models: str | None = Field(default=None)
-    response_model: str | None = Field(default=None)
     
 class StreamTaskFunction(TaskFunction):
-    connection: StreamMethod | None = Field(default=None)
-    communication_type: StreamCommunicationType | None = Field(default=None)
+    connection: StreamMethod | None = Field(default=0)
+    communication_type: StreamCommunicationType | None = Field(default=0)
     num_of_channels: int = Field(default=1)    
     
 class Service(DefaultModel):
