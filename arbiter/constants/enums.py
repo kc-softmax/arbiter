@@ -99,30 +99,22 @@ class ArbiterCliCommand(IntEnum):
         return f"\t[bold yellow]{self.name.lower()}[/bold yellow]\t{self.description()}"
 
 
-class ArbiterMessageType(IntEnum):
+class ArbiterDataType(IntEnum):
     # General messages
     PING = 1
-    PONG = 2
 
     SHUTDOWN = 3
     MASTER_SHUTDOWN = 4
     # Arbiter messages
     ARBITER_SERVICE_REGISTER = 5
-    ARBITER_SERVICE_REGISTER_ACK = 6
     ARBITER_SERVICE_UNREGISTER = 7
-    ARBITER_SERVICE_UNREGISTER_ACK = 8
     ARBITER_SERVICE_STOP = 9
-    ARBITER_SERVICE_STOP_ACK = 10
 
     API_REGISTER = 11
-    API_REGISTER_ACK = 12
     API_UNREGISTER = 13
-    API_UNREGISTER_ACK = 14
 
     API_ROUTE_REGISTER = 15
-    API_ROUTE_REGISTER_ACK = 16
     API_ROUTE_UNREGISTER = 17
-    API_ROUTE_UNREGISTER_ACK = 18
     # # Error messages
     ACK = 19
     ERROR = 100

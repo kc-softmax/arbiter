@@ -33,8 +33,9 @@ class TestService(RedisService):
     @http_task(method=HttpMethod.POST)
     async def task_chain(self):
         response = await self.arbiter.send_message(
-            "test_service_return_task",
-            ArbiterMessage(data='3434'))
+            receiver_id="test_service_return_task",
+            data='3434',
+            wait_response=True)
         return response
 
     @http_task(method=HttpMethod.POST)

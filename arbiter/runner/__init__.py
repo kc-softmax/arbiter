@@ -8,9 +8,16 @@ from inspect import Parameter
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 from warnings import warn
-from typing import AsyncGenerator, TypeVar, Generic, Union, get_origin, get_args, List
+from typing import (
+    AsyncGenerator,
+    TypeVar, 
+    Generic,
+    Union, 
+    get_origin,
+    get_args, 
+    List
+)
 from arbiter import Arbiter
-# from arbiter.database import Database
 from arbiter.database.model import (
     Service,
     ServiceMeta, 
@@ -20,28 +27,27 @@ from arbiter.database.model import (
 )
 from arbiter.service import AbstractService
 from arbiter.constants import (
-    ArbiterMessage,
-    ArbiterBroadcastMessage,
+    ArbiterTypedData,
     WARP_IN_TIMEOUT,
     ARBITER_SERVICE_PENDING_TIMEOUT,
     ARBITER_SERVICE_ACTIVE_TIMEOUT,
     ARBITER_SYSTEM_TIMEOUT,
     ARBITER_SERVICE_SHUTDOWN_TIMEOUT,
     ARBITER_SYSTEM_CHANNEL,
-    ARBITER_API_CHANNEL,
-)
+    ARBITER_API_CHANNEL)
 from arbiter.constants.enums import (
     WarpInTaskResult,
     ArbiterShutdownTaskResult,
-    ArbiterMessageType,
+    ArbiterDataType,
     WarpInPhase,
     ServiceState
 )
 from arbiter.utils import (
     find_python_files_in_path,
     get_all_subclasses,
-    to_snake_case,
+    to_snake_case
 )
+
 T = TypeVar('T')
 
 
@@ -133,9 +139,9 @@ class ArbiterRunner:
         try:
             if not self.is_replica:
                 await self.arbiter.broadcast(
-                    ARBITER_SYSTEM_CHANNEL,
-                    ArbiterBroadcastMessage(
-                        type=ArbiterMessageType.MASTER_SHUTDOWN,
+                    topic=ARBITER_SYSTEM_CHANNEL,
+                    message=ArbiterTypedData(
+                        type=ArbiterDataType.MASTER_SHUTDOWN,
                         data=self.node.unique_id
                     ).model_dump_json()
                 )
@@ -147,16 +153,17 @@ class ArbiterRunner:
                 ):
                     for replica_node in replica_nodes:
                         await self.arbiter.send_message(
-                            replica_node.unique_id,
-                            ArbiterMessage(
-                                data=ArbiterMessageType.SHUTDOWN,
-                                sender_id=replica_node.shutdown_code,
-                                response=False))
+                            receiver_id=replica_node.unique_id,
+                            data=ArbiterTypedData(
+                                type=ArbiterDataType.SHUTDOWN,
+                                data=replica_node.shutdown_code
+                            ).model_dump_json()
+                        )
             else:
                 await self.arbiter.broadcast(
-                    ARBITER_SYSTEM_CHANNEL,
-                    ArbiterBroadcastMessage(
-                        type=ArbiterMessageType.SHUTDOWN,
+                    topic=ARBITER_SYSTEM_CHANNEL,
+                    message=ArbiterTypedData(
+                        type=ArbiterDataType.SHUTDOWN,
                         data=self.node.unique_id
                     ).model_dump_json()
                 )
@@ -207,11 +214,12 @@ class ArbiterRunner:
                     break
                 yield message
             await self.arbiter.send_message(
-                self.node.unique_id,
-                ArbiterMessage(
-                    data=ArbiterMessageType.SHUTDOWN,
-                    sender_id=self.node.shutdown_code, 
-                    response=False))
+                receiver_id=self.node.unique_id,
+                data=ArbiterTypedData(
+                    type=ArbiterDataType.SHUTDOWN,
+                    data=self.node.shutdown_code
+                ).model_dump_json()
+            )
             await self.system_task
             await self.health_check_task
         except Exception as e:
@@ -443,7 +451,7 @@ class ArbiterRunner:
                 # await self.broker.send_message(
                 #     target,
                     
-                #     ArbiterMessageType.ARBITER_SERVICE_UNREGISTER)
+                #     ArbiterDataType.ARBITER_SERVICE_UNREGISTER)
 
     async def health_check_func(self):
         while not self.system_task.done():
@@ -478,25 +486,28 @@ class ArbiterRunner:
                 self.node.unique_id, 
                 ARBITER_SYSTEM_TIMEOUT
             ):
+                if message is None:
+                    print("Timeout in system task")
+                    break
                 try:
-                    response: ArbiterMessageType = None
-                    if message is None:
-                        print("Timeout in system task")
-                        break
-                    sender_id = message.sender_id
-                    message_type = ArbiterMessageType(int(message.data))
+                    typed_data = ArbiterTypedData.model_validate_json(message.data)
+                    message_type = ArbiterDataType(int(typed_data.type))
+                    data = typed_data.data
+                except Exception as e:
+                    print('Error in system task: ', e)
+
+                try:
+                    response = False
                     match message_type:
-                        case ArbiterMessageType.API_REGISTER:
+                        case ArbiterDataType.API_REGISTER:
                             await self._warp_in_queue.put((
-                                WarpInTaskResult.API_REGISTER_SUCCESS,
-                                sender_id))
-                        case ArbiterMessageType.API_UNREGISTER:
+                                WarpInTaskResult.API_REGISTER_SUCCESS, data))
+                        case ArbiterDataType.API_UNREGISTER:
                             await self._warp_in_queue.put((
-                                WarpInTaskResult.API_REGISTER_SUCCESS,
-                                sender_id))
-                        case ArbiterMessageType.PING:
+                                WarpInTaskResult.API_REGISTER_SUCCESS, data))
+                        case ArbiterDataType.PING:
                             # health check의 경우 한번에 모아서 업데이트 하는 경우를 생각해봐야한다.
-                            if service := await self.arbiter.get_data(Service, sender_id):
+                            if service := await self.arbiter.get_data(Service, data):
                                 if service.state == ServiceState.PENDING:
                                     warn('Service is not registered yet.')
                                 elif service.state == ServiceState.INACTIVE:
@@ -509,34 +520,33 @@ class ArbiterRunner:
                                         """)
                                 else:
                                     await self.arbiter.update_data(service)
-                                    response = ArbiterMessageType.PONG
-                        case ArbiterMessageType.ARBITER_SERVICE_REGISTER:
-                            if await self.register_service(sender_id):
-                                response = ArbiterMessageType.ARBITER_SERVICE_REGISTER_ACK
-                        case ArbiterMessageType.ARBITER_SERVICE_UNREGISTER:
-                            if unregistered_service := await self.arbiter.get_data(Service, sender_id):
+                                    response = True
+                        case ArbiterDataType.ARBITER_SERVICE_REGISTER:
+                            if await self.register_service(data):
+                                response = True
+                        case ArbiterDataType.ARBITER_SERVICE_UNREGISTER:
+                            if unregistered_service := await self.arbiter.get_data(Service, data):
                                 await self.unregister_service(unregistered_service)
-                                response = ArbiterMessageType.ARBITER_SERVICE_UNREGISTER_ACK
+                                response = True
                             else:
                                 print('Service is not found')
-                        case ArbiterMessageType.SHUTDOWN:
-                            if self.node.shutdown_code == sender_id:
+                        case ArbiterDataType.SHUTDOWN:
+                            if self.node.shutdown_code == data:
                                 if not self.shutdown_flag:
                                     # pending_service_queue에 None을 넣어서
                                     # cli의 종료를 유도하여 shutdown_task를 실행한다.
                                     await self.pending_service_queue.put(None)
-                                    response = ArbiterMessageType.ACK
+                                    response = True
                                 else:
                                     break
                 except Exception as e:
                     print('Error process message: ', e)
-                    print('Message: ', message_type, sender_id)
-                    response = ArbiterMessageType.ERROR
+                    print('Message: ', message_type, data)
                 finally:
-                    if response and message.response:
+                    if response:
                         await self.arbiter.push_message(
                             message.id,
-                            response.value
+                            ArbiterDataType.ACK.value
                         )
             if not self.shutdown_flag:
                 print("System Task is done, before shutdown")

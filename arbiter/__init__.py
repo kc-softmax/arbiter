@@ -7,7 +7,7 @@ from datetime import timezone, datetime
 from redis.asyncio.client import PubSub
 from typing import AsyncGenerator, Any, TypeVar, Optional, Type
 from arbiter.database.model import DefaultModel
-from arbiter.utils import to_snake_case
+from arbiter.utils import to_snake_case, get_pickled_data
 from arbiter.constants import (
     ARIBTER_DEFAULT_TASK_TIMEOUT,
 )
@@ -107,22 +107,23 @@ class Arbiter:
     async def send_message(
         self,
         receiver_id: str,
-        message: ArbiterMessage,
-        response_with_pickle: bool = True,
+        data: str | bytes,
+        wait_response: bool = False,
         timeout: float = ARIBTER_DEFAULT_TASK_TIMEOUT,
     ):
+        message = ArbiterMessage(data=data)
+        
         await self.client.rpush(receiver_id, message.model_dump_json())
-        if not message.response:
+        if not wait_response:
             return None
         try:
             response_data = await self.client.blpop(message.id, timeout=timeout)
         except Exception as e:
             print(f"Error in getting response from {receiver_id}: {e}")
         if response_data:
-            if response_with_pickle:
-                response_data = pickle.loads(response_data[1])
-            else:
-                response_data = response_data[1].decode()
+            if pickle_data := get_pickled_data(response_data[1]):
+                return pickle_data
+            return response_data[1].decode()
         else:
             response_data = None
         # TODO MARK Test ref check
