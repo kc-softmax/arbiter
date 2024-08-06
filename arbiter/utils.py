@@ -1,4 +1,5 @@
 import re
+import pickle
 import types
 import inspect
 import importlib
@@ -8,6 +9,23 @@ from warnings import warn
 from inspect import Parameter
 from pathlib import Path
 from typing import Union, get_origin, get_args, Any, List
+
+def get_pickled_data(data: bytes) -> None | Any:
+    """
+    주어진 바이트 문자열이 피클된 데이터인지 확인합니다.
+    
+    :param data: 확인할 바이트 문자열
+    :return: 피클된 데이터인지 여부 (True/False)
+    """
+    # 1. 피클의 매직 바이트를 확인합니다.
+    if len(data) < 2 or data[0] != 0x80:
+        return None
+
+    # 2. 실제 언피클링을 시도하여 유효한지 확인합니다.
+    try:
+        return pickle.loads(data)
+    except (pickle.UnpicklingError, EOFError, AttributeError, ImportError, IndexError):
+        return None
 
 def get_type_from_type_name(type_name: str, default_type=None) -> type | None:
     type_mapping = {

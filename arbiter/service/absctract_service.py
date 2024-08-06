@@ -3,13 +3,13 @@ import asyncio
 import pickle
 from typing import Generic, TypeVar, Any, Callable
 from arbiter.constants import (
-    ArbiterMessage,
+    ArbiterDataType,
+    ArbiterTypedData,
     HEALTH_CHECK_RETRY,
     ARBITER_SERVICE_HEALTH_CHECK_INTERVAL,
     ARBITER_SERVICE_TIMEOUT,
     ARBITER_SYSTEM_CHANNEL,
 )
-from arbiter.constants import ArbiterMessageType, ArbiterBroadcastMessage
 from arbiter.interface import subscribe_task, periodic_task
 from arbiter import Arbiter
 from arbiter.utils import to_snake_case
@@ -164,11 +164,11 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
                     break
                 if start_time - self.health_check_time > ARBITER_SERVICE_HEALTH_CHECK_INTERVAL:
                     response = await self.arbiter.send_message(
-                        self.node_id,
-                        ArbiterMessage(
-                            data=ArbiterMessageType.PING,
-                            sender_id=self.service_id),
-                        False)
+                        receiver_id=self.node_id,
+                        data=ArbiterTypedData(
+                            type=ArbiterDataType.PING,
+                            data=self.service_id).model_dump_json(),
+                        wait_response=True)
                     if response:
                         self.health_check_time = asyncio.get_event_loop().time()
                     else:
@@ -183,7 +183,7 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
                 await asyncio.sleep(0.5)
             except asyncio.CancelledError:
                 return "Health Check Cancelled"
-        print(f"{self.__class__.__name__} Health Check Finished")
+        # print(f"{self.__class__.__name__} Health Check Finished")
         if self.force_stop:
             return 'Force Stop from System'
         return 'Health Check Finished'
@@ -198,11 +198,10 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
 
         self.health_check_task and self.health_check_task.cancel()
         await self.arbiter.send_message(
-            self.node_id,
-            ArbiterMessage(
-                data=ArbiterMessageType.ARBITER_SERVICE_UNREGISTER,
-                sender_id=self.service_id,
-                response=False))
+            receiver_id=self.node_id,
+            data=ArbiterTypedData(
+                type=ArbiterDataType.ARBITER_SERVICE_UNREGISTER,
+                data=self.service_id).model_dump_json())
         await self.arbiter.disconnect()
 
     async def start(self):
@@ -215,15 +214,15 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
         dynamic_tasks: list[asyncio.Task] = []
         try:
             response = await self.arbiter.send_message(
-                self.node_id,
-                ArbiterMessage(
-                    data=ArbiterMessageType.ARBITER_SERVICE_REGISTER,
-                    sender_id=self.service_id),
-                False)  
+                receiver_id=self.node_id,
+                data=ArbiterTypedData(
+                    type=ArbiterDataType.ARBITER_SERVICE_REGISTER,
+                    data=self.service_id).model_dump_json(),
+                wait_response=True)
             if not response:
-                raise Exception("Failed to regiqster service")
-            response = ArbiterMessageType(int(response))
-            if response != ArbiterMessageType.ARBITER_SERVICE_REGISTER_ACK:
+                raise Exception("Failed to register service")
+            response = ArbiterDataType(int(response))
+            if response != ArbiterDataType.ACK:
                 raise Exception("message type is not correct")
             # TODO udpate service_id
             self.health_check_task = asyncio.create_task(
@@ -245,13 +244,13 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
     
     @subscribe_task(channel=ARBITER_SYSTEM_CHANNEL) # Master Channel 인데 바꿔야 한다
     async def get_system_message(self, message: str):
-        decoded_message = ArbiterBroadcastMessage.model_validate_json(message)
+        decoded_message = ArbiterTypedData.model_validate_json(message)
         data = decoded_message.data
         match decoded_message.type:
-            case ArbiterMessageType.SHUTDOWN:
+            case ArbiterDataType.SHUTDOWN:
                 if data == self.node_id:
                     self.force_stop = True
-            case ArbiterMessageType.MASTER_SHUTDOWN:
+            case ArbiterDataType.MASTER_SHUTDOWN:
                 self.force_stop = True
                 # main arbiter가 비정상적으로 종료되었을때 온다.
                 # 정상적으로 종료되면, arbiter가 모든 서비스에게 stop 메세지를 보내고 종료한다.

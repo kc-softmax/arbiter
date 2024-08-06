@@ -31,7 +31,7 @@ class RedisService(AbstractService[Arbiter]):
     #             #     print('Error: ', e)
     #             # response = ArbiterMessage(
     #             #     from_service_id=ARBITER_SYSTEM_SERVICE_ID,
-    #             #     message_type=ArbiterMessageType.ERROR,
+    #             #     message_type=ArbiterDataType.ERROR,
     #             #     payload=str(e)
     #             # )
     #             # response and await self.redis_broker.client.set(

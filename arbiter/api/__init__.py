@@ -17,7 +17,6 @@ from fastapi.responses import JSONResponse
 from fastapi.websockets import WebSocketState
 from arbiter.api.exceptions import BadRequest
 from arbiter import Arbiter
-from arbiter.constants.enums import ArbiterMessageType
 from arbiter.utils import (
     to_snake_case,
     create_model_from_schema,
@@ -34,7 +33,8 @@ from arbiter.constants.enums import (
     StreamCommunicationType
 )
 from arbiter.constants import (
-    ArbiterMessage,
+    ArbiterDataType,
+    ArbiterTypedData,
     ARBITER_API_CHANNEL,
 )
 
@@ -96,12 +96,11 @@ class ArbiterApiApp(FastAPI):
         await self.arbiter.connect()
         self.router_task = asyncio.create_task(self.router_handler())
         await self.arbiter.send_message(
-            self.node_id,
-            ArbiterMessage(
-                data=ArbiterMessageType.API_REGISTER,
-                sender_id=self.app_id,
-                response=False
-            ))
+            receiver_id=self.node_id,
+            data=ArbiterTypedData(
+                type=ArbiterDataType.API_REGISTER,
+                data=self.app_id                
+            ).model_dump_json())
         yield
         self.router_task and self.router_task.cancel()
         await self.arbiter.disconnect()
@@ -209,14 +208,13 @@ class ArbiterApiApp(FastAPI):
             try:
                 response_required = True if DynamicResponseModel else False
                 response = await app.arbiter.send_message(
-                    task_function.task_queue,
-                    ArbiterMessage(
-                        data=data.model_dump_json(),
-                        response=response_required))
+                    receiver_id=task_function.task_queue,
+                    data=data.model_dump_json(),
+                    wait_response=response_required)
                 # 검사해야 한다.
                 if DynamicResponseModel and DynamicResponseModel != Any:
                     # 검사를 해야한다 두 타입이 일치 하는지
-                    if type(DynamicResponseModel) != type(response):
+                    if DynamicResponseModel != type(response):
                         raise HTTPException(status_code=400, detail=f"Response type is not valid")                    
                 return response
             except Exception as e:
