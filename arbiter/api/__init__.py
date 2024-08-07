@@ -152,7 +152,7 @@ class ArbiterApiApp(FastAPI):
     async def router_handler(self):
         # message 는 어떤 router로 등록해야 하는가?에 따른다?
         # TODO ADD router, remove Router?
-        async for message in self.arbiter.subscribe(ARBITER_API_CHANNEL):
+        async for message in self.arbiter.subscribe_listen(ARBITER_API_CHANNEL):
             try:
                 http_task_function = HttpTaskFunction.model_validate_json(message)
                 service_name = http_task_function.service_meta.name
@@ -251,7 +251,10 @@ class ArbiterApiApp(FastAPI):
                 websocket: WebSocket,
                 query: str = None
             ):
-                pubsub_id = None
+                # 웹소켓 연결시 고유의 pubsub_id_prefix와 pubsub_id를 관리하여 이후에 unsub하는 리스트를 생성
+                pubsub_id_prefix = uuid.uuid4().hex
+                pubsub_channels: list[str] = []
+
                 async def message_listen_queue(websocket: WebSocket, queue: str, time_out: int = 10):
                     try:
                         async for data in self.arbiter.listen_bytes(queue, time_out):
@@ -270,19 +273,15 @@ class ArbiterApiApp(FastAPI):
                     # finally:
                         # print(f"End of message_listen_queue {queue}")
                         
-                async def message_subscribe_channel(websocket: WebSocket, channel: str):
+                async def message_subscribe_channel(websocket: WebSocket, channel: str, pubsub_id: str):
                     # print(f"Start of message_subscribe_channel {channel}")
                     try:
-                        nonlocal pubsub_id
-                        async for data in self.arbiter.subscribe(channel, managed=True):
-                            if not pubsub_id:
-                                pubsub_id = data
-                            else:
-                                data = get_pickled_data(data)
-                                if isinstance(data, BaseModel):
-                                    data = data.model_dump()
-                                data = {"from": channel, "data": data}
-                                await websocket.send_text(json.dumps(data))
+                        async for data in self.arbiter.subscribe_listen(channel, pubsub_id):
+                            data = get_pickled_data(data)
+                            if isinstance(data, BaseModel):
+                                data = data.model_dump()
+                            data = {"from": channel, "data": data}
+                            await websocket.send_text(json.dumps(data))
                     except asyncio.CancelledError:
                         pass
                         # print(f"Subscription to {channel} cancelled")
@@ -315,7 +314,7 @@ class ArbiterApiApp(FastAPI):
                             for key in to_remove_tasks:
                                 subscribe_tasks.pop(key)
                             stream_message = ArbiterStreamMessage.model_validate(json_data)
-                            if channel:= stream_message.channel:
+                            if channel := stream_message.channel:
                                 # get StreamTaskFunction from channel
                                 task_function = stream_route.get(channel)
                                 if not task_function:
@@ -338,6 +337,7 @@ class ArbiterApiApp(FastAPI):
                                         destination = target
                                     case StreamCommunicationType.BROADCAST:
                                         new_subscribe_channel = SubscribeChannel(channel, stream_message.target)
+                                        destination = new_subscribe_channel.get_channel()
                                         # validate target
                                         if target:
                                             try:
@@ -358,12 +358,14 @@ class ArbiterApiApp(FastAPI):
                                                 break
                                             subscribe_tasks[subscribe_channel].cancel()
                                             await subscribe_tasks[subscribe_channel]
-                                            
+
                                         if to_subscribe_task:
+                                            # 채널별로 pubsub이 생성 vs 한 개의 pubsub에 여러개의 채널을 구독한다
+                                            pubsub_id = f"{pubsub_id_prefix}_{destination}"
+                                            pubsub_channels.append(pubsub_id)
                                             subscribe_tasks[new_subscribe_channel] = asyncio.create_task(
-                                                message_subscribe_channel(websocket, new_subscribe_channel.get_channel()))
-                                            destination = new_subscribe_channel.get_channel()
-                                            
+                                                message_subscribe_channel(websocket, destination, pubsub_id))
+
                                 target_task_function = task_function
                                 if not stream_message.data:
                                     await websocket.send_text('OK')
@@ -389,7 +391,8 @@ class ArbiterApiApp(FastAPI):
                         except json.JSONDecodeError:
                             await websocket.send_text(f"Data is not valid json")
                 except WebSocketDisconnect:
-                    await self.arbiter.punsubscribe(pubsub_id)
+                    for pubsub_id in pubsub_channels:
+                        await self.arbiter.punsubscribe(pubsub_id)
 
                 if response_task:
                     response_task.cancel()

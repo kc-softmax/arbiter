@@ -316,7 +316,7 @@ class SubscribeTask(BaseTask):
         async def wrapper(owner, *args, **kwargs):
             arbiter = getattr(owner, "arbiter", None)
             assert isinstance(arbiter, Arbiter)
-            async for message in arbiter.subscribe(self.channel):
+            async for message in arbiter.subscribe_listen(self.channel):
                 # TODO MARK 
                 await func(owner, message)
         return wrapper
