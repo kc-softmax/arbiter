@@ -1,7 +1,5 @@
 from __future__ import annotations
 import time
-import uuid
-import pickle
 import redis.asyncio as aioredis
 from datetime import timezone, datetime
 from redis.asyncio.client import PubSub
@@ -142,18 +140,16 @@ class Arbiter:
     async def delete_message(self, message_id: str):
         await self.client.delete(message_id)
 
-    async def subscribe(
+    async def subscribe_listen(
         self,
         channel: str,
-        managed: bool = False
+        pubsub_id: str = None
     ) -> AsyncGenerator[str, None]:
-        # pubsub이 생성되고 id를 생성한 후에 구독 시작
+        # arbiter에서 사용되는 pubsub은 시스템 종료시 리소스를 반환한다
+        # pubsub 객체를 따로 관리하지 않는다
         pubsub = self.client.pubsub()
-        if managed:
-            pubsub_id = uuid.uuid4().hex
+        if pubsub_id:
             self.pubsub_map[pubsub_id] = pubsub
-            yield pubsub_id
-
         await pubsub.subscribe(channel)
         async for message in pubsub.listen():
             if message['type'] == 'message':
