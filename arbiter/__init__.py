@@ -190,7 +190,6 @@ class Arbiter:
         except Exception as e:
             print('error in : ', e)
             yield None
-        print('end')
 
     async def listen(
         self,

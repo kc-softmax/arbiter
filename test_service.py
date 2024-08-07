@@ -33,7 +33,7 @@ class TestService(RedisService):
     @http_task(method=HttpMethod.POST)
     async def task_chain(self):
         response = await self.send_task(
-            task_queue="test_service_retur_task",
+            task_queue="test_service_return_task",
             data='3434',
             wait_response=True)
         return response

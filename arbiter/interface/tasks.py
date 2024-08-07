@@ -147,6 +147,15 @@ class BaseTask:
         for attribute, value in self.__dict__.items():
             setattr(func, attribute, value)
 
+    def pack_data(self, data: Any) -> Any:
+        packed_data = data
+        # try:
+        #     if isinstance(packed_data, BaseModel):
+        #         packed_data = packed_data.model_dump_json()
+        # except:
+        #     pass
+        return pickle.dumps(packed_data)
+
     def parse_data(self, data: Any) -> dict[str, Any] | Any:
         """
             사용자로부터 들어오는 데이터와 함수에 선언된 파라미터를 비교한다.
@@ -196,7 +205,7 @@ class ArbiterTask(BaseTask):
                     if not message.id:
                         # 답장할주소가 없기때문에
                         continue
-                    response = pickle.dumps(results)
+                    response = self.pack_data(results)
                     if response and message.id:
                         await arbiter.push_message(
                             message.id, 
@@ -251,14 +260,15 @@ class StreamTask(BaseTask):
                     # task params에 따라 파싱할까..?
                     match self.communication_type:
                         case StreamCommunicationType.SYNC_UNICAST:
-                            result = await func(**kwargs)
-                            await arbiter.push_message(target, result)
+                            results = self.pack_data(await func(**kwargs))
+                            await arbiter.push_message(target, results)
                         case StreamCommunicationType.ASYNC_UNICAST:
-                            async for result in func(**kwargs):
-                                await arbiter.push_message(target, result)
+                            async for results in func(**kwargs):
+                                results = self.pack_data(await func(**kwargs))
+                                await arbiter.push_message(target, results)
                         case StreamCommunicationType.BROADCAST:
-                            result = await func(**kwargs)
-                            await arbiter.broadcast(target, result)
+                            results = self.pack_data(await func(**kwargs))
+                            await arbiter.broadcast(target, results)
                 except Exception as e:
                     print(e)
         return wrapper
