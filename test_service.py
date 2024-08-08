@@ -48,7 +48,7 @@ class TestService(RedisService):
     
     @http_task(method=HttpMethod.POST)
     async def return_pydantic_model(self) -> list[TestModel]:
-        return TestModel(name="test", age=34, time=datetime.now())
+        return [TestModel(name="test", age=34, time=datetime.now())]
 
     @stream_task(
         connection=StreamMethod.WEBSOCKET,

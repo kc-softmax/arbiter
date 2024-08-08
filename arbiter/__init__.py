@@ -1,5 +1,6 @@
 from __future__ import annotations
 import time
+import asyncio
 import redis.asyncio as aioredis
 from datetime import timezone, datetime
 from redis.asyncio.client import PubSub
@@ -16,23 +17,46 @@ from arbiter.constants.messages import (
 T = TypeVar('T', bound=DefaultModel)
 
 class Arbiter:
+    
+    async_redis_connection_pool = None
+    
     def __init__(self, name: str):
         super().__init__()
         self.name = name
         self.client: aioredis.Redis = None
+        self.keep_alive_task: asyncio.Task = None
         self.pubsub_map: dict[str, PubSub] = {}
 
+    def __new__(cls, name):
+        if not cls.async_redis_connection_pool:
+            from arbiter.cli import CONFIG_FILE
+            from arbiter.cli.utils import read_config
+            config = read_config(CONFIG_FILE)
+            host = config.get("cache", "redis.url", fallback="localhost")
+            port = config.get("cache", "port", fallback="6379")
+            redis_url = f"redis://{host}:{port}/{name}"
+            cls.async_redis_connection_pool = aioredis.ConnectionPool.from_url(redis_url)
+        return super().__new__(cls)
+
     async def connect(self):
-        from arbiter.cli import CONFIG_FILE
-        from arbiter.cli.utils import read_config
-        config = read_config(CONFIG_FILE)
-        host = config.get("cache", "redis.url", fallback="localhost")
-        port = config.get("cache", "cache", fallback="6379")
-        redis_url = f"redis://{host}:{port}/{self.name}"
-        self.async_redis_connection_pool = aioredis.ConnectionPool.from_url(redis_url)
         self.client = aioredis.Redis.from_pool(self.async_redis_connection_pool)
+        self.keep_alive_task = asyncio.create_task(self.keep_alive())
+        
+    async def get_client(self):
+        return aioredis.Redis.from_pool(self.async_redis_connection_pool)
+
+    async def keep_alive(self):
+        while True:
+            try:
+                await self.client.ping()
+                await asyncio.sleep(20)
+            except aioredis.ConnectionError:
+                print("Redis 연결이 끊겼습니다. 재연결합니다...")
+                self.connect()
 
     async def disconnect(self):
+        if self.keep_alive_task:
+            self.keep_alive_task.cancel()
         await self.async_redis_connection_pool.disconnect()
         await self.async_redis_connection_pool.aclose()
 
