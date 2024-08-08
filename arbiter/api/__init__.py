@@ -35,7 +35,6 @@ from arbiter.constants.enums import (
 from arbiter.constants import (
     ArbiterDataType,
     ArbiterTypedData,
-    ARBITER_API_CHANNEL,
 )
 
 
@@ -64,12 +63,10 @@ class ArbiterApiApp(FastAPI):
 
     def __init__(
         self,
-        name: str,
         node_id: str,
         config: ConfigParser,
     ) -> None:
         super().__init__(lifespan=self.lifespan)
-        self.name = name
         self.node_id = node_id
         self.app_id = uuid.uuid4().hex
         self.add_exception_handler(
@@ -88,7 +85,7 @@ class ArbiterApiApp(FastAPI):
         )
         # app.add_middleware(BaseHTTPMiddleware, dispatch=log_middleware)
         self.router_task: asyncio.Task = None
-        self.arbiter: Arbiter = Arbiter(name=name)
+        self.arbiter: Arbiter = Arbiter()
         self.stream_routes: dict[str, dict[str, StreamTaskFunction]] = {}
     
     @asynccontextmanager
@@ -152,7 +149,7 @@ class ArbiterApiApp(FastAPI):
     async def router_handler(self):
         # message 는 어떤 router로 등록해야 하는가?에 따른다?
         # TODO ADD router, remove Router?
-        async for message in self.arbiter.subscribe_listen(ARBITER_API_CHANNEL):
+        async for message in self.arbiter.subscribe_listen(self.node_id + '_router'):
             try:
                 http_task_function = HttpTaskFunction.model_validate_json(message)
                 service_name = http_task_function.service_meta.name
@@ -418,8 +415,7 @@ def get_app() -> ArbiterApiApp:
     from arbiter.cli import CONFIG_FILE
     from arbiter.cli.utils import read_config
     config = read_config(CONFIG_FILE)
-    arbiter_name = os.getenv("ARBITER_NAME", "Danimoth")
     node_id = os.getenv("NODE_ID", "")
     assert node_id, "NODE_ID is not set"
     
-    return ArbiterApiApp(arbiter_name, node_id, config)
+    return ArbiterApiApp(node_id, config)

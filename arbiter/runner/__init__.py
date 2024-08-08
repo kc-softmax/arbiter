@@ -33,9 +33,7 @@ from arbiter.constants import (
     ARBITER_SERVICE_PENDING_TIMEOUT,
     ARBITER_SERVICE_ACTIVE_TIMEOUT,
     ARBITER_SYSTEM_TIMEOUT,
-    ARBITER_SERVICE_SHUTDOWN_TIMEOUT,
-    ARBITER_SYSTEM_CHANNEL,
-    ARBITER_API_CHANNEL)
+    ARBITER_SERVICE_SHUTDOWN_TIMEOUT)
 from arbiter.constants.enums import (
     WarpInTaskResult,
     ArbiterShutdownTaskResult,
@@ -75,7 +73,7 @@ class ArbiterRunner:
         self.name = name
         self.node: Node = None
         # arbiter와 database merge
-        self.arbiter: Arbiter = Arbiter(name)
+        self.arbiter: Arbiter = Arbiter()
         # self.db = Database.get_db(name)
         self.system_task: asyncio.Task = None
         self.health_check_task: asyncio.Task = None
@@ -112,14 +110,14 @@ class ArbiterRunner:
                 for http_task_function in http_task_functions:
                     # add route in arbiter
                     await self.arbiter.broadcast(
-                        ARBITER_API_CHANNEL, 
+                        self.node.unique_id + '_router', 
                         http_task_function.model_dump_json())
                     
             if stream_task_functions := await self.arbiter.search_data(StreamTaskFunction, service_meta=service_meta):
                 for stream_task_function in stream_task_functions:
                     # add route in arbiter
                     await self.arbiter.broadcast(
-                        ARBITER_API_CHANNEL, 
+                        self.node.unique_id + '_router', 
                         stream_task_function.model_dump_json())                    
             return True
         return False
@@ -140,7 +138,7 @@ class ArbiterRunner:
         try:
             if not self.is_replica:
                 await self.arbiter.broadcast(
-                    topic=ARBITER_SYSTEM_CHANNEL,
+                    topic=self.node.unique_id + '_system',
                     message=ArbiterTypedData(
                         type=ArbiterDataType.MASTER_SHUTDOWN,
                         data=self.node.unique_id
@@ -162,7 +160,7 @@ class ArbiterRunner:
                         )
             else:
                 await self.arbiter.broadcast(
-                    topic=ARBITER_SYSTEM_CHANNEL,
+                    topic=self.node.unique_id + '_system',
                     message=ArbiterTypedData(
                         type=ArbiterDataType.SHUTDOWN,
                         data=self.node.unique_id
@@ -271,8 +269,6 @@ class ArbiterRunner:
             await self.arbiter.connect()
             node_data = dict(
                 name=self.name,
-                unique_id=uuid.uuid4().hex,
-                shutdown_code=uuid.uuid4().hex,
                 is_master=True,
                 ip_address="",
             )

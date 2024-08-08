@@ -229,7 +229,6 @@ def dev(
                 service.service_meta.name,
                 service.id,
                 arbiter_runner.node.unique_id,
-                arbiter_runner.name
             )
             
             process = await start_process(
@@ -286,7 +285,6 @@ def dev(
                     # env에 넣어야 한다.
                     # start gunicorn process, and check it is running
                     gunicorn_command = ' '.join([
-                        f'ARBITER_NAME={name},',
                         f'NODE_ID={arbiter_runner.node.unique_id}',
                         'gunicorn',
                         '-w', f"{worker_count}",  # Number of workers

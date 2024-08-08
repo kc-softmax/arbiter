@@ -20,21 +20,20 @@ class Arbiter:
     
     async_redis_connection_pool = None
     
-    def __init__(self, name: str):
+    def __init__(self):
         super().__init__()
-        self.name = name
         self.client: aioredis.Redis = None
         self.keep_alive_task: asyncio.Task = None
         self.pubsub_map: dict[str, PubSub] = {}
 
-    def __new__(cls, name):
+    def __new__(cls):
         if not cls.async_redis_connection_pool:
             from arbiter.cli import CONFIG_FILE
             from arbiter.cli.utils import read_config
             config = read_config(CONFIG_FILE)
             host = config.get("cache", "redis.url", fallback="localhost")
             port = config.get("cache", "port", fallback="6379")
-            redis_url = f"redis://{host}:{port}/{name}"
+            redis_url = f"redis://{host}:{port}/"
             cls.async_redis_connection_pool = aioredis.ConnectionPool.from_url(redis_url)
         return super().__new__(cls)
 

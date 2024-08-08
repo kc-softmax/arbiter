@@ -1,3 +1,4 @@
+import uuid
 from typing import Optional, Type
 from pydantic import BaseModel, Field
 from datetime import datetime
@@ -14,11 +15,11 @@ class DefaultModel(BaseModel):
     name: Optional[str] = Field(default=None)
     
 class Node(DefaultModel):
-    unique_id: str
     state: ServiceState
     is_master: bool
     ip_address: str
-    shutdown_code: str
+    unique_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    shutdown_code: str = Field(default_factory=lambda: str(uuid.uuid4()))
     created_at: datetime
     updated_at: datetime
 

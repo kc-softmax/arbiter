@@ -6,12 +6,10 @@ class RedisService(AbstractService[Arbiter]):
 
     def __init__(
         self,
-        name: str,
         node_id: str,
         service_id: str,
     ):
         super().__init__(
-            name,
             node_id, 
             service_id,
             Arbiter)

@@ -7,8 +7,7 @@ from arbiter.constants import (
     ArbiterTypedData,
     HEALTH_CHECK_RETRY,
     ARBITER_SERVICE_HEALTH_CHECK_INTERVAL,
-    ARBITER_SERVICE_TIMEOUT,
-    ARBITER_SYSTEM_CHANNEL,
+    ARBITER_SERVICE_TIMEOUT
 )
 from arbiter.interface import subscribe_task, periodic_task
 from arbiter.database.model import TaskFunction
@@ -109,30 +108,27 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
 
     def __init__(
         self,
-        name: str,
         node_id: str,
         service_id: str,
         arbiter_type: type[T],
     ):
-        self.name = name
         self.node_id = node_id
         self.service_id = service_id
         self.force_stop = False
         self.arbiter_type = arbiter_type
-        self.arbiter = arbiter_type(name)
+        self.arbiter = arbiter_type()
 
+        self.system_subscribe_task: asyncio.Task = None
         self.health_check_task: asyncio.Task = None
         self.health_check_time = 0
 
     @classmethod
     async def launch(
         cls,
-        name: str,
         node_id: str, 
         service_id: str
     ):
         instance = cls(
-            name,
             node_id,
             service_id
         )
@@ -195,7 +191,7 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
         await self.on_shutdown()
         for dynamic_task in dynamic_tasks:
             dynamic_task and dynamic_task.cancel()
-
+        self.system_subscribe_task and self.system_subscribe_task.cancel()
         self.health_check_task and self.health_check_task.cancel()
         await self.arbiter.send_message(
             receiver_id=self.node_id,
@@ -227,6 +223,8 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
             # TODO udpate service_id
             self.health_check_task = asyncio.create_task(
                 self.health_check_func())
+            self.system_subscribe_task = asyncio.create_task(
+                self.get_system_message())
 
             for task in self.tasks:
                 dynamic_tasks.append(
@@ -261,18 +259,19 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
                     raise Exception(f"Task Queue {task_queue} is not found")
         return response
 
-    @subscribe_task(channel=ARBITER_SYSTEM_CHANNEL) # Master Channel 인데 바꿔야 한다
-    async def get_system_message(self, message: str):
-        decoded_message = ArbiterTypedData.model_validate_json(message)
-        data = decoded_message.data
-        match decoded_message.type:
-            case ArbiterDataType.SHUTDOWN:
-                if data == self.node_id:
+    async def get_system_message(self):
+        print('get_system_message from: ', self.node_id + '_system')
+        async for message in self.arbiter.subscribe_listen(channel=self.node_id + '_system'):
+            decoded_message = ArbiterTypedData.model_validate_json(message)
+            data = decoded_message.data
+            match decoded_message.type:
+                case ArbiterDataType.SHUTDOWN:
+                    if data == self.node_id:
+                        self.force_stop = True
+                case ArbiterDataType.MASTER_SHUTDOWN:
                     self.force_stop = True
-            case ArbiterDataType.MASTER_SHUTDOWN:
-                self.force_stop = True
-                # main arbiter가 비정상적으로 종료되었을때 온다.
-                # 정상적으로 종료되면, arbiter가 모든 서비스에게 stop 메세지를 보내고 종료한다.
+                    # main arbiter가 비정상적으로 종료되었을때 온다.
+                    # 정상적으로 종료되면, arbiter가 모든 서비스에게 stop 메세지를 보내고 종료한다.
 
     @periodic_task(period=1)
     async def listener(self, messages: list[bytes]):
