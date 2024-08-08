@@ -32,10 +32,14 @@ class Arbiter:
             from arbiter.cli.utils import read_config
             config = read_config(CONFIG_FILE)
             host = config.get("cache", "redis.url", fallback="localhost")
-            port = config.get("cache", "port", fallback="6379")
-            redis_url = f"redis://{host}:{port}/"
+            port = config.get("cache", "redis.port", fallback="6379")
+            password = config.get("cache", "redis.password", fallback=None)
+            if password:
+                redis_url = f"redis://:{password}@{host}:{port}/"
+            else:
+                redis_url = f"redis://{host}:{port}/"
             cls.async_redis_connection_pool = aioredis.ConnectionPool.from_url(redis_url)
-        return super().__new__(cls)
+            return super().__new__(cls)
 
     async def connect(self):
         self.client = aioredis.Redis.from_pool(self.async_redis_connection_pool)

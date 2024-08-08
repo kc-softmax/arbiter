@@ -7,7 +7,7 @@ credentials = arbiter:arbiter
 [cache]
 redis.url = localhost
 redis.port = 6379
-redis.password = arbiter
+redis.password = 
 
 [project]
 app_env = local

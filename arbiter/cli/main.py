@@ -117,7 +117,12 @@ async def check_redis_running(name: str) -> bool:
         config = read_config(CONFIG_FILE)
         host = config.get("cache", "redis.url", fallback="localhost")
         port = config.get("cache", "cache", fallback="6379")
-        redis_url = f"redis://{host}:{port}/{name}"
+        password = config.get("cache", "redis.password", fallback=None)
+        if password:
+            redis_url = f"redis://:{password}@{host}:{port}/"
+        else:
+            redis_url = f"redis://{host}:{port}/"
+
         async_redis_connection_pool = ConnectionPool.from_url(
             redis_url,
             socket_timeout=5,
