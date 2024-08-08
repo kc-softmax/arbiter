@@ -260,7 +260,6 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
         return response
 
     async def get_system_message(self):
-        print('get_system_message from: ', self.node_id + '_system')
         async for message in self.arbiter.subscribe_listen(channel=self.node_id + '_system'):
             decoded_message = ArbiterTypedData.model_validate_json(message)
             data = decoded_message.data
