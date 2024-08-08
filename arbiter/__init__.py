@@ -146,7 +146,8 @@ class Arbiter:
         except Exception as e:
             print(f"Error in getting response from {receiver_id}: {e}")
         if response_data:
-            if pickle_data := get_pickled_data(response_data[1]):
+            pickle_data = get_pickled_data(response_data[1])
+            if pickle_data is not None:
                 return pickle_data
             return response_data[1].decode()
         else:

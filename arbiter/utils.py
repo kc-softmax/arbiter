@@ -24,7 +24,14 @@ def get_pickled_data(data: bytes) -> None | Any:
     # 2. 실제 언피클링을 시도하여 유효한지 확인합니다.
     try:
         return pickle.loads(data)
-    except (pickle.UnpicklingError, EOFError, AttributeError, ImportError, IndexError):
+    except (
+        pickle.UnpicklingError, 
+        EOFError,
+        AttributeError,
+        ImportError, 
+        IndexError,
+        TypeError
+    ):  
         return None
 
 def get_type_from_type_name(type_name: str, default_type=None) -> type | None:
