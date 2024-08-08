@@ -264,7 +264,7 @@ class StreamTask(BaseTask):
                             await arbiter.push_message(target, results)
                         case StreamCommunicationType.ASYNC_UNICAST:
                             async for results in func(**kwargs):
-                                results = self.pack_data(await func(**kwargs))
+                                results = self.pack_data(results)
                                 await arbiter.push_message(target, results)
                         case StreamCommunicationType.BROADCAST:
                             results = self.pack_data(await func(**kwargs))
