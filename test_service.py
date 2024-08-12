@@ -17,6 +17,22 @@ from arbiter.interface import (
 )
 
 
+class NumOfParam(BaseModel):
+    first: int
+    second: int
+
+
+class TypeOfParam(BaseModel):
+    first: bool
+    second: int
+
+
+class Receive(BaseModel):
+    first: int
+    second: str
+    third: bool
+
+
 class TestModel(BaseModel):
     name: str
     age: int
@@ -24,6 +40,44 @@ class TestModel(BaseModel):
 
 class TestService(RedisService):
     
+    # input과 output을 모두 검사
+    @http_task(method=HttpMethod.POST)
+    async def num_of_param(self, param: NumOfParam) -> Receive:
+        return Receive(
+            first=1,
+            second='second',
+            third=True,
+        )
+
+    @http_task(method=HttpMethod.POST)
+    async def type_of_param(self, param: TypeOfParam) -> Receive:
+        # 리턴값이 없을 때 지연시간이 걸린다
+        return Receive(
+            first=1,
+            second='second',
+            third=True,
+        )
+
+    @http_task(method=HttpMethod.POST)
+    async def wrong_type_of_param(self, param: TypeOfParam) -> Receive:
+        # 리턴값이 없을 때 지연시간이 걸린다
+        return Receive()
+
+    @stream_task(
+        connection=StreamMethod.WEBSOCKET,
+        communication_type=StreamCommunicationType.BROADCAST)
+    async def simple_ping_pong(self, ping: str) -> str:
+        pong = 'pong'
+        return pong
+
+    @stream_task(
+        connection=StreamMethod.WEBSOCKET,
+        communication_type=StreamCommunicationType.BROADCAST)
+    async def type_of_text(self, ping: str) -> str:
+        pong = 'pong'
+        return pong
+
+
     # 이 두개를 어떻게 묶을 것인가? 시스템적으로 묶으려면,... task에 dependency를 넣어야 할 것 같다.
     # 일단 내부에서 사용하려면 이렇게 해야할 것 같다.    
     @task()
