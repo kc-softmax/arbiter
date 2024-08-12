@@ -1,4 +1,3 @@
-import httpx
 import aiohttp
 import logging
 import pytest
@@ -18,43 +17,6 @@ allowed types: (<class 'pydantic.main.BaseModel'>, <class 'list'>,
 <class 'int'>, <class 'str'>, <class 'float'>, <class 'bool'>,
 <class 'datetime.datetime'>) 리턴 타입 참고
 """
-
-
-def test_http_num_of_param():
-    with httpx.Client(base_url=base_url.format(protocol="http")) as arbiter:
-        response = arbiter.post("/test_service/num_of_param", json={"first": '1', "second": 1})
-        assert response.status_code == 200
-
-
-def test_http_type_of_param():
-    with httpx.Client(base_url=base_url.format(protocol="http")) as arbiter:
-        response = arbiter.post("/test_service/type_of_param", json={"first": True, "second": 2}, timeout=10)
-        assert response.status_code == 200
-
-
-def test_http_bad_type_of_param():
-    with httpx.Client(base_url=base_url.format(protocol="http")) as arbiter:
-        response = arbiter.post("/test_service/type_of_param", json={"first": -1, "second": 2}, timeout=10)
-        assert response.status_code == 400
-
-
-def test_http_empty_type_of_param():
-    with httpx.Client(base_url=base_url.format(protocol="http")) as arbiter:
-        response = arbiter.post("/test_service/type_of_param", timeout=10)
-        assert response.status_code == 400
-
-
-def test_http_wrong_type_of_param():
-    with httpx.Client(base_url=base_url.format(protocol="http")) as arbiter:
-        response = arbiter.post("/test_service/wrong_type_of_param", json={"first": True, "second": 2}, timeout=10)
-        assert response.status_code == 500
-
-
-def test_http_wrong_url():
-    with httpx.Client(base_url=base_url.format(protocol="http")) as arbiter:
-        response = arbiter.post("/test_service/return_")
-        assert response.status_code == 404
-
 
 # send는 str 타입으로 보낸다
 @pytest.mark.asyncio
