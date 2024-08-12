@@ -54,14 +54,38 @@ class TestService(RedisService):
         # 리턴값이 없을 때 지연시간이 걸린다
         return Receive(
             first=1,
-            second='second',
+            second='1',
             third=True,
         )
 
     @http_task(method=HttpMethod.POST)
     async def wrong_type_of_param(self, param: TypeOfParam) -> Receive:
         # 리턴값이 없을 때 지연시간이 걸린다
+        # 개발자의 실수를 검사
         return Receive()
+
+    @http_task(method=HttpMethod.POST)
+    async def return_nobody(self):
+        pass
+
+    # @http_task(method=HttpMethod.POST)
+    # def post_form_param_set(items: set = Form()) -> set:
+    #     return items
+
+    # @http_task(method=HttpMethod.POST)
+    # def post_form_param_tuple(items: tuple = Form()) -> tuple:
+    #     return items
+
+    # get은 보류
+    # @http_task(method=HttpMethod.GET)
+    # async def get_query_param(self, first: int, second: str) -> int:
+    #     print(type(first), type(second))
+    #     return 200
+
+    # @http_task(method=HttpMethod.GET)
+    # async def get_model_param(self, first: int, second: str) -> int:
+    #     print(type(first), type(second))
+    #     return 200
 
     @stream_task(
         connection=StreamMethod.WEBSOCKET,
