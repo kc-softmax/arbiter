@@ -145,7 +145,6 @@ class BaseTask:
             
         self.task_params = task_params        
         for attribute, value in self.__dict__.items():
-            print(attribute, value)
             setattr(func, attribute, value)
 
     def pack_data(self, data: Any) -> Any:
