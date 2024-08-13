@@ -289,14 +289,24 @@ def dev(
                 if not arbiter_runner.is_replica:
                     # env에 넣어야 한다.
                     # start gunicorn process, and check it is running
+                    # gunicorn_command = ' '.join([
+                    #     f'NODE_ID={arbiter_runner.node.unique_id}',
+                    #     'gunicorn',
+                    #     '-w', f"{worker_count}",  # Number of workers
+                    #     '--bind', f"{host}:{port}",  # Bind to port 8080
+                    #     '-k', 'arbiter.api.ArbiterUvicornWorker',  # Uvicorn worker class
+                    #     '--log-level', log_level,  # Log level
+                    #     'arbiter.api:get_app'  # Application module and variable
+                    # ])
                     gunicorn_command = ' '.join([
                         f'NODE_ID={arbiter_runner.node.unique_id}',
-                        'gunicorn',
-                        '-w', f"{worker_count}",  # Number of workers
-                        '--bind', f"{host}:{port}",  # Bind to port 8080
-                        '-k', 'arbiter.api.ArbiterUvicornWorker',  # Uvicorn worker class
-                        '--log-level', log_level,  # Log level
-                        'arbiter.api:get_app'  # Application module and variable
+                        'python',
+                        'app.py',
+                        f'-b {host}:{port}',
+                        f'-w {worker_count}',
+                        f'-k arbiter.api.ArbiterUvicornWorker',
+                        f'-l {log_level}'
+                        
                     ])
                     gunicorn_process = await start_process(gunicorn_command, 'gunicorn')
                     registered_gunicorn_worker_count = 0
