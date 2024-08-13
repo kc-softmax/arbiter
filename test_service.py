@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime
 from pydantic import BaseModel
 from typing import AsyncGenerator, Optional, Any
@@ -13,6 +14,7 @@ from arbiter.interface import (
     periodic_task, 
     http_task, 
     stream_task,
+    async_task,
     task
 )
 
@@ -108,6 +110,12 @@ class TestService(RedisService):
     async def return_task(self, data: Any):
         return f"{data} return_task qwer qwer"
     
+    @async_task()
+    async def return_async_task(self, data: Any):
+        for i in range(3):
+            yield f"{data} return_async_task qwer qwer {i}"
+            await asyncio.sleep(1)
+    
     @http_task(method=HttpMethod.POST)
     async def task_chain(self):
         response = await self.send_task(
@@ -158,6 +166,15 @@ class TestService(RedisService):
     #     communication_type=StreamCommunicationType.ASYNC_UNICAST)
     # async def on_stream(self, message: str) -> AsyncGenerator[str, None]:
     #     yield message
+
+    @stream_task(
+        connection=StreamMethod.WEBSOCKET,
+        communication_type=StreamCommunicationType.ASYNC_UNICAST)
+    async def stream_async_task(self, message: str) -> AsyncGenerator[str, None]:
+        async for result in self.send_async_task(
+            task_queue="test_service_return_async_task",
+            data=message):
+            yield result
 
     @stream_task(
         connection=StreamMethod.WEBSOCKET,

@@ -225,7 +225,30 @@ class HttpTask(ArbiterTask):
             **kwargs
         )
         self.method = method
-        
+
+class AsyncAribterTask(BaseTask):
+
+    def __call__(self, func: Callable) -> Callable:
+        super().__call__(func)
+        @functools.wraps(func)
+        async def wrapper(owner, *args: Any, **kwargs: Any):
+            task_queue = f'{to_snake_case(owner.__class__.__name__)}_{func.__name__}'
+            arbiter = getattr(owner, "arbiter", None)
+            assert isinstance(arbiter, Arbiter)
+            async for message in arbiter.listen_bytes(task_queue):
+                try:
+                    target, data = pickle.loads(message)
+                    kwargs = {'self': owner}
+                    if data:
+                        params = self.parse_data(data)
+                        kwargs.update(params)
+                    async for results in func(**kwargs):
+                        results = self.pack_data(results)
+                        await arbiter.push_message(target, results)
+                except Exception as e:
+                    print(e)
+        return wrapper
+    
 class StreamTask(BaseTask):
     def __init__(
         self,

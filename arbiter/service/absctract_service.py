@@ -1,7 +1,10 @@
 import inspect
 import asyncio
 import pickle
+import uuid
 from typing import Generic, TypeVar, Any, Callable
+
+from pydantic import BaseModel
 from arbiter.constants import (
     ArbiterDataType,
     ArbiterTypedData,
@@ -12,6 +15,7 @@ from arbiter.constants import (
 from arbiter.interface import subscribe_task, periodic_task
 from arbiter.database.model import TaskFunction
 from arbiter import Arbiter
+from arbiter.utils import get_pickled_data
 T = TypeVar('T', bound=Arbiter)
 
 
@@ -258,6 +262,34 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
                 ):                
                     raise Exception(f"Task Queue {task_queue} is not found")
         return response
+
+    async def send_async_task(
+        self,
+        task_queue: str,
+        data: str | bytes,
+        timeout=5
+    ):
+        # if not await self.arbiter.search_data(
+        #     TaskFunction,
+        #     task_queue=task_queue,
+        # ):                
+        #     raise Exception(f"Task Queue {task_queue} is not found")
+        try:
+            response_queue = uuid.uuid4().hex
+            await self.arbiter.push_message(
+                task_queue,
+                pickle.dumps((response_queue, data)))
+            
+            async for data in self.arbiter.listen_bytes(response_queue, timeout):
+                if data is None:
+                    break
+                data = get_pickled_data(data)
+                if isinstance(data, BaseModel):
+                    data = data.model_dump()
+                yield data
+        except asyncio.CancelledError:
+            pass
+        
 
     async def get_system_message(self):
         async for message in self.arbiter.subscribe_listen(channel=self.node_id + '_system'):

@@ -252,9 +252,9 @@ class ArbiterApiApp(FastAPI):
                 pubsub_id_prefix = uuid.uuid4().hex
                 pubsub_channels: list[str] = []
 
-                async def message_listen_queue(websocket: WebSocket, queue: str, time_out: int = 10):
+                async def message_listen_queue(websocket: WebSocket, queue: str, timeout: int = 10):
                     try:
-                        async for data in self.arbiter.listen_bytes(queue, time_out):
+                        async for data in self.arbiter.listen_bytes(queue, timeout):
                             if data is None:
                                 data = {"from": queue, "data": 'LEAVE'}
                                 await websocket.send_text(json.dumps(data))
