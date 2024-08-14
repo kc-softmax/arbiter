@@ -172,6 +172,9 @@ class Arbiter:
     async def delete_message(self, message_id: str):
         await self.client.delete(message_id)
 
+    async def remove_message(self, queue: str, message: str):
+        await self.client.lrem(queue, 0, message)
+
     async def subscribe_listen(
         self,
         channel: str,

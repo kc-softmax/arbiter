@@ -276,9 +276,10 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
         #     raise Exception(f"Task Queue {task_queue} is not found")
         try:
             response_queue = uuid.uuid4().hex
+            async_message = pickle.dumps((response_queue, data))
             await self.arbiter.push_message(
                 task_queue,
-                pickle.dumps((response_queue, data)))
+                async_message)
             
             async for data in self.arbiter.listen_bytes(response_queue, timeout):
                 data = get_pickled_data(data)
@@ -288,6 +289,7 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
         except asyncio.CancelledError:
             pass
         except ArbiterTimeOutError as e:
+            await self.arbiter.remove_message(task_queue, async_message)
             raise e
         
 
