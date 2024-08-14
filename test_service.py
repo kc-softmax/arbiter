@@ -38,6 +38,7 @@ class TestModel(BaseModel):
     age: int
     time: datetime
 
+
 class TestService(RedisService):
     
     # input과 output을 모두 검사

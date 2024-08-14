@@ -205,6 +205,7 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
         서비스가 시작되면, manage_task를 통해 initialize 하는 과정을 진행하고,
         initialize가 완료되면 consuming_task와 start_task를 실행합니다.
         """
+        
         assert self.service_id, "Service ID is not set"
         await self.arbiter.connect()
         dynamic_tasks: list[asyncio.Task] = []
