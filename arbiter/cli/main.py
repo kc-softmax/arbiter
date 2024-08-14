@@ -302,11 +302,11 @@ def dev(
                         f'NODE_ID={arbiter_runner.node.unique_id}',
                         'python',
                         'app.py',
+                        f'-n {arbiter_runner.node.unique_id}',
                         f'-b {host}:{port}',
                         f'-w {worker_count}',
                         f'-k arbiter.api.ArbiterUvicornWorker',
-                        f'-l {log_level}'
-                        
+                        f'-l {log_level}'  
                     ])
                     gunicorn_process = await start_process(gunicorn_command, 'gunicorn')
                     registered_gunicorn_worker_count = 0
