@@ -3,8 +3,8 @@ import asyncio
 import pickle
 import uuid
 from typing import Generic, TypeVar, Any, Callable
-
 from pydantic import BaseModel
+from arbiter.exceptions import ArbiterTimeOutError
 from arbiter.constants import (
     ArbiterDataType,
     ArbiterTypedData,
@@ -281,14 +281,14 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
                 pickle.dumps((response_queue, data)))
             
             async for data in self.arbiter.listen_bytes(response_queue, timeout):
-                if data is None:
-                    break
                 data = get_pickled_data(data)
                 if isinstance(data, BaseModel):
                     data = data.model_dump()
                 yield data
         except asyncio.CancelledError:
             pass
+        except ArbiterTimeOutError as e:
+            raise e
         
 
     async def get_system_message(self):

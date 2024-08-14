@@ -7,8 +7,10 @@ from redis.asyncio.client import PubSub
 from typing import AsyncGenerator, Any, TypeVar, Optional, Type
 from arbiter.database.model import DefaultModel
 from arbiter.utils import to_snake_case, get_pickled_data
+from arbiter.exceptions import ArbiterTimeOutError, ArbiterDecodeError
 from arbiter.constants import (
     ARIBTER_DEFAULT_TASK_TIMEOUT,
+    ASYNC_TASK_CLOSE_MESSAGE,
 )
 from arbiter.constants.messages import (
     ArbiterMessage,
@@ -157,6 +159,8 @@ class Arbiter:
         return response_data
 
     async def push_message(self, target: str, message: Any):
+        if message is None:
+            return
         await self.client.rpush(target, message)
 
     async def get_message(self, queue: str, timeout: int = ARIBTER_DEFAULT_TASK_TIMEOUT) -> bytes:
@@ -204,16 +208,14 @@ class Arbiter:
         bytes,
         None
     ]:
-        try:
-            while True:
-                message = await self.client.blpop(channel, timeout)
-                if message:
-                    yield message[1]
-                else:
-                    yield None
-        except Exception as e:
-            print('error in : ', e)
-            yield None
+        while True:
+            message = await self.client.blpop(channel, timeout)
+            if message:
+                if message[1] == ASYNC_TASK_CLOSE_MESSAGE:
+                    break
+                yield message[1]
+            else:
+                raise ArbiterTimeOutError(f"Timeout in getting message from {channel}")
 
     async def listen(
         self,
@@ -223,16 +225,15 @@ class Arbiter:
         Optional[ArbiterMessage],
         None
     ]:
-        try:
-            while True:
-                message: Optional[tuple[str, str]] = await self.client.blpop(channel, timeout)
-                if message:
+        while True:
+            message = await self.client.blpop(channel, timeout)
+            if message:
+                try:
                     yield ArbiterMessage.model_validate_json(message[1])
-                else:
-                    yield None
-        except Exception as e:
-            print('error in : ', e)
-            yield None
+                except Exception as e:
+                    raise ArbiterDecodeError(f"Error in decoding message: {e}")
+            else:
+                raise ArbiterTimeOutError(f"Timeout in getting message from {channel}")
 
     async def periodic_listen(
         self,

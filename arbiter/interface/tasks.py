@@ -18,7 +18,8 @@ from arbiter.constants.enums import (
     StreamCommunicationType,
 )
 from arbiter.constants import (
-    ALLOWED_TYPES
+    ALLOWED_TYPES,
+    ASYNC_TASK_CLOSE_MESSAGE
 )
 from arbiter import Arbiter
 
@@ -245,6 +246,7 @@ class AsyncAribterTask(BaseTask):
                     async for results in func(**kwargs):
                         results = self.pack_data(results)
                         await arbiter.push_message(target, results)
+                    await arbiter.push_message(target, ASYNC_TASK_CLOSE_MESSAGE)                        
                 except Exception as e:
                     print(e)
         return wrapper
@@ -289,6 +291,8 @@ class StreamTask(BaseTask):
                             async for results in func(**kwargs):
                                 results = self.pack_data(results)
                                 await arbiter.push_message(target, results)
+                            await arbiter.push_message(target, ASYNC_TASK_CLOSE_MESSAGE)                        
+                            # 끝났다고 안넣어줌
                         case StreamCommunicationType.BROADCAST:
                             results = self.pack_data(await func(**kwargs))
                             await arbiter.broadcast(target, results)

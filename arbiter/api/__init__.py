@@ -256,7 +256,7 @@ class ArbiterApiApp(FastAPI):
                     try:
                         async for data in self.arbiter.listen_bytes(queue, timeout):
                             if data is None:
-                                data = {"from": queue, "data": 'LEAVE'}
+                                data = {"from": queue, "data": 'Timeout'}
                                 await websocket.send_text(json.dumps(data))
                                 break
                             data = get_pickled_data(data)

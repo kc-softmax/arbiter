@@ -6,6 +6,8 @@ from .messages import *
 
 ALLOWED_TYPES = (BaseModel, list, int, str, float, bool, datetime)
 
+ASYNC_TASK_CLOSE_MESSAGE = b'q__end__q'
+
 WARP_IN_TIMEOUT = 10
 
 ARBITER_SERVICE_HEALTH_CHECK_INTERVAL = 4

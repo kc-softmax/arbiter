@@ -1,2 +1,2 @@
-PROJECT_NAME  = "arbiter_server"
+PROJECT_NAME  = "arbiter"
 CONFIG_FILE = "arbiter.setting.ini"
