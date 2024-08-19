@@ -5,6 +5,8 @@ import inspect
 import subprocess
 from functools import wraps, partial
 from typer import Typer
+from mako.template import Template
+from arbiter.core import PROJECT_NAME, CONFIG_FILE
 from enum import Enum
 
 
@@ -42,6 +44,32 @@ class SupportedModules(Enum):
     RDS = "module.infra.module.service.module.rds"
     SG = "module.infra.module.service.module.sg"
 
+async def check_redis_running() -> bool:
+    from redis.asyncio import ConnectionPool, Redis, ConnectionError
+    try:
+        from arbiter.core import CONFIG_FILE
+        from arbiter.core.utils import read_config
+        config = read_config(CONFIG_FILE)
+        host = config.get("cache", "redis.url", fallback="localhost")
+        port = config.get("cache", "cache", fallback="6379")
+        password = config.get("cache", "redis.password", fallback=None)
+        if password:
+            redis_url = f"redis://:{password}@{host}:{port}/"
+        else:
+            redis_url = f"redis://{host}:{port}/"
+
+        async_redis_connection_pool = ConnectionPool.from_url(
+            redis_url,
+            socket_timeout=5,
+        )
+        redis = Redis(connection_pool=async_redis_connection_pool)
+        await redis.ping()
+        await redis.aclose()
+        await async_redis_connection_pool.disconnect()
+        return True
+    except ConnectionError:
+        return False
+
 
 def read_config(config_file: str):
     """
@@ -65,23 +93,37 @@ def write_config(config: configparser.ConfigParser, config_file: str):
         config.write(fp)
     return None
 
+def create_config(project_path='.'):
+    """
+    Creates a basic project structure with predefined files and directories.
+    :param project_path: Base path where the project will be created
+    """
+    project_structure = {
+        ".": [CONFIG_FILE],
+    }
+    template_root_path = f'{os.path.abspath(os.path.dirname(__file__))}/templates'
+    for directory, files in project_structure.items():
+        dir_path = os.path.join(project_path, directory)
+        os.makedirs(dir_path, exist_ok=True)
 
-def get_running_command(
-    module_name: str,
-    service_name: str,
-    service_id: str,
-    node_id: str,
-):
-    # init에서 파라미터를 받으면 안됨..
-    # call에서 실행할 경우 run 없어도됨
-    return (
-        f"""
-import asyncio;
-from {module_name} import {service_name};
-asyncio.run({service_name}.launch('{node_id}', '{service_id}'));
-        """
-    )
-
+        for file in files:
+            file_path = os.path.join(dir_path, file)
+            template_path = f'{template_root_path}'
+            if str(file).find('.mako') != -1:
+                template_file = os.path.join(template_path, file)
+                with open(template_file, 'r') as tf:
+                    with open(file_path, "w") as of:
+                        of.write(tf.read())
+            else:
+                template_file = os.path.join(template_path, f'{file}.mako')
+                with open(template_file, 'r') as tf:
+                    template = Template(tf.read())
+                    with open(file_path, "w") as of:
+                        if template_file.find(CONFIG_FILE) != -1 or template_file.find("env.py") != 1:
+                            of.write(template.render(
+                                project_name=PROJECT_NAME))
+                        else:
+                            of.write(template.render())
 
 def refresh_output(pwd: str = None):
     terraform_refresh_plan = subprocess.Popen(

@@ -1,3 +1,4 @@
+from __future__ import annotations
 import re
 import inspect
 import pickle
@@ -5,13 +6,13 @@ import ast
 import inspect
 import json
 import functools
-from types import NoneType
 import warnings
+from types import NoneType
 from collections.abc import AsyncGenerator
-from typing import Any, get_origin, get_args, List, Callable
+from typing import Any, get_origin, get_args, List, Callable, Type
 from pydantic import BaseModel
 from arbiter.constants.messages import ArbiterMessage
-from arbiter.utils import to_snake_case, parse_request_body
+from arbiter.utils import get_task_queue_name, parse_request_body
 from arbiter.constants.enums import (
     HttpMethod,
     StreamMethod,
@@ -21,43 +22,43 @@ from arbiter.constants import (
     ALLOWED_TYPES,
     ASYNC_TASK_CLOSE_MESSAGE
 )
+from arbiter.database.model import ArbiterTaskModel
 from arbiter import Arbiter
 
 class BaseTask:
     """
         task 들의 기본적인 속성이 무엇일까?
         retry policy? retry count?
-        cold start? cold period?
+        cold start? cold interval?
     """
     def __init__(
         self,
-        name: str = None,  
-        routing: bool = False,
+        queue: str = None,
         raw_message: bool = False,
         cold_start: bool = False,
         retry_count: int = 0,
-        activate_period: int = 0,
+        activate_duration: int = 0,
     ):
-        self.name = name
+        self.queue = queue
         self.raw_message = raw_message
         self.cold_start = cold_start
         self.retry_count = retry_count
-        self.routing = routing
-        self.activate_period = activate_period
-        self.has_response = True
-        self.task_params = None
+        self.activate_duration = activate_duration
+        
+        self.params = None
         self.response_type = None
+        self.has_response = True
     
     def __call__(self, func: Callable) -> dict[str, inspect.Parameter]:
-
+        
         setattr(func, 'is_task_function', True)
-                        
-        task_params = {}
+        setattr(self, 'task_name', func.__name__)
+        params = {}
         signature = inspect.signature(func)
         for param in signature.parameters.values():
             if param.name == 'self':
                 continue
-            if param.name in task_params:
+            if param.name in params:
                 raise ValueError(f"Duplicate parameter name: {param.name}")
             # if not isinstance(param.annotation, type):
             #     print(param.annotation)
@@ -67,7 +68,7 @@ class BaseTask:
                 warnings.warn(
                     f"Highly recommand , Parameter {param.name} should have a type annotation")
 
-            task_params[param.name] = param
+            params[param.name] = param
         
         # 반환 유형 힌트 가져오기
         return_annotation = signature.return_annotation
@@ -88,11 +89,11 @@ class BaseTask:
             origin = get_origin(response_type)
             origin_type = response_type
             if origin is list or origin is List:
-                params = get_args(return_annotation)
-                if len(params) != 1:
+                return_params = get_args(return_annotation)
+                if len(return_params) != 1:
                     raise ValueError(
                         f"Invalid return type: {return_annotation}, expected: list[Type]")
-                origin_type = params[0]
+                origin_type = return_params[0]
             if not (issubclass(origin_type, BaseModel) or origin_type in ALLOWED_TYPES):
                 raise ValueError(f"Invalid response type: {response_type}, allowed types: {ALLOWED_TYPES}")
             self.response_type = response_type
@@ -144,9 +145,16 @@ class BaseTask:
         #         warnings.warn(
         #             f"{func.task_name} in arbiter, Highly recommand specify the return annotation")
             
-        self.task_params = task_params        
+        self.params = params        
         for attribute, value in self.__dict__.items():
             setattr(func, attribute, value)
+
+    def get_queue(self, owner: Type):
+        if self.queue:
+            return self.queue
+        task_name = getattr(self, "task_name", None)
+        assert task_name, "task_name is required"
+        return get_task_queue_name(owner.__class__.__name__, task_name)
 
     def pack_data(self, data: Any) -> Any:
         packed_data = data
@@ -163,7 +171,7 @@ class BaseTask:
             현재 json 
         """
         params = {}
-        if not self.task_params:
+        if not self.params:
             if isinstance(data, dict) and len(data) > 0:
                 warnings.warn(
                     f"function has no parameters, but data is not empty: {data}"
@@ -174,12 +182,12 @@ class BaseTask:
             """
                 사용자로 부터 받은 데이터를 request_params에 맞게 파싱한다.
             """
-            params = parse_request_body(data, self.task_params)
+            params = parse_request_body(data, self.params)
         except (json.JSONDecodeError, TypeError):
-            # if len(self.task_params) != 1:
+            # if len(self.params) != 1:
                 # 이렇게되면, 첫번째 파라미터에만 데이터가 들어가게 된다.
-            param_name = list(self.task_params.keys())[0]
-            params = parse_request_body({param_name: data}, self.task_params)
+            param_name = list(self.params.keys())[0]
+            params = parse_request_body({param_name: data}, self.params)
         finally:
             return params
 
@@ -190,10 +198,10 @@ class ArbiterTask(BaseTask):
         @functools.wraps(func)
         async def wrapper(owner, *args: Any, **kwargs: Any):
             # TODO Refactor
-            task_queue = f'{to_snake_case(owner.__class__.__name__)}_{func.__name__}'
+            queue = self.get_queue(owner)
             arbiter = getattr(owner, "arbiter", None)
             assert isinstance(arbiter, Arbiter)
-            async for message in arbiter.listen(task_queue):
+            async for message in arbiter.listen(queue):
                 assert isinstance(message, ArbiterMessage), f"Invalid message type: {type(message)}"
                 try:
                     if getattr(func, "raw_message", False):
@@ -222,7 +230,6 @@ class HttpTask(ArbiterTask):
         **kwargs,
     ):
         super().__init__(
-            routing=True,
             **kwargs
         )
         self.method = method
@@ -233,10 +240,10 @@ class AsyncAribterTask(BaseTask):
         super().__call__(func)
         @functools.wraps(func)
         async def wrapper(owner, *args: Any, **kwargs: Any):
-            task_queue = f'{to_snake_case(owner.__class__.__name__)}_{func.__name__}'
+            queue = self.get_queue(owner)
             arbiter = getattr(owner, "arbiter", None)
             assert isinstance(arbiter, Arbiter)
-            async for message in arbiter.listen_bytes(task_queue):
+            async for message in arbiter.listen_bytes(queue):
                 try:
                     target, data = pickle.loads(message)
                     kwargs = {'self': owner}
@@ -260,7 +267,6 @@ class StreamTask(BaseTask):
         **kwargs,   
     ):
         super().__init__(
-            routing=True,
             **kwargs
         )      
         self.connection = connection
@@ -272,10 +278,10 @@ class StreamTask(BaseTask):
         
         @functools.wraps(func)
         async def wrapper(owner, *args: Any, **kwargs: Any):
-            task_queue = f'{to_snake_case(owner.__class__.__name__)}_{func.__name__}'
+            queue = self.get_queue(owner)
             arbiter = getattr(owner, "arbiter", None)
             assert isinstance(arbiter, Arbiter)
-            async for message in arbiter.listen_bytes(task_queue):
+            async for message in arbiter.listen_bytes(queue):
                 try:
                     target, data = pickle.loads(message)
                     kwargs = {'self': owner}
@@ -303,28 +309,20 @@ class StreamTask(BaseTask):
 class PeriodicTask(BaseTask):
     def __init__(
         self,
-        period: float,
-        queue: str = '',
+        interval: float,
         **kwargs,
     ):
         super().__init__(**kwargs)
-        self.period = period
-        self.queue = queue
+        self.interval = interval
 
     def __call__(self, func: Callable) -> Callable:
-        super().__call__(func)
-        period = self.period
-        queue = self.queue
-        
+        super().__call__(func)        
         @functools.wraps(func)
-        async def wrapper(self, *args, **kwargs):
-            if queue:
-                periodic_queue = queue
-            else:
-                periodic_queue = f'{to_snake_case(self.__class__.__name__)}_{func.__name__}'
+        async def wrapper(owner, *args, **kwargs):
+            queue = self.get_queue(owner)
             arbiter = getattr(self, "arbiter", None)
             assert isinstance(arbiter, Arbiter)
-            async for messages in arbiter.periodic_listen(periodic_queue, period):
+            async for messages in arbiter.periodic_listen(queue, self.interval):
                 await func(self, messages)
         return wrapper
 

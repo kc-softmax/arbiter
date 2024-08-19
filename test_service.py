@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime
 from pydantic import BaseModel
 from typing import AsyncGenerator, Optional, Any
-from arbiter.service import RedisService
+from arbiter.service import AbstractService
 from arbiter.constants import (
     ArbiterMessage,
     HttpMethod,
@@ -41,10 +41,10 @@ class TestModel(BaseModel):
     time: datetime
 
 
-class TestService(RedisService):
+class TestService(AbstractService):
     
     # input과 output을 모두 검사
-    @http_task(method=HttpMethod.POST)
+    @http_task(method=HttpMethod.POST, queue="num_of_params")
     async def num_of_param(self, param: NumOfParam) -> Receive:
         return Receive(
             first=1,
@@ -52,7 +52,7 @@ class TestService(RedisService):
             third=True,
         )
 
-    @http_task(method=HttpMethod.POST)
+    @http_task(method=HttpMethod.POST, queue="type_of_params_HEEE")
     async def type_of_param(self, param: TypeOfParam) -> Receive:
         # 리턴값이 없을 때 지연시간이 걸린다
         return Receive(
@@ -120,7 +120,7 @@ class TestService(RedisService):
     @http_task(method=HttpMethod.POST)
     async def task_chain(self):
         response = await self.send_task(
-            task_queue="test_service_return_task",
+            queue="test_service_return_task",
             data='3434',
             wait_response=True)
         return response
@@ -173,7 +173,7 @@ class TestService(RedisService):
         communication_type=StreamCommunicationType.ASYNC_UNICAST)
     async def stream_async_task(self, message: str) -> AsyncGenerator[str, None]:
         async for result in self.send_async_task(
-            task_queue="test_service_return_async_task",
+            queue="test_service_return_async_task",
             data=message):
             yield result
 
@@ -211,7 +211,9 @@ class TestService(RedisService):
         print(f"on_message_test: {message}")
         pass
 
-    @periodic_task(period=5)  # TODO optioanlq
+    @periodic_task(interval=5)  # TODO optioanlq
     async def hello_world(self, messages: list[bytes]):
         pass
         # print(f"hello_world: {messages}")
+        
+        

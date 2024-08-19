@@ -2,7 +2,7 @@ import inspect
 import asyncio
 import pickle
 import uuid
-from typing import Generic, TypeVar, Any, Callable
+from typing import Any, Callable
 from pydantic import BaseModel
 from arbiter.exceptions import ArbiterTimeOutError
 from arbiter.constants import (
@@ -12,17 +12,14 @@ from arbiter.constants import (
     ARBITER_SERVICE_HEALTH_CHECK_INTERVAL,
     ARBITER_SERVICE_TIMEOUT
 )
-from arbiter.interface import subscribe_task, periodic_task
-from arbiter.database.model import TaskFunction
-from arbiter import Arbiter
+from arbiter.database.model import ArbiterTaskModel, Node
 from arbiter.utils import get_pickled_data
-T = TypeVar('T', bound=Arbiter)
+from arbiter import Arbiter
 
 
 class ServiceMeta(type):
 
     def __new__(cls, name: str, bases: tuple, class_dict: dict[str, Any]):
-
         new_cls = super().__new__(cls, name, bases, class_dict)
 
         tasks: list[Callable] = []
@@ -47,7 +44,6 @@ class ServiceMeta(type):
                     attr_value, 'is_task_function', False)
             ):
                 tasks.append(attr_value)
-
         # 각각이 중복되지 않는지 확인
 
         # start, shutdown attribute가 있는지 확인한다.
@@ -60,10 +56,9 @@ class ServiceMeta(type):
                 f"The class {name} must have a shutdown attribute.")
 
         depth = len(new_cls.mro()) - 3
-        # parameter type check
+        if depth < 0:
+            return new_cls
         for task in tasks:
-            if depth < 2:
-                continue
             signature = inspect.signature(task)
             
             # Print the parameters of the function
@@ -85,14 +80,13 @@ class ServiceMeta(type):
                     #         )
                     pass
         setattr(new_cls, 'tasks', tasks)
-        setattr(new_cls, 'depth', depth)  # TODO enum
         return new_cls
 
 
 # 이 구독을 하는 이유는, 발행을 검사하기 위함..? 구독 채널을 관리하기 위함이라고 생각하자
 
 
-class AbstractService(Generic[T], metaclass=ServiceMeta):
+class AbstractService(metaclass=ServiceMeta):
     """
         Service 의 동작로직을 정의하는 추상클래스
         서비스는 instance화시 broker를 통해 consuming_task를 생성하고, start()를 호출하여 동작을 시작한다.
@@ -114,13 +108,11 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
         self,
         node_id: str,
         service_id: str,
-        arbiter_type: type[T],
     ):
         self.node_id = node_id
         self.service_id = service_id
         self.force_stop = False
-        self.arbiter_type = arbiter_type
-        self.arbiter = arbiter_type()
+        self.arbiter = Arbiter()
 
         self.system_subscribe_task: asyncio.Task = None
         self.health_check_task: asyncio.Task = None
@@ -245,41 +237,41 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
     
     async def send_task(
         self,
-        task_queue: str,
+        queue: str,
         data: str | bytes,
         wait_response: bool = False,
     ):
         # find task name
         response = await self.arbiter.send_message(
-            receiver_id=task_queue,
+            receiver_id=queue,
             data=data,
             wait_response=wait_response)
         # 결과를 기다려야 하는데, 결과가 없다면, 어떻게 처리할 것인가?
         if wait_response:
             if not response:
                 if not await self.arbiter.search_data(
-                    TaskFunction,
-                    task_queue=task_queue,
+                    ArbiterTaskModel,
+                    queue=queue,
                 ):                
-                    raise Exception(f"Task Queue {task_queue} is not found")
+                    raise Exception(f"Task Queue {queue} is not found")
         return response
 
     async def send_async_task(
         self,
-        task_queue: str,
+        queue: str,
         data: str | bytes,
         timeout=5
     ):
         # if not await self.arbiter.search_data(
         #     TaskFunction,
-        #     task_queue=task_queue,
+        #     queue=queue,
         # ):                
-        #     raise Exception(f"Task Queue {task_queue} is not found")
+        #     raise Exception(f"Task Queue {queue} is not found")
         try:
             response_queue = uuid.uuid4().hex
             async_message = pickle.dumps((response_queue, data))
             await self.arbiter.push_message(
-                task_queue,
+                queue,
                 async_message)
             
             async for data in self.arbiter.listen_bytes(response_queue, timeout):
@@ -290,26 +282,15 @@ class AbstractService(Generic[T], metaclass=ServiceMeta):
         except asyncio.CancelledError:
             pass
         except ArbiterTimeOutError as e:
-            await self.arbiter.remove_message(task_queue, async_message)
+            await self.arbiter.remove_message(queue, async_message)
             raise e
         
 
     async def get_system_message(self):
-        async for message in self.arbiter.subscribe_listen(channel=self.node_id + '_system'):
+        async for message in self.arbiter.subscribe_listen(channel=Node.system_channel(self.node_id)):
             decoded_message = ArbiterTypedData.model_validate_json(message)
             data = decoded_message.data
             match decoded_message.type:
                 case ArbiterDataType.SHUTDOWN:
-                    if data == self.node_id:
-                        self.force_stop = True
-                case ArbiterDataType.MASTER_SHUTDOWN:
                     self.force_stop = True
-                    # main arbiter가 비정상적으로 종료되었을때 온다.
-                    # 정상적으로 종료되면, arbiter가 모든 서비스에게 stop 메세지를 보내고 종료한다.
-
-    @periodic_task(period=1)
-    async def listener(self, messages: list[bytes]):
-        if messages:
-            self.force_stop = True
-            for raw_message in messages:
-                pass
+                    break

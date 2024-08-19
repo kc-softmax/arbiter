@@ -1,14 +1,114 @@
+import platform
 import re
 import pickle
+import signal
+import socket
 import types
 import inspect
+import time
+import asyncio
 import importlib
+from asyncio.subprocess import Process
 from datetime import datetime
+import psutil
 from pydantic import BaseModel, create_model
 from warnings import warn
 from inspect import Parameter
 from pathlib import Path
-from typing import Union, get_origin, get_args, Any, List
+from typing import (
+    Union, 
+    get_origin,
+    get_args,
+    Any,
+    List,
+    Awaitable,
+    Callable,
+    Optional
+)
+
+def get_task_queue_name(
+    service_name: str,
+    task_name: str,
+) -> str:
+    return f"{to_snake_case(service_name)}_{task_name}"
+
+def get_os():
+    system = platform.system()
+    if system == "Darwin":
+        return "OS X"
+    elif system == "Linux":
+        return "Linux"
+    else:
+        return "Other"
+    
+async def terminate_process(process: Process):
+    try:
+        kill_signal = signal.SIGTERM
+        match get_os():
+            case "Linux":
+                kill_signal = signal.SIGKILL
+        parent = psutil.Process(process.pid)
+        children = parent.children(recursive=True)
+        for child in children:
+            child.send_signal(kill_signal)
+        parent.send_signal(kill_signal)
+        try:
+            await asyncio.wait_for(process.wait(), timeout=3)
+        except asyncio.TimeoutError:
+            for child in children:
+                child.kill()
+            parent.kill()
+    except psutil.NoSuchProcess:
+        pass
+    except Exception as e:
+        print(e)
+
+
+async def fetch_data_within_timeout(
+    timeout: int, 
+    fetch_data: Callable[[], Awaitable[List[Any]]], 
+    check_condition: Optional[Callable[[List[Any]], bool]] = None,
+    sleep_interval: float = 0.5
+) -> List[Any]:
+    """
+    주어진 시간 동안 조건을 검사하고, 마지막으로 조건을 만족하는 데이터를 반환합니다.
+    조건이 제공되지 않으면 fetch_data 함수가 데이터를 반환할 때까지 반복합니다.
+
+    :param timeout: 조건을 검사할 최대 시간 (초 단위)
+    :param fetch_data: 조건을 만족하는 데이터를 반환하는 비동기 함수
+    :param check_condition: 데이터를 기반으로 조건을 검사하는 함수 (선택 사항)
+    :param sleep_interval: 각 검사 사이의 대기 시간 (초 단위)
+    :return: 조건을 만족하는 데이터 리스트
+    """
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        data = await fetch_data()
+        # check_condition이 있으면 조건을 검사하고, 없으면 data가 있는지만 검사합니다.
+        if check_condition:
+            if check_condition(data):
+                return data
+        else:
+            if data:
+                return data
+        
+        await asyncio.sleep(sleep_interval)
+    
+    raise TimeoutError(f"Timeout in fetching data within {timeout} seconds")
+
+def get_ip_address() -> str:
+    """
+    현재 서버의 IP 주소를 반환합니다.
+    
+    :return: 현재 서버의 IP 주소
+    """
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            ip_address = s.getsockname()[0]
+    except Exception as e:
+        ip_address = ''
+    return ip_address
+
 
 def get_pickled_data(data: bytes) -> None | Any:
     """
@@ -180,15 +280,13 @@ def to_snake_case(name: str) -> str:
 # NOTE _new_service로 찾는 것은 루트 경로 내에서 서비스 파일을 찾기 위한 임시 조치
 
 
-def find_python_files_in_path(dir_path: str = './', is_master: bool = False):
-    current_path = Path(dir_path)
-    python_files = []
-    def check_file(p):
+def find_python_files_in_path(dir_path: str = './', from_replica: bool = False):
+    def check_file(p) -> bool:
         is_arbiter_service = False
         only_master_service = False
         with open(p, 'r') as file:
             content = file.read()
-            if re.search(r'class\s+\w+\(RedisService\)', content):
+            if re.search(r'class\s+\w+\(AbstractService\)', content):
                 is_arbiter_service = True
             if re.search(r'master_only\s*=\s*True', content):
                 only_master_service = True
@@ -199,9 +297,11 @@ def find_python_files_in_path(dir_path: str = './', is_master: bool = False):
             if re.search(r'master_only=/s*True', content):
                 only_master_service = True
         if only_master_service:
-            return is_arbiter_service and is_master
+            return is_arbiter_service and not from_replica
         return is_arbiter_service  
 
+    current_path = Path(dir_path)
+    python_files = []
     # Check root directory files
     for p in current_path.iterdir():
         if p.is_file() and p.suffix == '.py':
