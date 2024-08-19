@@ -5,8 +5,8 @@ import json
 from typing import Callable
 
 from arbiter.utils import find_python_files_in_path, find_registered_services
-from arbiter.cli.utils import AsyncTyper
-from arbiter.cli.utils import (
+from arbiter.core.utils import AsyncTyper
+from arbiter.core.utils import (
     read_config,
     write_config,
     refresh_output,

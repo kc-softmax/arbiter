@@ -1,30 +1,35 @@
 from __future__ import annotations
 import asyncio
 import uuid
+import sys
 import importlib
 import time
 import json
+from asyncio.subprocess import Process
 from inspect import Parameter
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 from warnings import warn
 from types import UnionType
+from typing_extensions import Annotated
 from typing import (
     AsyncGenerator,
     TypeVar, 
     Generic,
     Union, 
     get_origin,
-    get_args, 
+    get_args,
     List
 )
 from arbiter import Arbiter
+
 from arbiter.database.model import (
     Service,
     ServiceMeta, 
     Node,
-    HttpTaskFunction,
-    StreamTaskFunction
+    WebService,
+    WebServiceTask,
+    ArbiterTaskModel
 )
 from arbiter.service import AbstractService
 from arbiter.constants import (
@@ -32,19 +37,27 @@ from arbiter.constants import (
     WARP_IN_TIMEOUT,
     ARBITER_SERVICE_PENDING_TIMEOUT,
     ARBITER_SERVICE_ACTIVE_TIMEOUT,
-    ARBITER_SYSTEM_TIMEOUT,
-    ARBITER_SERVICE_SHUTDOWN_TIMEOUT)
+    ARBITER_SYSTEM_TIMEOUT)
 from arbiter.constants.enums import (
     WarpInTaskResult,
-    ArbiterShutdownTaskResult,
     ArbiterDataType,
     WarpInPhase,
     ServiceState
 )
+from arbiter.exceptions import (
+    ArbiterTaskAlreadyExistsError,
+    ArbiterNoWebServiceError,
+    ArbiterTooManyWebServiceError,
+    ArbiterAlreadyRegistedServiceMetaError,
+    ArbiterInconsistentServiceMetaError
+)
 from arbiter.utils import (
     find_python_files_in_path,
     get_all_subclasses,
-    to_snake_case
+    get_ip_address,
+    fetch_data_within_timeout,
+    terminate_process,
+    get_task_queue_name,
 )
 
 T = TypeVar('T')
@@ -54,47 +67,52 @@ class TypedQueue(asyncio.Queue, Generic[T]):
     async def get(self) -> T:
         return await super().get()
 
-
 class ArbiterRunner:
     
     @property
-    async def services(self) -> list[ServiceMeta]:
-        return await self.arbiter.search_data(ServiceMeta)
-
-    @property
-    async def active_services(self) -> list[Service]:
-        return await self.arbiter.search_data(Service, state=ServiceState.ACTIVE, node_id=self.node.id)
-
-    @property
     def is_replica(self) -> bool:
-        return not self.node.is_master
+        return self.node.master_id > -1
 
-    def __init__(self, name: str):
+    def __init__(
+        self,
+        name: str,
+        config: dict[str, str] = {}
+    ):
         self.name = name
+        self.config = config
         self.node: Node = None
-        # arbiter와 database merge
+        self.wsgi_app_id: str = None
+        self.service_metas: list[ServiceMeta] = []
         self.arbiter: Arbiter = Arbiter()
-        # self.db = Database.get_db(name)
+
+        self.service_task: asyncio.Task = None
         self.system_task: asyncio.Task = None
         self.health_check_task: asyncio.Task = None
         self.pending_service_queue: TypedQueue[Service] = TypedQueue()
+        self.processes: dict[str, Process] = {}
         # 동기화 한다.
         self._warp_in_queue: asyncio.Queue = asyncio.Queue()
         self._shutdown_queue: asyncio.Queue = asyncio.Queue()
-        self.shutdown_flag = False
 
     async def clear(self):
-        if self.node:
-            await self.arbiter.update_data(
-                self.node,
-                state=ServiceState.INACTIVE
-            )
+        if self.processes:
+            for _, process in self.processes.items():
+                await terminate_process(process)
+        if self.service_task:
+            self.service_task.cancel()
         if self.system_task:
             self.system_task.cancel()
         if self.health_check_task:
             self.health_check_task.cancel()
-        # if self.db:
-        #     await self.db.disconnect()
+        if self.node:
+            """
+                나중에 data clean 절차가 필요하다.
+            """
+            await self.arbiter.update_data(
+                self.node,
+                state=ServiceState.INACTIVE
+            )
+
         if self.arbiter:
             await self.arbiter.disconnect()
 
@@ -104,21 +122,6 @@ class ArbiterRunner:
                 service,
                 state=ServiceState.ACTIVE
             )
-            # add route in arbiter
-            service_meta = service.service_meta
-            if http_task_functions := await self.arbiter.search_data(HttpTaskFunction, service_meta=service_meta):
-                for http_task_function in http_task_functions:
-                    # add route in arbiter
-                    await self.arbiter.broadcast(
-                        self.node.unique_id + '_router', 
-                        http_task_function.model_dump_json())
-                    
-            if stream_task_functions := await self.arbiter.search_data(StreamTaskFunction, service_meta=service_meta):
-                for stream_task_function in stream_task_functions:
-                    # add route in arbiter
-                    await self.arbiter.broadcast(
-                        self.node.unique_id + '_router', 
-                        stream_task_function.model_dump_json())                    
             return True
         return False
 
@@ -127,130 +130,432 @@ class ArbiterRunner:
         service: Service,
         description: str = None
     ):
-        # cli 등에서 실행 가능
         await self.arbiter.update_data(
             service,
             state=ServiceState.INACTIVE,
             description=description,
         )
 
-    async def _setup_shutdown_task(self):
+    async def _preparation_task(self):
+        """
+            Find all python files in the root directory and find all subclasses of AbstractService
+                # ignore or filtering 
+            Create ServiceMeta from AbstractService subclasses
+            Create TaskFunction from each ServiceMeta
+        """
+        """
+            #MARK 절대경로, 상대경로 둘 다 사용가능하게 변경해야 한다.
+        """
         try:
-            if not self.is_replica:
-                await self.arbiter.broadcast(
-                    topic=self.node.unique_id + '_system',
-                    message=ArbiterTypedData(
-                        type=ArbiterDataType.MASTER_SHUTDOWN,
-                        data=self.node.unique_id
-                    ).model_dump_json()
+            arbiter_service_in_root = find_python_files_in_path(
+                from_replica=self.is_replica)
+            # 프로젝트 root아래 있는 service.py 파일들을 import한다.
+            for python_file in arbiter_service_in_root:
+                importlib.import_module(python_file)
+                # import 되었으므로 AbstractService의 subclasses로 접근 가능
+            service_classes = get_all_subclasses(AbstractService)
+            for service_class in service_classes:
+                assert issubclass(service_class, AbstractService)
+                service_meta_data = dict(
+                    node_id=self.node.id,
+                    name=service_class.__name__,
+                    module_name=service_class.__module__,
+                    auto_start=service_class.auto_start   
                 )
-                if replica_nodes := await self.arbiter.search_data(
-                    Node,
-                    state=ServiceState.ACTIVE,
-                    name=self.name, 
-                    is_master=False
-                ):
-                    for replica_node in replica_nodes:
-                        await self.arbiter.send_message(
-                            receiver_id=replica_node.unique_id,
-                            data=ArbiterTypedData(
-                                type=ArbiterDataType.SHUTDOWN,
-                                data=replica_node.shutdown_code
-                            ).model_dump_json()
+                # master 와 replica는 다른 행동을 한다.
+                if self.is_replica:
+                    service_meta_data.update(from_master=True)
+                    # 만약 존재한다면, 두 개는 서로 같아야 한다.
+                    if master_service_metas := await self.arbiter.search_data(
+                        ServiceMeta,
+                        node_id=self.node.id,
+                        name=service_class.__name__,
+                    ):
+                        if len(master_service_metas) > 1:
+                            raise Exception(f"ServiceMeta {service_class.__name__} is already registered")
+                        service_meta = master_service_metas[0]
+                        if service_meta.model_dump() != service_meta_data:
+                            raise ArbiterInconsistentServiceMetaError()
+                        # 존재하며, 두 개가 같다. ArbiterTaskModel을 만들 필요가 없다.
+                        continue
+                    else:
+                        # 존재하지 않으면 만든다.
+                        service_meta = await self.arbiter.create_data(
+                            ServiceMeta,
+                            **service_meta_data
                         )
-            else:
-                await self.arbiter.broadcast(
-                    topic=self.node.unique_id + '_system',
-                    message=ArbiterTypedData(
-                        type=ArbiterDataType.SHUTDOWN,
-                        data=self.node.unique_id
-                    ).model_dump_json()
+                else:
+                    service_meta_data.update(from_master=True)
+                    # master인 경우는 무조건 만든다.
+                    # 중복되면 안된다.
+                    if await self.arbiter.search_data(
+                        ServiceMeta,
+                        node_id=self.node.id,
+                        name=service_class.__name__,
+                    ):
+                        raise ArbiterAlreadyRegistedServiceMetaError(f"ServiceMeta {service_class.__name__} is already registered")
+
+                    service_meta = await self.arbiter.create_data(
+                        ServiceMeta,
+                        **service_meta_data
+                    )
+                    
+                if tasks := service_class.tasks:
+                    for task in tasks:
+                        task_name = task.__name__                    
+                        queue = getattr(task, 'queue', None)
+                        if not queue:
+                            # default queue name
+                            queue = get_task_queue_name(
+                                service_class.__name__,
+                                task_name
+                            )
+                        # assert queue is not None, 'Task Queue is not found'
+                        params = getattr(task, 'params', {})
+                        assert params is not None, 'Task Params is not found'
+                        task_response_type = getattr(task, 'response_type', None)
+                        task_has_response = getattr(task, 'has_response', True)
+                        # response type 이 있을경우 has_response는 True여야 한다.
+                        assert task_response_type is None or task_has_response, 'Task has response but response type is not found'
+                        
+                        flatten_params = {}
+                        flatten_response = ''
+                        
+                        for param_name, parameter in params.items():
+                            assert isinstance(parameter, Parameter), f"{param_name} is not a parameter"
+                            annotation = parameter.annotation
+                            param_model_type = None
+                            flatten_param = None
+                            origin = get_origin(annotation)
+                            param_is_list = origin is list or origin is List
+                            if param_is_list:
+                                param_model_type = get_args(annotation)[0]
+                            else:
+                                param_model_type = annotation
+                            if get_origin(param_model_type) is Union:
+                                flatten_param = param_model_type.__name__
+                            elif get_origin(param_model_type) is UnionType:
+                                args = get_args(param_model_type)
+                                param_type = args[0] if args else None
+                                if not param_type:
+                                    flatten_param = 'Any'
+                                else:
+                                    flatten_param = param_type.__name__
+                            elif issubclass(param_model_type, BaseModel):
+                                flatten_param = param_model_type.model_json_schema()
+                            else:
+                                flatten_param = param_model_type.__name__
+                            if param_is_list:
+                                flatten_param = [flatten_param]
+                            flatten_params.update({param_name: flatten_param})
+                                
+                        if task_has_response and task_response_type:
+                            origin = get_origin(task_response_type)
+                            response_is_list = origin is list or origin is List
+                            response_model_type = None
+                            if response_is_list:
+                                response_model_type = get_args(task_response_type)[0]
+                            else:
+                                response_model_type = task_response_type
+                            if issubclass(response_model_type, BaseModel):
+                                flatten_response = response_model_type.model_json_schema()
+                            else:
+                                flatten_response = response_model_type.__name__
+                            if response_is_list:
+                                flatten_response = [flatten_response]
+                                        
+                        data = dict(
+                            service_meta=service_meta,
+                            name=task_name,
+                            queue=queue,
+                            method=getattr(task, 'method', 0),
+                            connection=getattr(task, 'connection', 0),
+                            communication_type=getattr(task, 'communication_type', 0),
+                            num_of_channels=getattr(task, 'num_of_channels', 1),
+                            params=json.dumps(flatten_params),
+                            response=json.dumps(flatten_response),
+                        )
+                        # queue에 대한 중복검사를 해야한다.
+                        if await self.arbiter.search_data(
+                            ArbiterTaskModel,
+                            service_meta=service_meta,
+                            queue=queue
+                        ):
+                            raise ArbiterTaskAlreadyExistsError(f"Task Queue {queue} is already registered")
+                        
+                        await self.arbiter.create_data(ArbiterTaskModel, **data)
+                self.service_metas.append(service_meta)
+            await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.PREPARATION.name}...ok"))
+        except ArbiterTaskAlreadyExistsError:
+            await self._warp_in_queue.put(
+                (WarpInTaskResult.FAIL, f"Task Queue {queue} is already registered"))
+        except Exception as e:
+            await self._warp_in_queue.put(
+                (WarpInTaskResult.FAIL, f"Failed to prepare services: {e}"))
+     
+    async def _initialize_task(self):
+        """
+            WarpInPhase Arbiter initialization
+            
+            if node is Master, execute wsgi app with the number of workers
+                and wait for the response from the each gunicorn woker
+                
+            if node is Replica, send the message to the master node
+            
+            
+            check database is working
+        """
+        
+        # wsgi, asgi 선택하자
+        if not self.is_replica:
+            try:
+                # gunicorn 실행
+                # start gunicorn
+                host = self.config.get("api", "host", fallback=None)
+                port = self.config.get("api", "port", fallback=None)
+                worker_count = self.config.get("api", "worker_count", fallback=1)
+                log_level = self.config.get("api", "log_level", fallback="error")
+                gunicorn_command = ' '.join([
+                    f'NODE_ID={self.node.unique_id}',
+                    'gunicorn',
+                    '-w', f"{worker_count}",  # Number of workers
+                    '--bind', f"{host}:{port}",  # Bind to port 8080
+                    '-k', 'arbiter.api.ArbiterUvicornWorker',  # Uvicorn worker class
+                    '--log-level', log_level,  # Log level
+                    'arbiter.api:get_app'  # Application module and variable,
+                ])
+                await self._start_process(gunicorn_command, 'gunicorn')
+                # fastAPI 서버가 실행되면서 보내오는 메세지를 받아야 한다.
+                # -> database 에서 해당 서비스를 찾아서 상태를 변경한다.
+                # 예제 사용법            
+                fetch_data = lambda: self.arbiter.search_data(
+                    WebService,
+                    node_id=self.node.unique_id
                 )
-            start_time = time.time()
-            if not self.system_task.done():
-                while True:
+                results = await fetch_data_within_timeout(
+                    timeout=ARBITER_SERVICE_PENDING_TIMEOUT,
+                    fetch_data=fetch_data,
+                    check_condition=lambda data: len(data) >= worker_count,
+                )
+                if not results:
+                    raise ArbiterNoWebServiceError()
+                elif len(results) > worker_count:
+                    raise ArbiterTooManyWebServiceError()
+                elif len(results) < worker_count:
+                    await self._warp_in_queue.put(
+                        (WarpInTaskResult.WARNING, f"Not enough Web Services are started, {len(results)} expected {worker_count}")
+                    )
+                await self._warp_in_queue.put(
+                    (WarpInTaskResult.SUCCESS, f"{WarpInPhase.INITIATION.name}...ok")
+                )
+            except ArbiterNoWebServiceError as e:
+                await self._warp_in_queue.put(
+                    (WarpInTaskResult.FAIL, f"Failed to start Web Service: {e}")
+                )
+            except ArbiterTooManyWebServiceError as e:
+                await self._warp_in_queue.put(
+                    (WarpInTaskResult.FAIL, f"Failed to start Web Service: {e}")
+                )
+            except Exception as e:
+                await self._warp_in_queue.put(
+                    (WarpInTaskResult.FAIL, f"Failed to start Web Service: {e}")
+                )
+        else:
+            await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.INITIATION.name}...ok"))
+            
+    async def _channeling_task(self):
+        """"
+            WarpInPhase Arbiter CHANNELING
+            try to regist all task function in this node
+            broadcast api register channel
+            how to handle the response?
+            may be handle fastapi app to model 
+        """
+        web_services = await self.arbiter.search_data(WebService, node_id=self.node.unique_id)
+        if service_metas := await self.arbiter.search_data(ServiceMeta, node_id=self.node.id):
+            for service_meta in service_metas:
+                regist_task_count = 0
+                if task_models := await self.arbiter.search_data(
+                    ArbiterTaskModel, service_meta=service_meta):
+                    for task_model in task_models:
+                        if task_model.method or task_model.connection:
+                            # add route in arbiter
+                            regist_task_count += 1
+                            await self.arbiter.broadcast(
+                                self.node.get_routing_channel(),
+                                task_model.model_dump_json())
+                # async gather 로 확인하는 방법도 있다.  
+                for web_service in web_services:
+                    task_fetch_data = lambda: self.arbiter.search_data(
+                        WebServiceTask,
+                        web_service_id=web_service.id
+                    )
                     try:
-                        # system_task 가 먼저 종료되었다면, 확인할 수 없다.
-                        if time.time() - start_time > ARBITER_SERVICE_SHUTDOWN_TIMEOUT:
-                            # 서비스가 종료되지 않았기 때문에 확인하는 메세지를 보내야한다.
-                            # 종료되지 않은 서비스들이 있기 때문에 확인해야 한다.
-                            await self._shutdown_queue.put(
-                                (ArbiterShutdownTaskResult.WARNING, None)
-                            )
-                            break
-                        if not await self.active_services:
-                            await self._shutdown_queue.put(
-                                (ArbiterShutdownTaskResult.SUCCESS, None)
-                            )
-                            break
-                    except Exception as e:
-                        print(e)
-                    await asyncio.sleep(0.3)
-            else:
-                await self._shutdown_queue.put(
-                    (ArbiterShutdownTaskResult.WARNING, "System Task is already done.")
-                )                
-        except Exception as e:
-            print('Error: ', e)
-        await self._shutdown_queue.put(None)
-
-    async def shutdown_task(self) -> AsyncGenerator[tuple[ArbiterShutdownTaskResult, str], None]:
+                        await fetch_data_within_timeout(
+                            timeout=ARBITER_SERVICE_PENDING_TIMEOUT,
+                            fetch_data=task_fetch_data,
+                            check_condition=lambda data: len(data) >= regist_task_count,
+                        )
+                    except TimeoutError:
+                        await self._warp_in_queue.put(
+                            (WarpInTaskResult.FAIL, f"Failed to register Task Function for {service_meta.name} in {web_service.app_id}")
+                        )
+                        return
+        await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.CHANNELING.name}...ok"))
+    
+    async def _materialization_task(self):
         """
-            shout down
-            1. unregister all services with arbiter, api
-            2. stop api service
-            3. wait for all tasks to finish
-            4. disconnect db
-            5. disconnect broker
+            WarpInPhase Arbiter MATERIALIZATION
+            Start all services that are set to auto_start, and wait for the response
         """
+        has_initial_service = False
+        if service_metas := await self.arbiter.search_data(ServiceMeta, node_id=self.node.id):
+            for service_meta in service_metas:
+                if service_meta.auto_start:
+                    has_initial_service = True
+                    await self.start_service(service_meta)
         try:
-            self.shutdown_flag = True
-            await self.pending_service_queue.put(None)
-            asyncio.create_task(self._setup_shutdown_task())
-            while True:
-                message = await self._shutdown_queue.get()
-                if message == None:
-                    break
-                yield message
-            await self.arbiter.send_message(
-                receiver_id=self.node.unique_id,
-                data=ArbiterTypedData(
-                    type=ArbiterDataType.SHUTDOWN,
-                    data=self.node.shutdown_code
-                ).model_dump_json()
-            )
-            await self.system_task
-            await self.health_check_task
-        except Exception as e:
-            print('Error in shutdown: ', e)
-
-    async def _setup_initial_task(self):
-        async def check_initial_services(timeout: int) -> list[Service]:
-            start_time = time.time()
-            while time.time() - start_time < timeout:
-                if not await self.arbiter.search_data(
+            if has_initial_service:
+                service_fetch_data = lambda: self.arbiter.search_data(
                     Service,
                     state=ServiceState.PENDING,
-                    node_id=self.node.id):
-                    return []
-                await asyncio.sleep(0.5)
-            return await self.arbiter.search_data(
-                Service,
-                state=ServiceState.PENDING,
-                node_id=self.node.id)
-        # api 와 함께라면 api 부터 검사해야 한다.
-        if pending_services := await check_initial_services(ARBITER_SERVICE_PENDING_TIMEOUT):
-            # failed to start all services
-            # 실패한 서비스들을 어떻게 처리할 것인가? 쓰는사람에게 맡긴다.
-            pending_service_names = ', '.join(
-                [service.service_meta.name for service in pending_services])
+                    node_id=self.node.id,
+                )
+                await fetch_data_within_timeout(
+                    timeout=ARBITER_SERVICE_PENDING_TIMEOUT,
+                    fetch_data=service_fetch_data,
+                    check_condition=lambda data: len(data) < 1,
+                )
+            await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.MATERIALIZATION.name}...ok"))
+        except TimeoutError:
             await self._warp_in_queue.put(
-                (WarpInTaskResult.FAIL, pending_service_names))
-        else:
-            await self._warp_in_queue.put(
-                (WarpInTaskResult.SUCCESS, None))
+                (WarpInTaskResult.FAIL, "Failed to start initial services")
+            )
+    
+    async def _disappearance_task(self):
+        """
+            WarpInPhase Arbiter DISAPPEARANCE
+            stop all web service with ternimate gunicorn process
+            
+            if master
+                broadcast shutdown message to all nodes
+            broadcast shutdown message to all services in node
+            check database            
+        """
+        gunicorn_process = self.processes.pop('gunicorn', None)
+        if gunicorn_process:
+            web_services = await self.arbiter.search_data(WebService, node_id=self.node.unique_id)
+            await terminate_process(gunicorn_process)
+            fetch_data = lambda: self.arbiter.search_data(
+                WebService,
+                node_id=self.node.unique_id,
+                state=ServiceState.INACTIVE
+            )
+            results = await fetch_data_within_timeout(
+                timeout=ARBITER_SERVICE_PENDING_TIMEOUT,
+                fetch_data=fetch_data,
+                check_condition=lambda data: len(data) >= len(web_services),
+            )
+            if web_services and not results:
+                await self._warp_in_queue.put(
+                    (WarpInTaskResult.FAIL, "Failed to stop Web Service")
+                )
+            elif len(results) < len(web_services):
+                await self._warp_in_queue.put(
+                    (WarpInTaskResult.WARNING, f"Not enough Web Services are stopped, {len(results)} expected {len(web_services)}")
+                )
         
-    async def warp_in(self, phase: WarpInPhase) -> AsyncGenerator[tuple[WarpInTaskResult, str], None]:
+
+        # send shutdown message to service belong to this node
+        await self.arbiter.broadcast(
+            topic=self.node.get_system_channel(),
+                message=ArbiterTypedData(
+                    type=ArbiterDataType.SHUTDOWN,
+                    data=self.node.unique_id
+                ).model_dump_json()
+            )
+        
+        if not self.is_replica:
+            fetch_replica_nodes = lambda: self.arbiter.search_data(
+                Node,
+                state=ServiceState.ACTIVE,
+                name=self.name,
+                master_id=self.node.id
+            )
+            if replica_nodes := await fetch_replica_nodes():
+                for replica_node in replica_nodes:
+                    # send shutdown message to all replica nodes                    
+                    await self.arbiter.send_message(
+                        receiver_id=replica_node.unique_id,
+                        data=ArbiterTypedData(
+                            type=ArbiterDataType.SHUTDOWN,
+                            data=replica_node.shutdown_code
+                        ).model_dump_json()
+                    )
+                results = await fetch_data_within_timeout(
+                    timeout=ARBITER_SERVICE_PENDING_TIMEOUT,
+                    fetch_data=fetch_replica_nodes,
+                    check_condition=lambda data: len(data) == 0,
+                )
+                if results:
+                    await self._warp_in_queue.put(
+                        (WarpInTaskResult.WARNING, f"{len(results)} nodes are not shutdown")
+                    )
+        # check all services are shutdown
+        fetch_data = lambda: self.arbiter.search_data(
+            Service,
+            node_id=self.node.id,
+            state=ServiceState.ACTIVE
+        )
+
+        results = await fetch_data_within_timeout(
+            timeout=ARBITER_SERVICE_PENDING_TIMEOUT,
+            fetch_data=fetch_data,
+            check_condition=lambda data: len(data) == 0,
+        )
+        if results:
+            await self._warp_in_queue.put(
+                (WarpInTaskResult.WARNING, f"{len(results)} services are not shutdown")
+            )
+                
+        await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.DISAPPEARANCE.name}...ok"))
+                
+    async def start_phase(self, phase: WarpInPhase) -> AsyncGenerator[tuple[WarpInTaskResult, str], None]:
+        # if warp_in_queue is empty, then start the phase
+        if not self._warp_in_queue.empty():
+            warn('Warp In Queue is not empty')
+            # remove all messages in the queue
+            while not self._warp_in_queue.empty():
+                data = self._warp_in_queue.get_nowait()
+                
+        match phase:
+            case WarpInPhase.PREPARATION:
+                """
+                    service_meta를 생성하면서
+                    task function들을 검사한다.
+                """
+                asyncio.create_task(self._preparation_task())
+            case WarpInPhase.INITIATION:
+                """
+                    node가 master인 경우 gunicorn을 실행한다.
+                """
+                asyncio.create_task(self._initialize_task())
+            case WarpInPhase.CHANNELING:
+                """
+                    task function을 arbiter에 등록한다.
+                """
+                asyncio.create_task(self._channeling_task())
+            case WarpInPhase.MATERIALIZATION:
+                """
+                    auto_start가 설정된 service들을 실행한다.
+                """
+                asyncio.create_task(self._materialization_task())
+            case WarpInPhase.DISAPPEARANCE:
+                """
+                """
+                asyncio.create_task(self._disappearance_task())
+            case _:
+                raise ValueError('Invalid WarpInPhase')
         while True:
             try:
                 message = await asyncio.wait_for(
@@ -262,198 +567,110 @@ class ArbiterRunner:
                 yield message
             except asyncio.TimeoutError:
                 yield (WarpInTaskResult.FAIL, f"Warp In Timeout in {phase.name} phase.")
-
+    
     @asynccontextmanager
-    async def start(self, config: dict[str, str]={}) -> AsyncGenerator[ArbiterRunner, Exception]:
-        try:
-            await self.arbiter.connect()
-            node_data = dict(
-                name=self.name,
-                is_master=True,
-                ip_address="",
-            )
-            if previous_nodes := await self.arbiter.search_data(Node, name=self.name, state=ServiceState.ACTIVE):
-                # find master node in previous nodes
-                if master_node := next((node for node in previous_nodes if node.is_master), None):
-                    node_data.update(is_master=False)
-                    await self._warp_in_queue.put(
-                        (WarpInTaskResult.IS_REPLICA, f"{master_node.unique_id}'s Replica Node is created")
-                    )
-                else:
-                    raise ValueError('Master Node is not found, but there are nodes with the same name.')
+    async def warp_in(
+        self,
+        system_queue: asyncio.Queue[Annotated[str, "command"]]
+    ) -> AsyncGenerator[ArbiterRunner, Exception]:
+        """
+            Connect to Arbiter
+            Create Master Node or Replica Node
+        """
+        await self.arbiter.connect()
+
+
+        # Check if there is a master node with the same name (and some configuration)        
+        if previous_nodes := await self.arbiter.search_data(
+            Node,
+            name=self.name,
+            state=ServiceState.ACTIVE
+        ):
+            # find master node in previous nodes
+            if master_node := next((node for node in previous_nodes if node.master_id < 0), None):
+                master_id = master_node.id
             else:
-                await self._warp_in_queue.put(
-                    (WarpInTaskResult.IS_MASTER, 'Master Node is created')
-                )
-        except Exception as e:
-            await self.clear()
-            await self._warp_in_queue.put(
-                (WarpInTaskResult.FAIL, e)
-            )
-            await self._warp_in_queue.put(None)
-            yield self
-            return
+                raise ValueError('Master Node is not found, but there are nodes with the same name.')
+        else:
+            master_id = -1 # master node id is -1
+        
         self.node = await self.arbiter.create_data(
             Node,
+            name=self.name,
+            ip_address=get_ip_address(),
             state=ServiceState.ACTIVE,
-            **node_data
-        )  # TODO Change
-        await self._warp_in_queue.put(None)
-        await self.arbiter.connect()
-        try:
-            python_files_in_root = find_python_files_in_path(
-                is_master=self.node.is_master
-            )
-            
-            try:
-                # 프로젝트 root아래 있는 service.py 파일들을 import한다.
-                for python_file in python_files_in_root:
-                    importlib.import_module(python_file)
-            except Exception as e:
-                print('importlib error in : ', e)
-            # import 되었으므로 AbstractService의 subclasses로 접근 가능
-            service_classes = get_all_subclasses(AbstractService)
-            for service_class in service_classes:
-                assert issubclass(service_class, AbstractService)
-                if service_class.depth < 2:
-                    continue
-                service_meta = await self.arbiter.create_data(
-                    ServiceMeta,
-                    node_id=self.node.id,
-                    name=service_class.__name__,
-                    module_name=service_class.__module__)
+            master_id=master_id
+        )
                 
-                if tasks := service_class.tasks:
-                    try:
-                        for task in tasks:
-                            if not getattr(task, 'routing', False):
-                                continue
-                            task_name = task.__name__
-                            task_queue = f"{to_snake_case(service_meta.name)}_{task.__name__}"
-                            data = dict(
-                                service_meta=service_meta,
-                                name=task_name,
-                                auth=getattr(task, 'auth', False),
-                                task_queue=task_queue,
-                            )
-                            task_function_cls = None
-                            if getattr(task, 'method', None):
-                                # httpTask
-                                data.update(
-                                    method=getattr(task, 'method', None),
-                                )
-                                task_function_cls = HttpTaskFunction
-                            if getattr(task, 'communication_type', None):
-                                # stream task
-                                data.update(
-                                    connection=getattr(task, 'connection', None),
-                                    communication_type=getattr(task, 'communication_type', None),
-                                    num_of_channels=getattr(task, 'num_of_channels', 1),
-                                )
-                                task_function_cls = StreamTaskFunction
-
-                            assert task_function_cls is not None, 'Task Function Class is not found'
-                            task_params = getattr(task, 'task_params', {})
-                            assert task_params is not None, 'Task Params is not found'
-                            task_response_type = getattr(task, 'response_type', None)
-                            task_has_response = getattr(task, 'has_response', True)
-                            # response type 이 있을경우 has_response는 True여야 한다.
-                            assert task_response_type is None or task_has_response, 'Task has response but response type is not found'
-                            
-                            flatten_params = {}
-                            flatten_response = ''
-                            
-                            for param_name, parameter in task_params.items():
-                                assert isinstance(parameter, Parameter), f"{param_name} is not a parameter"
-                                annotation = parameter.annotation
-                                param_model_type = None
-                                flatten_param = None
-                                origin = get_origin(annotation)
-                                param_is_list = origin is list or origin is List
-                                if param_is_list:
-                                    param_model_type = get_args(annotation)[0]
-                                else:
-                                    param_model_type = annotation
-                                if get_origin(param_model_type) is Union:
-                                    flatten_param = param_model_type.__name__
-                                elif get_origin(param_model_type) is UnionType:
-                                    args = get_args(param_model_type)
-                                    param_type = args[0] if args else None
-                                    if not param_type:
-                                        flatten_param = 'Any'
-                                    else:
-                                        flatten_param = param_type.__name__
-                                elif issubclass(param_model_type, BaseModel):
-                                    flatten_param = param_model_type.model_json_schema()
-                                else:
-                                    flatten_param = param_model_type.__name__
-                                if param_is_list:
-                                    flatten_param = [flatten_param]
-                                flatten_params.update({param_name: flatten_param})
-                                    
-                            if task_has_response and task_response_type:
-                                origin = get_origin(task_response_type)
-                                response_is_list = origin is list or origin is List
-                                response_model_type = None
-                                if response_is_list:
-                                    response_model_type = get_args(task_response_type)[0]
-                                else:
-                                    response_model_type = task_response_type
-                                if issubclass(response_model_type, BaseModel):
-                                    flatten_response = response_model_type.model_json_schema()
-                                else:
-                                    flatten_response = response_model_type.__name__
-                                if response_is_list:
-                                    flatten_response = [flatten_response]
-                            data.update(
-                                task_params=json.dumps(flatten_params),
-                                task_response=json.dumps(flatten_response),
-                            )
-                            await self.arbiter.create_data(task_function_cls, **data)
-                    except Exception as e:
-                        print('Error in creating task function: ', e)
-                        raise e
-                        
-                if service_class.auto_start:
-                    for _ in range(service_class.initial_processes):
-                        await self.pending_service_queue.put(
-                            await self.arbiter.create_data(
-                                Service,
-                                name=uuid.uuid4().hex,
-                                node_id=self.node.id,
-                                state=ServiceState.PENDING,
-                                service_meta=service_meta
-                            )
-                        )
-
-        except Exception as e:
-            await self.clear()
-            yield e
-            return
-        self.system_task = asyncio.create_task(self.system_task_func())
-        # TODO 확인해야 한다, 서비스가 정상적으로 켜진건지 할 수  있다면
-        # 만약 켜지지 않았다면, new_service 객체를 바탕으로 조정해야 한다.
-        # process = asyncio.create_task(self.start_service(new_service))
-        # processes.append(process)
-        asyncio.create_task(self._setup_initial_task())
-
-        self.health_check_task = asyncio.create_task(
-            self.health_check_func())
-
+        """
+            Finish the static preparation
+            and prepare for the dynamic preparation
+            we called it "WarpIn"
+        """
+        self.system_task = asyncio.create_task(self.system_task_func(system_queue))
+        self.service_task = asyncio.create_task(self.service_manage_func())
+        self.health_check_task = asyncio.create_task(self.health_check_func())
         yield self
 
         await self.clear()
+
+    async def _start_process(self, command: str, process_name: str):
+        if process_name in self.processes:
+            raise ValueError(f'Process {process_name} is already started.')
+        process = await asyncio.create_subprocess_shell(
+            command,
+            shell=True
+        )
+        self.processes[process_name] = process
 
     async def stop_services(self, service_ids: list[int]):
         for service_id in service_ids:
             service = await self.arbiter.get_data(Service, service_id)
             if service and service.state == ServiceState.ACTIVE:
-                target = f"{to_snake_case(service.service_meta.name)}_listener"
                 print('stop service not working')
                 # await self.broker.send_message(
                 #     target,
                     
                 #     ArbiterDataType.ARBITER_SERVICE_UNREGISTER)
+
+    async def start_service(self, service_meta: ServiceMeta):
+        """
+            1. Service 객체를 생성한다. (Pending)
+            2. generate start command
+            2. Process를 실행한다.
+            
+        """
+        # sub process를 실행시킨다.
+        service = await self.arbiter.create_data(
+            Service,
+            name=uuid.uuid4().hex,
+            node_id=self.node.id,
+            state=ServiceState.PENDING,
+            service_meta=service_meta)
+        await self.pending_service_queue.put(service)
+ 
+    async def service_manage_func(self):
+        """
+            등록된 service를  
+        """
+        while not self.system_task.done():
+            try:
+                service = await self.pending_service_queue.get()
+                if service is None:
+                    # shutdown
+                    break
+                service_meta: ServiceMeta = service.service_meta
+                start_command =f"""
+import asyncio;
+from {service_meta.module_name} import {service_meta.name};
+asyncio.run({service_meta.name}.launch('{self.node.unique_id}', '{service.id}'));"""
+                await self._start_process(
+                    f'{sys.executable} -c "{start_command}"',
+                    f"{service_meta.name}_{service.id}")
+            except Exception as e:
+                print(e, ': manager')
+                break
+
 
     async def health_check_func(self):
         while not self.system_task.done():
@@ -482,7 +699,10 @@ class ArbiterRunner:
 
             await asyncio.sleep(0.5)
 
-    async def system_task_func(self):
+    async def system_task_func(
+        self,
+        system_queue: asyncio.Queue[Annotated[str, "command"]]
+    ):
         try:
             async for message in self.arbiter.listen(
                 self.node.unique_id, 
@@ -501,12 +721,6 @@ class ArbiterRunner:
                 try:
                     response = False
                     match message_type:
-                        case ArbiterDataType.API_REGISTER:
-                            await self._warp_in_queue.put((
-                                WarpInTaskResult.API_REGISTER_SUCCESS, data))
-                        case ArbiterDataType.API_UNREGISTER:
-                            await self._warp_in_queue.put((
-                                WarpInTaskResult.API_REGISTER_SUCCESS, data))
                         case ArbiterDataType.PING:
                             # health check의 경우 한번에 모아서 업데이트 하는 경우를 생각해봐야한다.
                             if service := await self.arbiter.get_data(Service, data):
@@ -534,13 +748,8 @@ class ArbiterRunner:
                                 print('Service is not found')
                         case ArbiterDataType.SHUTDOWN:
                             if self.node.shutdown_code == data:
-                                if not self.shutdown_flag:
-                                    # pending_service_queue에 None을 넣어서
-                                    # cli의 종료를 유도하여 shutdown_task를 실행한다.
-                                    await self.pending_service_queue.put(None)
-                                    response = True
-                                else:
-                                    break
+                                # for graceful shutdown
+                                await system_queue.put(None)
                 except Exception as e:
                     print('Error process message: ', e)
                     print('Message: ', message_type, data)
@@ -550,11 +759,11 @@ class ArbiterRunner:
                             message.id,
                             ArbiterDataType.ACK.value
                         )
-            if not self.shutdown_flag:
-                print("System Task is done, before shutdown")
-            await self.pending_service_queue.put(None)
         except Exception as e:
             print("Error in system task: ", e)
+        finally:
+            # is it necessary?
+            system_queue and await system_queue.put(None)
 
 
 # atexit.register(arbiter.clear)

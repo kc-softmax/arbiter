@@ -30,8 +30,8 @@ class Arbiter:
 
     def __new__(cls):
         if not cls.async_redis_connection_pool:
-            from arbiter.cli import CONFIG_FILE
-            from arbiter.cli.utils import read_config
+            from arbiter.core import CONFIG_FILE
+            from arbiter.core.utils import read_config
             config = read_config(CONFIG_FILE)
             host = config.get("cache", "redis.url", fallback="localhost")
             port = config.get("cache", "redis.port", fallback="6379")
@@ -241,14 +241,14 @@ class Arbiter:
     async def periodic_listen(
         self,
         queue: str,
-        period: float = 1
+        interval: float = 1
     ) -> AsyncGenerator[list[ArbiterMessage], None]:
         while True:
             collected_messages = []
             start_time = time.monotonic()
-            while (time.monotonic() - start_time) < period:
+            while (time.monotonic() - start_time) < interval:
                 # 현재 시간과 시작 시간의 차이를 계산하여 timeout을 조정
-                timeout = period - (time.monotonic() - start_time)
+                timeout = interval - (time.monotonic() - start_time)
                 if timeout <= 0:
                     break
                 # 비동기적으로 메시지를 가져옴

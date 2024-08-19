@@ -23,20 +23,18 @@ from arbiter.utils import (
     get_pickled_data
 )
 from arbiter.database.model import (
-    HttpTaskFunction,
-    StreamTaskFunction
+    Node,
+    WebService,
+    WebServiceTask,
+    ArbiterTaskModel,
 )
 from arbiter.constants.messages import ArbiterStreamMessage
 from arbiter.constants.enums import (
+    ServiceState,
     HttpMethod,
     StreamMethod,
     StreamCommunicationType
 )
-from arbiter.constants import (
-    ArbiterDataType,
-    ArbiterTypedData,
-)
-
 
 ArbiterUvicornWorker = UvicornWorker
 ArbiterUvicornWorker.CONFIG_KWARGS = {"loop": "asyncio", "http": "auto"}
@@ -69,6 +67,7 @@ class ArbiterApiApp(FastAPI):
         super().__init__(lifespan=self.lifespan)
         self.node_id = node_id
         self.app_id = uuid.uuid4().hex
+        self.web_service: WebService = None
         self.add_exception_handler(
             RequestValidationError,
             lambda request, exc: JSONResponse(
@@ -86,33 +85,43 @@ class ArbiterApiApp(FastAPI):
         # app.add_middleware(BaseHTTPMiddleware, dispatch=log_middleware)
         self.router_task: asyncio.Task = None
         self.arbiter: Arbiter = Arbiter()
-        self.stream_routes: dict[str, dict[str, StreamTaskFunction]] = {}
+        self.stream_routes: dict[str, dict[str, ArbiterTaskModel]] = {}
     
     @asynccontextmanager
     async def lifespan(self, app: ArbiterApiApp):
         await self.arbiter.connect()
         self.router_task = asyncio.create_task(self.router_handler())
-        await self.arbiter.send_message(
-            receiver_id=self.node_id,
-            data=ArbiterTypedData(
-                type=ArbiterDataType.API_REGISTER,
-                data=self.app_id                
-            ).model_dump_json())
+        
+        # change to register
+        """
+            WebService 를 만든다,
+        
+        """
+        self.web_service = await self.arbiter.create_data(
+            WebService,
+            node_id=self.node_id,
+            app_id=self.app_id,
+            state=ServiceState.ACTIVE
+        )
         yield
         self.router_task and self.router_task.cancel()
+        await self.arbiter.update_data(
+            self.web_service,
+            state=ServiceState.INACTIVE
+        )
         await self.arbiter.disconnect()
 
     def get_dynamic_models(
         self,
-        task_function: HttpTaskFunction | StreamTaskFunction,
+        task_function: ArbiterTaskModel,
     ):
         DynamicRequestModel = None
         DynamicResponseModel = None
         list_response = False
         list_request = False
         try:
-            if task_response := task_function.task_response:
-                response_type = json.loads(task_response)
+            if response := task_function.response:
+                response_type = json.loads(response)
                 list_response = isinstance(response_type, list)
                 if list_response:
                     response_type = response_type[0]
@@ -125,9 +134,9 @@ class ArbiterApiApp(FastAPI):
                 if list_response:
                     DynamicResponseModel = list[DynamicResponseModel]
                     
-            if task_params := task_function.task_params:
+            if params := task_function.params:
                 dynamic_params = {}
-                params: dict[str, str] = json.loads(task_params)
+                params: dict[str, str] = json.loads(params)
                 for name, flat_annotation in params.items():
                     param = None
                     list_param = isinstance(flat_annotation, list)
@@ -146,60 +155,12 @@ class ArbiterApiApp(FastAPI):
             print('err in get_dynamic_models', e)
             return None, None
 
-    async def router_handler(self):
-        # message 는 어떤 router로 등록해야 하는가?에 따른다?
-        # TODO ADD router, remove Router?
-        async for message in self.arbiter.subscribe_listen(self.node_id + '_router'):
-            try:
-                http_task_function = HttpTaskFunction.model_validate_json(message)
-                service_name = http_task_function.service_meta.name
-            except Exception as e: # TODO Exception type more detail
-                print(e, 'err')
-            try:
-                stream_task_function = StreamTaskFunction.model_validate_json(message)
-                service_name = stream_task_function.service_meta.name
-            except Exception as e: # TODO Exception type more detail
-                print(e, 'errr')
-            
-            assert http_task_function or stream_task_function, "Task function is not valid"   
-            
-            
-            # 이미 라우터에 등록되어 있다면 무시한다.
-            # already_registered = False
-            # for route in self.routes:
-            #     route: APIRoute
-            #     path = f"/{to_snake_case(service_name)}/{task_function.name}"
-            #     if route.path == path:
-            #         already_registered = True
-                # print(path)
-                # print(route.path, route.methods)
-                # # if path in router.pat:
-                #     # continue
-            # if already_registered:
-            #     continue
-            
-            if http_task_function:
-                match http_task_function.method:
-                    case HttpMethod.POST:
-                        self.generate_post_function(
-                            service_name,
-                            http_task_function
-                        )
-            if stream_task_function:
-                match stream_task_function.connection:
-                    case StreamMethod.WEBSOCKET:
-                        self.generate_websocket_function(
-                            service_name,
-                            stream_task_function)
-
-            self.openapi_schema = None
-
     def generate_post_function(
         self,
         service_name: str,
-        task_function: HttpTaskFunction,
+        task_function: ArbiterTaskModel,
     ):
-        def get_task_function() -> HttpTaskFunction:
+        def get_task_function() -> ArbiterTaskModel:
             return task_function
         def get_app() -> ArbiterApiApp:
             return self
@@ -210,12 +171,12 @@ class ArbiterApiApp(FastAPI):
         async def dynamic_function(
             data: Type[BaseModel] = Depends(DynamicRequestModel),  # 동적으로 생성된 Pydantic 모델 사용 # type: ignore
             app: ArbiterApiApp = Depends(get_app),
-            task_function: HttpTaskFunction = Depends(get_task_function),
+            task_function: ArbiterTaskModel = Depends(get_task_function),
         ) -> Union[dict, list[dict], None]:
             try:
                 response_required = True if DynamicResponseModel else False
                 response = await app.arbiter.send_message(
-                    receiver_id=task_function.task_queue,
+                    receiver_id=task_function.queue,
                     data=data.model_dump_json(),
                     wait_response=response_required)
                 # 값을 보낼때는 그냥 믿고 보내준다.
@@ -239,7 +200,7 @@ class ArbiterApiApp(FastAPI):
     def generate_websocket_function(
             self,
             service_name: str,
-            task_function: StreamTaskFunction,
+            task_function: ArbiterTaskModel,
         ):
             # currently not using DynamicRequestModel, DynamicResponseModel
             # TODO if need to check request or response model validation, use it
@@ -297,7 +258,7 @@ class ArbiterApiApp(FastAPI):
                 response_task = asyncio.create_task(message_listen_queue(websocket, response_queue, 0))
                 try:
                     destination: str | None = None
-                    target_task_function: StreamTaskFunction | None = None
+                    target_task_function: ArbiterTaskModel | None = None
                     while True:
                         receive_data = await websocket.receive_text()
                         if not receive_data: 
@@ -374,7 +335,7 @@ class ArbiterApiApp(FastAPI):
                                     continue
                                     # data
                                 await self.arbiter.push_message(
-                                    target_task_function.task_queue,
+                                    target_task_function.queue,
                                     pickle.dumps(
                                         (
                                             destination, 
@@ -409,11 +370,44 @@ class ArbiterApiApp(FastAPI):
 
             self.stream_routes[service_name][task_function.name] = task_function
 
+    async def router_handler(self):
+        # message 는 어떤 router로 등록해야 하는가?에 따른다?
+        # TODO ADD router, remove Router?
+        async for message in self.arbiter.subscribe_listen(Node.routing_channel(self.node_id)):
+            try:
+                task_model = ArbiterTaskModel.model_validate_json(message)
+                service_name = task_model.service_meta.name
+            except Exception as e: # TODO Exception type more detail
+                print(f"Error in router_handler: {e}")
+                continue
+            if task_model.method:
+                method = HttpMethod(task_model.method)
+                match method:
+                    case HttpMethod.POST:
+                        self.generate_post_function(
+                            service_name,
+                            task_model
+                        )
+            elif task_model.connection:
+                connection = StreamMethod(task_model.connection)
+                match connection:
+                    case StreamMethod.WEBSOCKET:
+                        self.generate_websocket_function(
+                            service_name,
+                            task_model)
+            await self.arbiter.create_data(
+                WebServiceTask,
+                web_service_id=self.web_service.id,
+                task_id=task_model.id
+            )
+                
+            self.openapi_schema = None
+
 
 def get_app() -> ArbiterApiApp:
     
-    from arbiter.cli import CONFIG_FILE
-    from arbiter.cli.utils import read_config
+    from arbiter.core import CONFIG_FILE
+    from arbiter.core.utils import read_config
     config = read_config(CONFIG_FILE)
     node_id = os.getenv("NODE_ID", "")
     assert node_id, "NODE_ID is not set"

@@ -54,6 +54,9 @@ class HttpMethod(IntEnum):
     """서버로부터 리소스를 삭제하는 요청 메서드."""
 
 class WarpInPhase(IntEnum):
+    PREPARATION = 10
+    """소환 준비 단계"""
+    
     INITIATION = 14
     """소환 시작 단계"""
     
@@ -63,34 +66,25 @@ class WarpInPhase(IntEnum):
     MATERIALIZATION = 16
     """건물이 구체화되는 단계"""
     
-    COMPLETION = 17
-    """건물이 완성되는 단계"""
-
+    DISAPPEARANCE = 17
+    """완료 후 사라지는 단계"""
+    
 class WarpInTaskResult(IntEnum):
     SUCCESS = 1
     FAIL = 2
-    IS_MASTER = 3
-    IS_REPLICA = 4
-    API_REGISTER_SUCCESS = 5
-
-class ArbiterShutdownTaskResult(IntEnum):
-    SUCCESS = 10
-    WARNING = 11
+    WARNING = 3
+    INFO = 4
 
 
 class ArbiterCliCommand(IntEnum):
     R = 100
-    S = 101
-    K = 102
-    L = 103
+    H = 101
     Q = 104
 
     def description(self):
         descriptions = {
             ArbiterCliCommand.R: "Reload Arbiter",
-            ArbiterCliCommand.S: "Start Service",
-            ArbiterCliCommand.K: "Stop Service",
-            ArbiterCliCommand.L: "Display services",
+            ArbiterCliCommand.H: "Help",
             ArbiterCliCommand.Q: "Warp-Out",
         }
         return descriptions[self]

@@ -6,7 +6,7 @@ authors = ["kc-softmax"]
 readme = "README.md"
 
 [tool.poetry.scripts]
-arbiter = "arbiter.cli.main:app"
+arbiter = "arbiter.core.main:app"
 
 [tool.poetry.dependencies]
 annotated-types = "^0.7.0"

@@ -60,6 +60,6 @@
 #     async def periodic_listen(
 #         self,
 #         queue: str,
-#         period: float = 1
+#         interval: float = 1
 #     ) -> AsyncGenerator[list[bytes], None]:
 #         raise NotImplementedError
