@@ -105,10 +105,6 @@ class ArbiterApiApp(FastAPI):
         )
         yield
         self.router_task and self.router_task.cancel()
-        await self.arbiter.update_data(
-            self.web_service,
-            state=ServiceState.INACTIVE
-        )
         await self.arbiter.disconnect()
 
     def get_dynamic_models(
@@ -384,6 +380,11 @@ class ArbiterApiApp(FastAPI):
         # message 는 어떤 router로 등록해야 하는가?에 따른다?
         # TODO ADD router, remove Router?
         async for message in self.arbiter.subscribe_listen(Node.routing_channel(self.node_id)):
+            if message == b"TEMP_SHUTDOWN":
+                await self.arbiter.update_data(
+                    self.web_service,
+                    state=ServiceState.INACTIVE)
+                continue
             try:
                 task_model = ArbiterTaskModel.model_validate_json(message)
                 service_name = task_model.service_meta.name

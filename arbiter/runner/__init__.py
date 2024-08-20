@@ -449,28 +449,37 @@ class ArbiterRunner:
         """
         gunicorn_process = self.processes.pop('gunicorn', None)
         if gunicorn_process:
+            await self.arbiter.broadcast(
+                self.node.get_routing_channel(),
+                "TEMP_SHUTDOWN")
             web_services = await self.arbiter.search_data(WebService, node_id=self.node.unique_id)
-            await terminate_process(gunicorn_process)
             fetch_data = lambda: self.arbiter.search_data(
                 WebService,
                 node_id=self.node.unique_id,
                 state=ServiceState.INACTIVE
             )
-            results = await fetch_data_within_timeout(
-                timeout=ARBITER_SERVICE_PENDING_TIMEOUT,
-                fetch_data=fetch_data,
-                check_condition=lambda data: len(data) >= len(web_services),
-            )
-            if web_services and not results:
-                await self._warp_in_queue.put(
-                    (WarpInTaskResult.FAIL, "Failed to stop Web Service")
+            try:
+                results = await fetch_data_within_timeout(
+                    timeout=ARBITER_SERVICE_PENDING_TIMEOUT,
+                    fetch_data=fetch_data,
+                    check_condition=lambda data: len(data) >= len(web_services),
                 )
-            elif len(results) < len(web_services):
-                await self._warp_in_queue.put(
-                    (WarpInTaskResult.WARNING, f"Not enough Web Services are stopped, {len(results)} expected {len(web_services)}")
-                )
-        
-
+                if web_services and not results:
+                    await self._warp_in_queue.put(
+                        (WarpInTaskResult.FAIL, "Failed to stop Web Service")
+                    )
+                elif len(results) < len(web_services):
+                    await self._warp_in_queue.put(
+                        (WarpInTaskResult.WARNING, f"Not enough Web Services are stopped, {len(results)} expected {len(web_services)}")
+                    )
+            except TimeoutError as e:
+                if web_services and not results:
+                    await self._warp_in_queue.put(
+                        (WarpInTaskResult.FAIL, "Failed to stop Web Service")
+                    )
+            finally:
+                await terminate_process(gunicorn_process)
+                
         # send shutdown message to service belong to this node
         await self.arbiter.broadcast(
             topic=self.node.get_system_channel(),

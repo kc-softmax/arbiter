@@ -71,25 +71,6 @@ class TestService(AbstractService):
     async def return_nobody(self):
         pass
 
-    # @http_task(method=HttpMethod.POST)
-    # def post_form_param_set(items: set = Form()) -> set:
-    #     return items
-
-    # @http_task(method=HttpMethod.POST)
-    # def post_form_param_tuple(items: tuple = Form()) -> tuple:
-    #     return items
-
-    # get은 보류
-    # @http_task(method=HttpMethod.GET)
-    # async def get_query_param(self, first: int, second: str) -> int:
-    #     print(type(first), type(second))
-    #     return 200
-
-    # @http_task(method=HttpMethod.GET)
-    # async def get_model_param(self, first: int, second: str) -> int:
-    #     print(type(first), type(second))
-    #     return 200
-
     @stream_task(
         connection=StreamMethod.WEBSOCKET,
         communication_type=StreamCommunicationType.BROADCAST)
@@ -146,28 +127,7 @@ class TestService(AbstractService):
         user_id: int | None
     ) -> AsyncGenerator[str, None]:
         pass
-
-    # @http_task(method=HttpMethod.POST)
-    # async def return_pydantic_model_no_return_annotation(self, model: TestModel):
-    #     return TestModel(name="test", age=model.age, time=datetime.now())
-
-    # @http_task(method=HttpMethod.POST)
-    # async def pydantic_param(self, message: TestModel):
-    #     # await asyncio.sleep(10)
-    #     return [message]
-        # return TestModel(name="test", age=10, time=datetime.now())
     
-    # @http_task(method=HttpMethod.POST)
-    # async def get_message(self, message: list[TestModel], member: list[int]) -> list[TestModel]:
-    #     # await asyncio.sleep(10)
-    #     return message[0]
-    
-    # @stream_task(
-    #     connection=StreamMethod.WEBSOCKET,
-    #     communication_type=StreamCommunicationType.ASYNC_UNICAST)
-    # async def on_stream(self, message: str) -> AsyncGenerator[str, None]:
-    #     yield message
-
     @stream_task(
         connection=StreamMethod.WEBSOCKET,
         communication_type=StreamCommunicationType.ASYNC_UNICAST,
