@@ -271,6 +271,7 @@ class ArbiterRunner:
                             name=task_name,
                             queue=queue,
                             method=getattr(task, 'method', 0),
+                            connection_info=getattr(task, 'connection_info', False),
                             connection=getattr(task, 'connection', 0),
                             communication_type=getattr(task, 'communication_type', 0),
                             num_of_channels=getattr(task, 'num_of_channels', 1),
@@ -308,7 +309,6 @@ class ArbiterRunner:
             
             check database is working
         """
-        
         # wsgi, asgi 선택하자
         if not self.is_replica:
             try:
@@ -625,8 +625,8 @@ class ArbiterRunner:
             raise ValueError(f'Process {process_name} is already started.')
         process = await asyncio.create_subprocess_shell(
             command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+            # stdout=asyncio.subprocess.PIPE,
+            # stderr=asyncio.subprocess.PIPE,
             shell=True
         )
         self.processes[process_name] = process

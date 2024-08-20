@@ -81,6 +81,7 @@ class ArbiterTaskModel(DefaultModel):
     interval: int = Field(default=0)
     channel: str = Field(default='')
     method: int = Field(default=0)
+    connection_info: bool = Field(default=False)
     connection: int = Field(default=0)
     communication_type: int = Field(default=0)
     num_of_channels: int = Field(default=1)

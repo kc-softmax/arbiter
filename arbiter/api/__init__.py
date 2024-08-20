@@ -9,7 +9,7 @@ from pydantic import create_model, BaseModel, ValidationError
 from configparser import ConfigParser
 from uvicorn.workers import UvicornWorker
 from typing import Union, Type, Any
-from fastapi import FastAPI, Query, WebSocket, Depends, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, Query, WebSocket, Depends, WebSocketDisconnect, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -152,6 +152,10 @@ class ArbiterApiApp(FastAPI):
                 DynamicRequestModel = create_model(task_function.name + "Model", **dynamic_params)
             return DynamicRequestModel, DynamicResponseModel
         except Exception as e:
+            for k, v in params.items():
+                for name, details in v['properties'].items():
+                    print(name, details)
+                    print()
             print('err in get_dynamic_models', e)
             return None, None
 
@@ -167,7 +171,6 @@ class ArbiterApiApp(FastAPI):
         
         path = f'/{to_snake_case(service_name)}/{task_function.name}'
         DynamicRequestModel, DynamicResponseModel = self.get_dynamic_models(task_function)
-            
         async def dynamic_function(
             data: Type[BaseModel] = Depends(DynamicRequestModel),  # 동적으로 생성된 Pydantic 모델 사용 # type: ignore
             app: ArbiterApiApp = Depends(get_app),
@@ -327,21 +330,28 @@ class ArbiterApiApp(FastAPI):
                                 target_task_function = task_function
                                 if not stream_message.data:
                                     await websocket.send_text('OK')
-                                    
                             if stream_message.data:
                                 if not target_task_function or not destination:
                                     # server error 확률 높
                                     await websocket.send_text(f"Target is not set")
                                     continue
                                     # data
+                                if target_task_function.connection_info:
+                                    data = {
+                                        "connection_info": {
+                                            "host": websocket.client.host,
+                                            "port": websocket.client.port
+                                        },
+                                        "data": stream_message.data
+                                    }
+                                else:
+                                    data = stream_message.data
+                                data = pickle.dumps((
+                                        destination, 
+                                        data))
                                 await self.arbiter.push_message(
                                     target_task_function.queue,
-                                    pickle.dumps(
-                                        (
-                                            destination, 
-                                            stream_message.data
-                                        )
-                                    ))
+                                    data)
                             
                         # excepe pydantic_core._pydantic_core.ValidationError as e:
                         except ValidationError as e:

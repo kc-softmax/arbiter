@@ -8,10 +8,11 @@ import json
 import functools
 import warnings
 from types import NoneType
+from fastapi import Request
 from collections.abc import AsyncGenerator
 from typing import Any, get_origin, get_args, List, Callable, Type
 from pydantic import BaseModel
-from arbiter.constants.messages import ArbiterMessage
+from arbiter.constants.messages import ArbiterMessage, ConnectionInfo
 from arbiter.utils import get_task_queue_name, parse_request_body
 from arbiter.constants.enums import (
     HttpMethod,
@@ -58,19 +59,25 @@ class BaseTask:
         params = {}
         signature = inspect.signature(func)
         for param in signature.parameters.values():
+            new_param = None
             if param.name == 'self':
                 continue
             if param.name in params:
                 raise ValueError(f"Duplicate parameter name: {param.name}")
-            # if not isinstance(param.annotation, type):
-            #     print(param.annotation)
-            #     # param.annotation = get_type_hints(func).get(param.name, None)
-            
+                        
             if param.annotation is None:
                 warnings.warn(
                     f"Highly recommand , Parameter {param.name} should have a type annotation")
 
-            params[param.name] = param
+            if param.annotation == Request:
+                raise ValueError("fastapi Request is not allowed, use pydantic model instead")
+                # new_param = param.replace(annotation=RequestData)
+            # if not isinstance(param.annotation, type):
+            #     print(param.annotation)
+            #     # param.annotation = get_type_hints(func).get(param.name, None)
+
+            params[param.name] = param if not new_param else new_param
+        
         
         # 반환 유형 힌트 가져오기
         return_annotation = signature.return_annotation
@@ -265,19 +272,30 @@ class StreamTask(BaseTask):
         self,
         connection: StreamMethod,
         communication_type: StreamCommunicationType,
+        connection_info = False,
         num_of_channels = 1,
         **kwargs,   
     ):
         super().__init__(
             **kwargs
-        )      
+        )
+        self.connection_info_param = None
+        self.connection_info = connection_info
         self.connection = connection
         self.communication_type = communication_type
         self.num_of_channels = num_of_channels
 
     def __call__(self, func: Callable) -> Callable:
         super().__call__(func)
-        
+        if self.connection_info:
+            connection_info_param = [
+                param for param in self.params.values() if param.annotation == ConnectionInfo
+            ]
+            if not connection_info_param:
+                raise ValueError("ConnectionInfo paramter is required for connection_info=True")
+            assert len(connection_info_param) == 1, "Only one ConnectionInfo is allowed"
+            self.connection_info_param = self.params.pop(connection_info_param[0].name)
+            
         @functools.wraps(func)
         async def wrapper(owner, *args: Any, **kwargs: Any):
             queue = self.get_queue(owner)
@@ -287,6 +305,11 @@ class StreamTask(BaseTask):
                 try:
                     target, data = pickle.loads(message)
                     kwargs = {'self': owner}
+                    if self.connection_info:
+                        connection_info = data.get('connection_info', None)
+                        data = data.get('data', None)
+                        kwargs.update(
+                            {self.connection_info_param.name: ConnectionInfo(**connection_info)})
                     if data:
                         params = self.parse_data(data)
                         kwargs.update(params)

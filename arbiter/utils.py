@@ -8,6 +8,7 @@ import inspect
 import time
 import asyncio
 import importlib
+from copy import deepcopy
 from asyncio.subprocess import Process
 from datetime import datetime
 import psutil
@@ -25,6 +26,28 @@ from typing import (
     Callable,
     Optional
 )
+
+# def dereference_schema(schema: dict) -> dict:
+#     # 복사본을 만들어 작업
+#     schema = deepcopy(schema)
+#     defs = schema.get('$defs', {})
+    
+#     def resolve_refs(obj):
+#         if isinstance(obj, dict):
+#             if '$ref' in obj:
+#                 ref_path = obj['$ref'].split('/')
+#                 ref_key = ref_path[-1]
+#                 if ref_key in defs:
+#                     return resolve_refs(defs[ref_key])
+#             return {k: resolve_refs(v) for k, v in obj.items()}
+#         elif isinstance(obj, list):
+#             return [resolve_refs(i) for i in obj]
+#         else:
+#             return obj
+    
+#     # $ref 해제
+#     return resolve_refs(schema)
+
 
 def get_task_queue_name(
     service_name: str,
@@ -163,18 +186,28 @@ def get_type_from_type_name(type_name: str, default_type=None) -> type | None:
         'number': float,
         'boolean': bool,
         'datetime': datetime,
+        'array': list,
+        'object': dict[str, Any],
         'Any': Any,
     }
     return type_mapping.get(type_name, default_type)
 
 def create_model_from_schema(schema: dict) -> BaseModel:
+    def handle_object_type(details: dict):
+        if 'additionalProperties' in details:
+            additional_type = get_type_from_type_name(details['additionalProperties']['type'])
+            return dict[str, additional_type]
+        else:
+            return dict[str, Any]
+        
     fields = {}
     for name, details in schema['properties'].items():
-        # datetime 형식의 문자열을 인식하여 datetime 타입으로 변환
         if details.get('format') == 'date-time':
             field_type = datetime
+        elif details.get('type') == 'object':
+            field_type = handle_object_type(details)
         else:
-            field_type = get_type_from_type_name(details['type'])
+            field_type = get_type_from_type_name(details.get('type', 'Any'))
         fields[name] = (field_type, ...)
     return create_model(schema['title'], **fields)  
 

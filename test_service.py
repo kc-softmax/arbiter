@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import AsyncGenerator, Optional, Any
 from arbiter.service import AbstractService
 from arbiter.constants import (
-    ArbiterMessage,
+    ConnectionInfo,
     HttpMethod,
     StreamMethod,
     StreamCommunicationType
@@ -142,7 +142,7 @@ class TestService(AbstractService):
         communication_type=StreamCommunicationType.ASYNC_UNICAST)
     async def search_company_policy(
         self,
-        message: str, 
+        message: str,
         user_id: int | None
     ) -> AsyncGenerator[str, None]:
         pass
@@ -170,8 +170,13 @@ class TestService(AbstractService):
 
     @stream_task(
         connection=StreamMethod.WEBSOCKET,
-        communication_type=StreamCommunicationType.ASYNC_UNICAST)
-    async def stream_async_task(self, message: str) -> AsyncGenerator[str, None]:
+        communication_type=StreamCommunicationType.ASYNC_UNICAST,
+        connection_info=True)
+    async def stream_async_task(
+        self,
+        message: str,
+        connectin_info: ConnectionInfo
+    ) -> AsyncGenerator[str, None]:
         async for result in self.send_async_task(
             queue="test_service_return_async_task",
             data=message):
