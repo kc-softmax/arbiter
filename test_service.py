@@ -44,7 +44,7 @@ class TestModel(BaseModel):
 class TestService(AbstractService):
     
     # input과 output을 모두 검사
-    @http_task(method=HttpMethod.POST, queue="num_of_params")
+    @http_task(method=HttpMethod.POST, queue="num_of_params", num_of_tasks=1)
     async def num_of_param(self, param: NumOfParam) -> Receive:
         return Receive(
             first=1,

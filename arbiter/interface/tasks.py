@@ -36,15 +36,17 @@ class BaseTask:
         queue: str = None,
         raw_message: bool = False,
         cold_start: bool = False,
+        num_of_tasks: int = 1,
         retry_count: int = 0,
         activate_duration: int = 0,
     ):
+        assert num_of_tasks > 0, "num_of_tasks should be greater than 0"
         self.queue = queue
         self.raw_message = raw_message
         self.cold_start = cold_start
         self.retry_count = retry_count
         self.activate_duration = activate_duration
-        
+        self.num_of_tasks = num_of_tasks        
         self.params = None
         self.response_type = None
         self.has_response = True
