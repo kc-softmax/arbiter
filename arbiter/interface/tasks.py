@@ -166,12 +166,11 @@ class BaseTask:
         return get_task_queue_name(owner.__class__.__name__, task_name)
 
     def pack_data(self, data: Any) -> Any:
-        packed_data = data
-        # try:
-        #     if isinstance(packed_data, BaseModel):
-        #         packed_data = packed_data.model_dump_json()
-        # except:
-        #     pass
+        # MARK TODO Change 
+        if isinstance(data, BaseModel):
+            packed_data = data.model_dump_json()
+        else:
+            packed_data = data
         return pickle.dumps(packed_data)
 
     def parse_data(self, data: Any) -> dict[str, Any] | Any:

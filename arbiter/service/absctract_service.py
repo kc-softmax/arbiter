@@ -100,7 +100,7 @@ class AbstractService(metaclass=ServiceMeta):
     node_id: str = None
     service_id: str = None
 
-    initial_processes = 1
+    num_of_workers= 1
     master_only = False
     auto_start = True
 

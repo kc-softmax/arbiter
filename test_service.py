@@ -89,8 +89,12 @@ class TestService(AbstractService):
     # 이 두개를 어떻게 묶을 것인가? 시스템적으로 묶으려면,... task에 dependency를 넣어야 할 것 같다.
     # 일단 내부에서 사용하려면 이렇게 해야할 것 같다.    
     @task()
-    async def return_task(self, data: Any):
-        return f"{data} return_task qwer qwer"
+    async def return_task(self, data: Any) -> Receive:
+        return Receive(
+            first=1,
+            second='1',
+            third=True,
+        )
     
     @async_task()
     async def return_async_task(self, data: Any):

@@ -162,7 +162,8 @@ class ArbiterRunner:
                     node_id=self.node.id,
                     name=service_class.__name__,
                     module_name=service_class.__module__,
-                    auto_start=service_class.auto_start   
+                    auto_start=service_class.auto_start,
+                    num_of_workers=service_class.num_of_workers
                 )
                 # master 와 replica는 다른 행동을 한다.
                 if self.is_replica:
@@ -317,7 +318,7 @@ class ArbiterRunner:
                 host = self.config.get("api", "host", fallback=None)
                 port = self.config.get("api", "port", fallback=None)
                 worker_count = self.config.get("api", "worker_count", fallback=1)
-                log_level = self.config.get("api", "log_level", fallback="info")
+                log_level = self.config.get("api", "log_level", fallback="error")
                 gunicorn_command = ' '.join([
                     f'NODE_ID={self.node.unique_id}',
                     'gunicorn',
@@ -418,7 +419,8 @@ class ArbiterRunner:
                 if service_meta.auto_start:
                     # TODO Change gather to fetch_data_within_timeout
                     has_initial_service = True
-                    await self._start_service(service_meta)
+                    for _ in range(service_meta.num_of_workers):
+                        await self._start_service(service_meta)
         try:
             if has_initial_service:
                 service_fetch_data = lambda: self.arbiter.search_data(

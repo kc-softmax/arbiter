@@ -42,6 +42,7 @@ class ServiceMeta(DefaultModel):
     from_master: bool
     module_name: str
     auto_start: bool = Field(default=False)
+    num_of_workers: int = Field(default=1)
 
 class Service(DefaultModel):
     node_id: int

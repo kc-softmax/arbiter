@@ -180,6 +180,15 @@ class ArbiterApiApp(FastAPI):
                     wait_response=response_required)
                 # 값을 보낼때는 그냥 믿고 보내준다.
                 # 타입이 다르다고 하더라도, 그냥 보내준다.
+                #json 이고, response model 이 있을때만 validate 한다.
+                if DynamicResponseModel:
+                    # 검사를 해야한다 두 타입이 일치 하는지
+                    if issubclass(DynamicResponseModel, BaseModel):
+                        try:
+                            response = DynamicResponseModel.model_validate_json(response)
+                        except:
+                            # DynamicResponseModel로 packing 되는 경우도 있기 때문에
+                            pass
                 # if DynamicResponseModel and DynamicResponseModel != Any:
                 #     # 검사를 해야한다 두 타입이 일치 하는지
                 #     if issubclass(DynamicResponseModel, BaseModel):

@@ -40,7 +40,6 @@ def dev(
 ):
     from arbiter.runner import ArbiterRunner
     system_queue: asyncio.Queue[Annotated[str, "command"]] = asyncio.Queue()
-
     async def arbiter_run(
         name: str,
         config: dict[str, str],
@@ -49,6 +48,7 @@ def dev(
         """
         Get the configure parameters from config file.
         """
+        name = config.get("project", "name", fallback=name)
         
         console.print(f"[bold green]Warp In [bold yellow]Arbiter[/bold yellow] [bold green]{name}...[/bold green]")
 

@@ -62,8 +62,7 @@ def test_http_return_value_type():
             'third': True
         }
 
-
-def test_http_return_value_type():
+def test_http_return_no_body():
     with httpx.Client(base_url=base_url.format(protocol="http")) as arbiter:
         response = arbiter.post("/test_service/return_nobody", timeout=10)
         data = response.json()
