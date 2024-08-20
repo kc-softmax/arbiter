@@ -45,6 +45,7 @@ from arbiter.constants.enums import (
     ServiceState
 )
 from arbiter.exceptions import (
+    ArbiterTimeOutError,
     ArbiterTaskAlreadyExistsError,
     ArbiterNoWebServiceError,
     ArbiterTooManyWebServiceError,
@@ -56,6 +57,7 @@ from arbiter.utils import (
     get_all_subclasses,
     get_ip_address,
     fetch_data_within_timeout,
+    get_data_within_timeout,
     terminate_process,
     get_task_queue_name,
 )
@@ -345,6 +347,7 @@ class ArbiterRunner:
                     await self._warp_in_queue.put(
                         (WarpInTaskResult.WARNING, f"Not enough Web Services are started, {len(results)} expected {worker_count}")
                     )
+                # start manger fasthtml process                
                 await self._warp_in_queue.put(
                     (WarpInTaskResult.SUCCESS, f"{WarpInPhase.INITIATION.name}...ok")
                 )
@@ -412,8 +415,9 @@ class ArbiterRunner:
         if service_metas := await self.arbiter.search_data(ServiceMeta, node_id=self.node.id):
             for service_meta in service_metas:
                 if service_meta.auto_start:
+                    # TODO Change gather to fetch_data_within_timeout
                     has_initial_service = True
-                    await self.start_service(service_meta)
+                    await self._start_service(service_meta)
         try:
             if has_initial_service:
                 service_fetch_data = lambda: self.arbiter.search_data(
@@ -502,6 +506,7 @@ class ArbiterRunner:
                         (WarpInTaskResult.WARNING, f"{len(results)} nodes are not shutdown")
                     )
         # check all services are shutdown
+        # try catch로 감싸서 에러를 처리해야 한다.
         fetch_data = lambda: self.arbiter.search_data(
             Service,
             node_id=self.node.id,
@@ -622,18 +627,32 @@ class ArbiterRunner:
             shell=True
         )
         self.processes[process_name] = process
-
-    async def stop_services(self, service_ids: list[int]):
-        for service_id in service_ids:
-            service = await self.arbiter.get_data(Service, service_id)
-            if service and service.state == ServiceState.ACTIVE:
-                print('stop service not working')
-                # await self.broker.send_message(
-                #     target,
-                    
-                #     ArbiterDataType.ARBITER_SERVICE_UNREGISTER)
-
-    async def start_service(self, service_meta: ServiceMeta):
+    
+    async def _stop_service(self, service_id: int):
+        # 해당 서비스 id를 가진 서비스를 찾아서 종료한다.
+        if service := await self.arbiter.get_data(Service, service_id):
+            if service.state != ServiceState.ACTIVE:
+                return
+            #node 에게
+            await self.arbiter.update_data(service, state=ServiceState.STOPPED)
+            fetch_data = lambda: self.arbiter.get_data(
+                Service,
+                service_id
+            )
+            try:
+                result = await get_data_within_timeout(
+                    timeout=ARBITER_SERVICE_PENDING_TIMEOUT,
+                    fetch_data=fetch_data,
+                    check_condition=lambda data: data.state == ServiceState.INACTIVE,
+                )
+                if not result:
+                    # failed to stop service
+                    raise Exception('Failed to stop service')
+            except Exception as e:
+                # add faield log in the future
+                pass
+ 
+    async def _start_service(self, service_meta: ServiceMeta):
         """
             1. Service 객체를 생성한다. (Pending)
             2. generate start command
@@ -666,7 +685,7 @@ from {service_meta.module_name} import {service_meta.name};
 asyncio.run({service_meta.name}.launch('{self.node.unique_id}', '{service.id}'));"""
                 await self._start_process(
                     f'{sys.executable} -c "{start_command}"',
-                    f"{service_meta.name}_{service.id}")
+                    service.get_service_name())
             except Exception as e:
                 print(e, ': manager')
                 break
@@ -720,6 +739,7 @@ asyncio.run({service_meta.name}.launch('{self.node.unique_id}', '{service.id}'))
 
                 try:
                     response = False
+                    response_data = ArbiterDataType.ACK.value
                     match message_type:
                         case ArbiterDataType.PING:
                             # health check의 경우 한번에 모아서 업데이트 하는 경우를 생각해봐야한다.
@@ -734,6 +754,9 @@ asyncio.run({service_meta.name}.launch('{self.node.unique_id}', '{service.id}'))
                                         please check the service and
                                         service shutdown process.
                                         """)
+                                elif service.state == ServiceState.STOPPED:
+                                    response = True
+                                    response_data = service.shutdown_code
                                 else:
                                     await self.arbiter.update_data(service)
                                     response = True
@@ -754,11 +777,10 @@ asyncio.run({service_meta.name}.launch('{self.node.unique_id}', '{service.id}'))
                     print('Error process message: ', e)
                     print('Message: ', message_type, data)
                 finally:
-                    if response:
-                        await self.arbiter.push_message(
-                            message.id,
-                            ArbiterDataType.ACK.value
-                        )
+                    response and await self.arbiter.push_message(
+                        message.id,
+                        response_data
+                    )
         except Exception as e:
             print("Error in system task: ", e)
         finally:

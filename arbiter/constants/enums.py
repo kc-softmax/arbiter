@@ -6,6 +6,7 @@ class ServiceState(IntEnum):
     PENDING = 1
     ACTIVE = 2
     INACTIVE = 3
+    STOPPED = 4
 
 
 class StreamCommand(IntEnum):
@@ -102,7 +103,7 @@ class ArbiterDataType(IntEnum):
     # Arbiter messages
     ARBITER_SERVICE_REGISTER = 5
     ARBITER_SERVICE_UNREGISTER = 7
-    ARBITER_SERVICE_STOP = 9
+    ARBITER_SERVICE_STOP_REQUEST = 9
 
     API_REGISTER = 11
     API_UNREGISTER = 13

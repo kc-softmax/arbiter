@@ -12,7 +12,7 @@ from arbiter.constants import (
     ARBITER_SERVICE_HEALTH_CHECK_INTERVAL,
     ARBITER_SERVICE_TIMEOUT
 )
-from arbiter.database.model import ArbiterTaskModel, Node
+from arbiter.database.model import ArbiterTaskModel, Node, Service
 from arbiter.utils import get_pickled_data
 from arbiter import Arbiter
 
@@ -109,11 +109,11 @@ class AbstractService(metaclass=ServiceMeta):
         node_id: str,
         service_id: str,
     ):
+        self.service: Service = None
         self.node_id = node_id
         self.service_id = service_id
         self.force_stop = False
         self.arbiter = Arbiter()
-
         self.system_subscribe_task: asyncio.Task = None
         self.health_check_task: asyncio.Task = None
         self.health_check_time = 0
@@ -162,6 +162,10 @@ class AbstractService(metaclass=ServiceMeta):
                             data=self.service_id).model_dump_json(),
                         wait_response=True)
                     if response:
+                        print
+                        if response == self.service.shutdown_code:
+                            print('Shutdown')
+                            return 'Service Shutdown by System'
                         self.health_check_time = asyncio.get_event_loop().time()
                     else:
                         health_check_retry += 1
@@ -217,7 +221,7 @@ class AbstractService(metaclass=ServiceMeta):
             response = ArbiterDataType(int(response))
             if response != ArbiterDataType.ACK:
                 raise Exception("message type is not correct")
-            # TODO udpate service_id
+            self.service = await self.arbiter.get_data(Service, self.service_id)
             self.health_check_task = asyncio.create_task(
                 self.health_check_func())
             self.system_subscribe_task = asyncio.create_task(
@@ -284,8 +288,7 @@ class AbstractService(metaclass=ServiceMeta):
         except ArbiterTimeOutError as e:
             await self.arbiter.remove_message(queue, async_message)
             raise e
-        
-
+    
     async def get_system_message(self):
         async for message in self.arbiter.subscribe_listen(channel=Node.system_channel(self.node_id)):
             decoded_message = ArbiterTypedData.model_validate_json(message)
