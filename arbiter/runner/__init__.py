@@ -274,6 +274,7 @@ class ArbiterRunner:
                             connection=getattr(task, 'connection', 0),
                             communication_type=getattr(task, 'communication_type', 0),
                             num_of_channels=getattr(task, 'num_of_channels', 1),
+                            num_of_tasks=getattr(task, 'num_of_tasks', 1),
                             params=json.dumps(flatten_params),
                             response=json.dumps(flatten_response),
                         )
@@ -316,7 +317,7 @@ class ArbiterRunner:
                 host = self.config.get("api", "host", fallback=None)
                 port = self.config.get("api", "port", fallback=None)
                 worker_count = self.config.get("api", "worker_count", fallback=1)
-                log_level = self.config.get("api", "log_level", fallback="error")
+                log_level = self.config.get("api", "log_level", fallback="info")
                 gunicorn_command = ' '.join([
                     f'NODE_ID={self.node.unique_id}',
                     'gunicorn',
@@ -624,6 +625,8 @@ class ArbiterRunner:
             raise ValueError(f'Process {process_name} is already started.')
         process = await asyncio.create_subprocess_shell(
             command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
             shell=True
         )
         self.processes[process_name] = process

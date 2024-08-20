@@ -228,9 +228,10 @@ class AbstractService(metaclass=ServiceMeta):
                 self.get_system_message())
 
             for task in self.tasks:
-                dynamic_tasks.append(
-                    asyncio.create_task(task(self))
-                )
+                for _ in range(task.num_of_tasks):
+                    dynamic_tasks.append(
+                        asyncio.create_task(task(self))
+                    )
             await self.on_start()
             await self.health_check_task
 

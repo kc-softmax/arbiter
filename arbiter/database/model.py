@@ -70,6 +70,7 @@ class WebServiceTask(DefaultModel):
 
 class ArbiterTaskModel(DefaultModel):
     service_meta: ServiceMeta
+    num_of_tasks: int
     cold_start: bool = Field(default=False)
     raw_message: bool = Field(default=False)
     retry_count: int = Field(default=0)
