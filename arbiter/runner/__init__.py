@@ -266,7 +266,6 @@ class ArbiterRunner:
                                 flatten_response = response_model_type.__name__
                             if response_is_list:
                                 flatten_response = [flatten_response]
-                                        
                         data = dict(
                             service_meta=service_meta,
                             name=task_name,
@@ -287,7 +286,6 @@ class ArbiterRunner:
                             queue=queue
                         ):
                             raise ArbiterTaskAlreadyExistsError(f"Task Queue {queue} is already registered")
-                        
                         await self.arbiter.create_data(ArbiterTaskModel, **data)
                 self.service_metas.append(service_meta)
             await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.PREPARATION.name}...ok"))
@@ -376,7 +374,35 @@ class ArbiterRunner:
             how to handle the response?
             may be handle fastapi app to model 
         """
-        web_services = await self.arbiter.search_data(WebService, node_id=self.node.unique_id)
+        if not self.is_replica:
+            master_node = self.node
+        else:
+            fetch_data = lambda: self.arbiter.search_data(
+                Node,
+                id=self.node.master_id
+            )
+            master_node = await fetch_data_within_timeout(
+                timeout=ARBITER_SERVICE_PENDING_TIMEOUT,
+                fetch_data=fetch_data,
+                check_condition=lambda data: data is not None,
+            )
+            
+            if not master_node:
+                await self._warp_in_queue.put(
+                    (WarpInTaskResult.FAIL, "Failed to find Master Node")
+                )
+                return
+            if len(master_node) > 1:
+                await self._warp_in_queue.put(
+                    (WarpInTaskResult.FAIL, "Too many Master Nodes")
+                )
+                return
+            master_node = master_node[0]
+            
+        master_web_services = await self.arbiter.search_data(
+            WebService,
+            node_id=master_node.unique_id
+        )
         if service_metas := await self.arbiter.search_data(ServiceMeta, node_id=self.node.id):
             for service_meta in service_metas:
                 regist_task_count = 0
@@ -387,14 +413,16 @@ class ArbiterRunner:
                             # add route in arbiter
                             regist_task_count += 1
                             await self.arbiter.broadcast(
-                                self.node.get_routing_channel(),
+                                master_node.get_routing_channel(),
                                 task_model.model_dump_json())
                 # async gather 로 확인하는 방법도 있다.  
-                for web_service in web_services:
+                for web_service in master_web_services:
                     task_fetch_data = lambda: self.arbiter.search_data(
                         WebServiceTask,
                         web_service_id=web_service.id
                     )
+                    already_registed_task_count = len(await task_fetch_data())
+                    regist_task_count += already_registed_task_count
                     try:
                         await fetch_data_within_timeout(
                             timeout=ARBITER_SERVICE_PENDING_TIMEOUT,

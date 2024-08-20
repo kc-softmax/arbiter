@@ -229,15 +229,20 @@ class ArbiterApiApp(FastAPI):
                                 await websocket.send_text(json.dumps(data))
                                 break
                             data = get_pickled_data(data)
-                            if isinstance(data, BaseModel):
-                                data = data.model_dump()
+                            
+                            # if DynamicResponseModel and issubclass(DynamicResponseModel, BaseModel):
+                            #     try:
+                            #         data = DynamicResponseModel.model_validate_json(data)
+                            #     except Exception as e:
+                            #         print(f"Error in model_validate_json {e}")
+                            #     # DynamicResponseModel로 packing 되는 경우도 있기 때문에
+                            #         pass
+                            # if isinstance(data, BaseModel):
+                            #     data = data.model_dump()
                             data = {"from": queue, "data": data}
                             await websocket.send_text(json.dumps(data))
                     except asyncio.CancelledError:
                         pass
-                        # print(f"listen to {queue} cancelled")
-                    # finally:
-                        # print(f"End of message_listen_queue {queue}")
                         
                 async def message_subscribe_channel(websocket: WebSocket, channel: str, pubsub_id: str):
                     # print(f"Start of message_subscribe_channel {channel}")
@@ -259,11 +264,10 @@ class ArbiterApiApp(FastAPI):
                 # service의 handle query 같은것이 필요하다.
                 
                 await websocket.accept()
-
+                response_task: asyncio.Task = None
                 response_queue = uuid.uuid4().hex                          
                 # response task가 만들어질때, response_queue를 인자로 넘겨준다.
                 subscribe_tasks: dict[SubscribeChannel, asyncio.Task] = {}
-                response_task = asyncio.create_task(message_listen_queue(websocket, response_queue, 0))
                 try:
                     destination: str | None = None
                     target_task_function: ArbiterTaskModel | None = None
@@ -341,6 +345,9 @@ class ArbiterApiApp(FastAPI):
                                     await websocket.send_text(f"Target is not set")
                                     continue
                                     # data
+                                if not response_task or response_task.done():
+                                    response_task = asyncio.create_task(
+                                        message_listen_queue(websocket, response_queue, 0))
                                 if target_task_function.connection_info:
                                     data = {
                                         "connection_info": {
