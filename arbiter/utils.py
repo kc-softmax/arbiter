@@ -95,6 +95,24 @@ async def fetch_data_within_timeout(
     
     raise TimeoutError(f"Timeout in fetching data within {timeout} seconds")
 
+async def get_data_within_timeout(
+    timeout: int,
+    fetch_data: Callable[[], Awaitable[Any]],
+    check_condition: Optional[Callable[[Any], bool]] = None,
+    sleep_interval: float = 0.5
+) -> Any:
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        data = await fetch_data()
+        if check_condition:
+            if check_condition(data):
+                return data
+        else:
+            if data:
+                return data
+        await asyncio.sleep(sleep_interval)
+    
+
 def get_ip_address() -> str:
     """
     현재 서버의 IP 주소를 반환합니다.

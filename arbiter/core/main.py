@@ -127,6 +127,7 @@ def dev(
                                 case ArbiterCliCommand.Q.name:
                                     break
                                 case ArbiterCliCommand.R.name:
+                                    await arbiter_runner._stop_service(1)
                                     pass
                                 case ArbiterCliCommand.H.name:
                                     console.print("[bold cyan]Commands[/bold cyan]")

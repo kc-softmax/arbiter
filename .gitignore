@@ -4,7 +4,7 @@
 # ignore after arbiter init
 infra/
 arbiter.setting.ini
-
+.sesskey
 ### macOS ###
 # General
 .DS_Store

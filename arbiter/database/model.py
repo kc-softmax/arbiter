@@ -49,7 +49,11 @@ class Service(DefaultModel):
     created_at: datetime
     updated_at: datetime
     service_meta: ServiceMeta
+    shutdown_code: str = Field(default_factory=lambda: str(uuid.uuid4()))
     description: Optional[str] = Field(default=None)
+    
+    def get_service_name(self) -> str:
+        return f"{self.service_meta.name}_{self.id}"
 
 class WebService(DefaultModel):
     node_id: str
