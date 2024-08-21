@@ -19,39 +19,7 @@ $  pytest tests/auth/test_service. py::TestUserService::test_register_user_by_de
 ## print 문 출력
 $ pytest -s
 ``` -->
-# Arbiter for your competitive multiplayer games
-
-## Arbiter
-1. 아비터의 전반적인 소개
-2. 아비터의 key features: 장점, 사용해야하는 이유
-3. 시작할 수 있도록 도움되는 설명
-
-Why Arbiter
-
-The key features:
-- **Stream**:
-- **Authenticated**:
-- **Dedicated**:
-- **Seamless**:
-
-**Command Line**
-```shell
-arbiter init
-arbiter start # (아래의 태스크들을 하나로 묶어야 할지...)
-arbiter db # (start background)
-arbiter stream # (start background)
-# docker compose로 묶어서 실행
-arbiter build --target={aws, local...}
-# 실행 순서
-# 1. 사용 계획(init, plan)
-# 2. "Are you sure you want to deploy it?" y/N
-# 3. create network, security group
-# 4. create cache(redis) for Broker
-# 5. get endpoint(redis, (Optional)rds)
-# 6. App image push(ECR)
-# 7. Create Cluster(LB, Container, Compute, Domain)
-# 8. get app domain
-```
+# Arbiter
 
 ## IaC(Infrastructure as Code) for deploying your service
 ### Your service need to deploy in cloude system for playing with user. This code handle AWS resource and writen basic resource for deploying service. If you want to other resource, you can add by referencing document and README.
