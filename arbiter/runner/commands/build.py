@@ -5,8 +5,8 @@ import json
 from typing import Callable
 
 from arbiter.utils import find_python_files_in_path, find_registered_services
-from arbiter.core.utils import AsyncTyper
-from arbiter.core.utils import (
+from arbiter.runner.utils import AsyncTyper
+from arbiter.runner.utils import (
     read_config,
     write_config,
     refresh_output,
@@ -15,7 +15,7 @@ from arbiter.core.utils import (
     Communication,
     SupportedModules,
 )
-from arbiter.service.absctract_service import AbstractService
+from arbiter.worker import ArbiterWorker
 
 
 app = AsyncTyper()
@@ -38,7 +38,7 @@ def cloud():
         # rewrite command by inputing value
         # get available service and main app
         python_files_in_root = find_python_files_in_path()
-        registered_services = find_registered_services(python_files_in_root, AbstractService)
+        registered_services = find_registered_services(python_files_in_root, ArbiterWorker)
         service_list = json.dumps(
             {
                 service.__module__: service.__name__

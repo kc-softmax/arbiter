@@ -6,7 +6,7 @@ import subprocess
 from functools import wraps, partial
 from typer import Typer
 from mako.template import Template
-from arbiter.core import PROJECT_NAME, CONFIG_FILE
+from arbiter.constants import PROJECT_NAME, CONFIG_FILE
 from enum import Enum
 
 
@@ -44,46 +44,6 @@ class SupportedModules(Enum):
     RDS = "module.infra.module.service.module.rds"
     SG = "module.infra.module.service.module.sg"
 
-async def check_redis_running() -> bool:
-    from redis.asyncio import ConnectionPool, Redis, ConnectionError
-    try:
-        from arbiter.core import CONFIG_FILE
-        from arbiter.core.utils import read_config
-        config = read_config(CONFIG_FILE)
-        host = config.get("cache", "redis.url", fallback="localhost")
-        port = config.get("cache", "cache", fallback="6379")
-        password = config.get("cache", "redis.password", fallback=None)
-        if password:
-            redis_url = f"redis://:{password}@{host}:{port}/"
-        else:
-            redis_url = f"redis://{host}:{port}/"
-
-        async_redis_connection_pool = ConnectionPool.from_url(
-            redis_url,
-            socket_timeout=5,
-        )
-        redis = Redis(connection_pool=async_redis_connection_pool)
-        await redis.ping()
-        await redis.aclose()
-        await async_redis_connection_pool.disconnect()
-        return True
-    except ConnectionError:
-        return False
-
-
-def read_config(config_file: str):
-    """
-    Reads configuration from an INI file.
-    """
-    file_path = os.path.join(config_file)
-    if os.path.exists(file_path):
-        config = configparser.ConfigParser(
-            interpolation=configparser.ExtendedInterpolation(), allow_no_value=True)
-        config.read(file_path)
-        return config
-    return None
-
-
 def write_config(config: configparser.ConfigParser, config_file: str):
     """
     Reads configuration from an INI file.
@@ -102,6 +62,7 @@ def create_config(project_path='.'):
         ".": [CONFIG_FILE],
     }
     template_root_path = f'{os.path.abspath(os.path.dirname(__file__))}/templates'
+    print(template_root_path)
     for directory, files in project_structure.items():
         dir_path = os.path.join(project_path, directory)
         os.makedirs(dir_path, exist_ok=True)

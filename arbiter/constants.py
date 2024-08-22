@@ -1,12 +1,13 @@
 from __future__ import annotations
 from pydantic import BaseModel
 from datetime import datetime
-from .enums import *
-from .messages import *
 
 ALLOWED_TYPES = (BaseModel, list, int, str, float, bool, datetime)
 
 ASYNC_TASK_CLOSE_MESSAGE = b'q__end__q'
+
+PROJECT_NAME  = "arbiter"
+CONFIG_FILE = "arbiter.setting.ini"
 
 WARP_IN_TIMEOUT = 10
 

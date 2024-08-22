@@ -1,14 +1,33 @@
+from __future__ import annotations
 import uuid
-from typing import Optional, Type
+from typing import Optional, Any, Optional
 from pydantic import BaseModel, Field
 from datetime import datetime
-from arbiter.constants.enums import (
-    ServiceState, 
+from arbiter.enums import (
+    ServiceState,
+    ArbiterDataType,
+    StreamCommand,
     HttpMethod, 
     StreamMethod,
     StreamCommunicationType
 )
+    
+class ArbiterMessage(BaseModel):
+    id: str = Field(default_factory=lambda: uuid.uuid4().hex)
+    data: str | bytes = Field(default='')
 
+class ArbiterTypedData(BaseModel):
+    type: ArbiterDataType
+    data: str | bytes = Field(default='')
+
+class ArbiterStreamMessage(BaseModel):
+    channel: str = Field(default="")
+    target: str = Field(default="")
+    data: Any = Field(default=None)
+
+class ConnectionInfo(BaseModel):
+    host: str
+    port: int
 
 class DefaultModel(BaseModel):
     id: int

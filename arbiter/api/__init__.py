@@ -22,14 +22,14 @@ from arbiter.utils import (
     get_type_from_type_name, 
     get_pickled_data
 )
-from arbiter.database.model import (
+from arbiter.models import (
     Node,
     WebService,
     WebServiceTask,
     ArbiterTaskModel,
+    ArbiterStreamMessage
 )
-from arbiter.constants.messages import ArbiterStreamMessage
-from arbiter.constants.enums import (
+from arbiter.enums import (
     ServiceState,
     HttpMethod,
     StreamMethod,
@@ -62,7 +62,13 @@ class ArbiterApiApp(FastAPI):
     def __init__(
         self,
         node_id: str,
-        config: ConfigParser,
+        broker_host: str = "localhost",
+        broker_port: int = 6379,
+        broker_password: str = None,
+        allow_origins: str = "*",
+        allow_methods: str = "*",
+        allow_headers: str = "*",
+        allow_credentials: bool = True,
     ) -> None:
         super().__init__(lifespan=self.lifespan)
         self.node_id = node_id
@@ -77,14 +83,18 @@ class ArbiterApiApp(FastAPI):
         )
         self.add_middleware(
             CORSMiddleware,
-            allow_origins=config.get("api", "allow_origins", fallback="*"),
-            allow_methods=config.get("api", "allow_methods", fallback="*"),
-            allow_headers=config.get("api", "allow_headers", fallback="*"),
-            allow_credentials=config.get("api", "allow_credentials", fallback=True),
+            allow_origins=allow_origins,
+            allow_methods=allow_methods,
+            allow_headers=allow_headers,
+            allow_credentials=allow_credentials,
         )
         # app.add_middleware(BaseHTTPMiddleware, dispatch=log_middleware)
         self.router_task: asyncio.Task = None
-        self.arbiter: Arbiter = Arbiter()
+        self.arbiter: Arbiter = Arbiter(
+            host=broker_host,
+            port=broker_port,
+            password=broker_password
+        )
         self.stream_routes: dict[str, dict[str, ArbiterTaskModel]] = {}
     
     @asynccontextmanager
@@ -431,12 +441,24 @@ class ArbiterApiApp(FastAPI):
             self.openapi_schema = None
 
 
-def get_app() -> ArbiterApiApp:
-    
-    from arbiter.core import CONFIG_FILE
-    from arbiter.core.utils import read_config
-    config = read_config(CONFIG_FILE)
+def get_app() -> ArbiterApiApp:    
     node_id = os.getenv("NODE_ID", "")
+    broker_config = os.getenv("BROKER_CONFIG", {})
+    server_config = os.getenv("SERVER_CONFIG", {})
     assert node_id, "NODE_ID is not set"
-    
-    return ArbiterApiApp(node_id, config)
+    assert broker_config, "BROKER_CONFIG is not set"
+    assert server_config, "SERVER_CONFIG is not set"
+    broker_config = json.loads(broker_config)
+    server_config = json.loads(server_config)
+    assert isinstance(broker_config, dict), "BROKER_CONFIG is not valid"
+    assert isinstance(server_config, dict), "SERVER_CONFIG is not valid"
+    return ArbiterApiApp(
+        node_id=node_id,
+        broker_host=broker_config.get("host", "localhost"),
+        broker_port=broker_config.get("port", 6379),
+        broker_password=broker_config.get("password", None),
+        allow_origins=server_config.get("allow_origins", "*"),
+        allow_methods=server_config.get("allow_methods", "*"),
+        allow_headers=server_config.get("allow_headers", "*"),
+        allow_credentials=server_config.get("allow_credentials", True),
+    )

@@ -1,13 +1,10 @@
-from enum import IntEnum, StrEnum
-
-
+from enum import IntEnum
 
 class ServiceState(IntEnum):
     PENDING = 1
     ACTIVE = 2
     INACTIVE = 3
     STOPPED = 4
-
 
 class StreamCommand(IntEnum):
     SET_TARGET = 21
@@ -16,7 +13,6 @@ class StreamCommand(IntEnum):
     """특정 채널을 구독하는 명령어"""
     UNSUBSCRIBE = 23
     """특정 채널을 구독 해제하는 명령어"""
-
 
 class StreamMethod(IntEnum):
     WEBSOCKET = 10
@@ -76,7 +72,6 @@ class WarpInTaskResult(IntEnum):
     WARNING = 3
     INFO = 4
 
-
 class ArbiterCliCommand(IntEnum):
     R = 100
     H = 101
@@ -92,7 +87,6 @@ class ArbiterCliCommand(IntEnum):
 
     def get_typer_text(self):
         return f"\t[bold yellow]{self.name.lower()}[/bold yellow]\t{self.description()}"
-
 
 class ArbiterDataType(IntEnum):
     # General messages
@@ -113,4 +107,3 @@ class ArbiterDataType(IntEnum):
     # # Error messages
     ACK = 19
     ERROR = 100
-    

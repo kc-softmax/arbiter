@@ -4,19 +4,24 @@ port = 5432
 hostname = localhost
 credentials = arbiter:arbiter
 
-[cache]
-redis.url = localhost
-redis.port = 6379
-redis.password = 
+[broker]
+host = localhost
+port = 6379
+password = 
+
+[worker]
 
 [project]
+name = Danimoth
 app_env = local
 access_token_key = access
 refresh_token_key = refresh
 
-[api]
+[server]
 host = 0.0.0.0
 port = 8080
+log_level = error
+workers = 1
 allow_credentials = true
 allow_origins = *
 allow_methods = *
