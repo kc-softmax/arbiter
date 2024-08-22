@@ -22,7 +22,7 @@ allowed types: (<class 'pydantic.main.BaseModel'>, <class 'list'>,
 @pytest.mark.asyncio
 async def test_stream_ping_pong():
     session = aiohttp.ClientSession()
-    url = f'{base_url.format(protocol="ws")}/stream/test_service'
+    url = f'{base_url.format(protocol="ws")}/stream/test_worker'
     async with session.ws_connect(url) as conn:
         # enter chat room
         await conn.send_json({
@@ -49,7 +49,7 @@ async def test_stream_ping_pong():
 @pytest.mark.asyncio
 async def test_stream_type_of_text():
     session = aiohttp.ClientSession()
-    url = f'{base_url.format(protocol="ws")}/stream/test_service'
+    url = f'{base_url.format(protocol="ws")}/stream/test_worker'
     async with session.ws_connect(url) as conn:
         # enter chat room
         await conn.send_str(json.dumps({

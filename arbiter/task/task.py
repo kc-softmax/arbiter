@@ -1,37 +1,45 @@
 from __future__ import annotations
 import re
-import inspect
 import pickle
 import ast
 import inspect
 import json
 import functools
 import warnings
-from types import NoneType
-from fastapi import Request
+import pickle
 from collections.abc import AsyncGenerator
-from typing import Any, get_origin, get_args, List, Callable, Type
+from fastapi import Request
+from types import NoneType
+from typing import  Any, get_origin, get_args, List, Callable, Type
 from pydantic import BaseModel
-from arbiter.constants.messages import ArbiterMessage, ConnectionInfo
-from arbiter.utils import get_task_queue_name, parse_request_body
-from arbiter.constants.enums import (
+from arbiter.constants import (
+    HEALTH_CHECK_RETRY,
+    ARBITER_SERVICE_HEALTH_CHECK_INTERVAL,
+    ARBITER_SERVICE_TIMEOUT,
+    ALLOWED_TYPES,
+    ASYNC_TASK_CLOSE_MESSAGE
+)
+from arbiter.enums import (
     HttpMethod,
     StreamMethod,
     StreamCommunicationType,
 )
-from arbiter.constants import (
-    ALLOWED_TYPES,
-    ASYNC_TASK_CLOSE_MESSAGE
+from arbiter.models import (
+    ArbiterTypedData,
+    ArbiterDataType,
+    ArbiterTaskModel,
+    ArbiterMessage,
+    ConnectionInfo,
+    Node,
+    Service
 )
-from arbiter.database.model import ArbiterTaskModel
+from arbiter.utils import get_task_queue_name, parse_request_body, get_pickled_data
+from arbiter.worker import ArbiterWorker
 from arbiter import Arbiter
 
+# consider func using protocol
 class BaseTask:
-    """
-        task 들의 기본적인 속성이 무엇일까?
-        retry policy? retry count?
-        cold start? cold interval?
-    """
+
     def __init__(
         self,
         queue: str = None,
@@ -51,17 +59,23 @@ class BaseTask:
         self.params = None
         self.response_type = None
         self.has_response = True
+        self.func = None
     
     def __call__(self, func: Callable) -> dict[str, inspect.Parameter]:
-        
+        self.func = func 
         setattr(func, 'is_task_function', True)
-        setattr(self, 'task_name', func.__name__)
+        setattr(func, 'task_name', func.__name__)
         params = {}
         signature = inspect.signature(func)
         for param in signature.parameters.values():
-            new_param = None
+            # 만약 self나 app이라는 이름의 파라미터가 있다면 첫번째 파라미터인지 검사 한후, 
             if param.name == 'self':
+                setattr(func, 'worker_required', True)
                 continue
+            
+            if param.annotation is ArbiterWorker:
+                raise ValueError("if ArbiterWorker is used, it should be the first parameter and named 'self'")
+            
             if param.name in params:
                 raise ValueError(f"Duplicate parameter name: {param.name}")
                         
@@ -71,13 +85,10 @@ class BaseTask:
 
             if param.annotation == Request:
                 raise ValueError("fastapi Request is not allowed, use pydantic model instead")
-                # new_param = param.replace(annotation=RequestData)
             # if not isinstance(param.annotation, type):
             #     print(param.annotation)
             #     # param.annotation = get_type_hints(func).get(param.name, None)
-
-            params[param.name] = param if not new_param else new_param
-        
+            params[param.name] = param 
         
         # 반환 유형 힌트 가져오기
         return_annotation = signature.return_annotation
@@ -157,14 +168,7 @@ class BaseTask:
         self.params = params        
         for attribute, value in self.__dict__.items():
             setattr(func, attribute, value)
-
-    def get_queue(self, owner: Type):
-        if self.queue:
-            return self.queue
-        task_name = getattr(self, "task_name", None)
-        assert task_name, "task_name is required"
-        return get_task_queue_name(owner.__class__.__name__, task_name)
-
+    
     def pack_data(self, data: Any) -> Any:
         # MARK TODO Change 
         if isinstance(data, BaseModel):
@@ -200,23 +204,24 @@ class BaseTask:
             return params
 
 class ArbiterTask(BaseTask):
-    
+   
     def __call__(self, func: Callable) -> Callable:
         super().__call__(func)
         @functools.wraps(func)
-        async def wrapper(owner, *args: Any, **kwargs: Any):
-            # TODO Refactor
-            queue = self.get_queue(owner)
-            arbiter = getattr(owner, "arbiter", None)
-            assert isinstance(arbiter, Arbiter)
+        async def wrapper(arbiter: Arbiter, queue: str, instance: Callable = None):
+            worker_required = getattr(func, "worker_required", False)
+            if worker_required:
+                assert instance, "Worker instance is required"
             async for message in arbiter.listen(queue):
                 assert isinstance(message, ArbiterMessage), f"Invalid message type: {type(message)}"
                 try:
                     if getattr(func, "raw_message", False):
-                        results = await func(owner, message.data)
+                        params = [instance, message.data] if instance else [message.data]
+                        results = await func(*params)
                     else:
-                        params = self.parse_data(message.data)
-                        results = await func(owner, **params)
+                        params = {'self': instance} if instance else {}
+                        params.update(self.parse_data(message.data))                        
+                        results = await func(**params)
                     if not getattr(func, "has_response", False):
                         continue
                     if not message.id:
@@ -229,9 +234,9 @@ class ArbiterTask(BaseTask):
                             response)
                 except Exception as e:
                     print(e, "exception in task")
-        return wrapper    
+        return wrapper
 
-class HttpTask(ArbiterTask):
+class ArbiterHttpTask(ArbiterTask):
     def __init__(
         self,
         method: HttpMethod,
@@ -242,19 +247,19 @@ class HttpTask(ArbiterTask):
         )
         self.method = method
 
-class AsyncAribterTask(BaseTask):
+class ArbiterAsyncTask(BaseTask):
 
     def __call__(self, func: Callable) -> Callable:
         super().__call__(func)
         @functools.wraps(func)
-        async def wrapper(owner, *args: Any, **kwargs: Any):
-            queue = self.get_queue(owner)
-            arbiter = getattr(owner, "arbiter", None)
-            assert isinstance(arbiter, Arbiter)
+        async def wrapper(arbiter: Arbiter, queue: str, instance: Callable = None):
+            worker_required = getattr(func, "worker_required", False)
+            if worker_required:
+                assert instance, "Worker instance is required"
             async for message in arbiter.listen_bytes(queue):
                 try:
                     target, data = pickle.loads(message)
-                    kwargs = {'self': owner}
+                    kwargs = {'self': instance} if instance else {}
                     if data:
                         params = self.parse_data(data)
                         kwargs.update(params)
@@ -266,7 +271,7 @@ class AsyncAribterTask(BaseTask):
                     print(e)
         return wrapper
     
-class StreamTask(BaseTask):
+class ArbiterStreamTask(BaseTask):
     def __init__(
         self,
         connection: StreamMethod,
@@ -296,14 +301,14 @@ class StreamTask(BaseTask):
             self.connection_info_param = self.params.pop(connection_info_param[0].name)
             
         @functools.wraps(func)
-        async def wrapper(owner, *args: Any, **kwargs: Any):
-            queue = self.get_queue(owner)
-            arbiter = getattr(owner, "arbiter", None)
-            assert isinstance(arbiter, Arbiter)
+        async def wrapper(arbiter: Arbiter, queue: str, instance: Callable = None):
+            worker_required = getattr(func, "worker_required", False)
+            if worker_required:
+                assert instance, "Worker instance is required"
             async for message in arbiter.listen_bytes(queue):
                 try:
                     target, data = pickle.loads(message)
-                    kwargs = {'self': owner}
+                    kwargs = {'self': instance} if instance else {}
                     if self.connection_info:
                         connection_info = data.get('connection_info', None)
                         data = data.get('data', None)
@@ -330,7 +335,7 @@ class StreamTask(BaseTask):
                     print(e)
         return wrapper
 
-class PeriodicTask(BaseTask):
+class ArbiterPeriodicTask(BaseTask):
     def __init__(
         self,
         interval: float,
@@ -342,15 +347,17 @@ class PeriodicTask(BaseTask):
     def __call__(self, func: Callable) -> Callable:
         super().__call__(func)        
         @functools.wraps(func)
-        async def wrapper(owner, *args, **kwargs):
-            queue = self.get_queue(owner)
-            arbiter = getattr(self, "arbiter", None)
-            assert isinstance(arbiter, Arbiter)
+        async def wrapper(arbiter: Arbiter, queue: str, instance: Callable = None):
+            worker_required = getattr(func, "worker_required", False)
+            if worker_required:
+                assert instance, "Worker instance is required"
             async for messages in arbiter.periodic_listen(queue, self.interval):
-                await func(self, messages)
+                params = [instance, messages] if instance else [messages]
+                await func(*params)
+                    
         return wrapper
 
-class SubscribeTask(BaseTask):
+class ArbiterSubscribeTask(BaseTask):
     def __init__(
         self,
         channel: str,
@@ -362,10 +369,11 @@ class SubscribeTask(BaseTask):
     def __call__(self, func: Callable) -> Callable:
         super().__call__(func)
         @functools.wraps(func)
-        async def wrapper(owner, *args, **kwargs):
-            arbiter = getattr(owner, "arbiter", None)
-            assert isinstance(arbiter, Arbiter)
+        async def wrapper(arbiter: Arbiter, queue: str, instance: Callable = None):
+            worker_required = getattr(func, "worker_required", False)
+            if worker_required:
+                assert instance, "Worker instance is required"
             async for message in arbiter.subscribe_listen(self.channel):
-                # TODO MARK 
-                await func(owner, message)
+                params = [instance, message] if instance else [message]
+                await func(*params)
         return wrapper

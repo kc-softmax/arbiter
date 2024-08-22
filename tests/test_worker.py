@@ -2,14 +2,14 @@ import asyncio
 from datetime import datetime
 from pydantic import BaseModel
 from typing import AsyncGenerator, Optional, Any
-from arbiter.service import AbstractService
-from arbiter.constants import (
-    ConnectionInfo,
+from arbiter.worker import ArbiterWorker
+from arbiter.models import ConnectionInfo
+from arbiter.enums import (
     HttpMethod,
     StreamMethod,
     StreamCommunicationType
 )
-from arbiter.interface import (
+from arbiter.task import (
     subscribe_task, 
     periodic_task, 
     http_task, 
@@ -41,7 +41,7 @@ class TestModel(BaseModel):
     time: datetime
 
 
-class TestService(AbstractService):
+class TestWorker(ArbiterWorker):
     
     # input과 output을 모두 검사
     @http_task(method=HttpMethod.POST, queue="num_of_params", num_of_tasks=1)

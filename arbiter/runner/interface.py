@@ -5,7 +5,6 @@ from contextlib import asynccontextmanager, suppress
 from typing import Annotated
 from asyncio import StreamReader
 from rich.console import Console
-from arbiter.constants.enums import ArbiterCliCommand
 console = Console()
 
 class TerminalInterface:

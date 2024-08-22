@@ -1,3 +1,5 @@
+import os
+import configparser
 import platform
 import re
 import pickle
@@ -8,10 +10,9 @@ import inspect
 import time
 import asyncio
 import importlib
-from copy import deepcopy
+import psutil
 from asyncio.subprocess import Process
 from datetime import datetime
-import psutil
 from pydantic import BaseModel, create_model
 from warnings import warn
 from inspect import Parameter
@@ -27,27 +28,41 @@ from typing import (
     Optional
 )
 
-# def dereference_schema(schema: dict) -> dict:
-#     # 복사본을 만들어 작업
-#     schema = deepcopy(schema)
-#     defs = schema.get('$defs', {})
-    
-#     def resolve_refs(obj):
-#         if isinstance(obj, dict):
-#             if '$ref' in obj:
-#                 ref_path = obj['$ref'].split('/')
-#                 ref_key = ref_path[-1]
-#                 if ref_key in defs:
-#                     return resolve_refs(defs[ref_key])
-#             return {k: resolve_refs(v) for k, v in obj.items()}
-#         elif isinstance(obj, list):
-#             return [resolve_refs(i) for i in obj]
-#         else:
-#             return obj
-    
-#     # $ref 해제
-#     return resolve_refs(schema)
+async def check_redis_running(
+    host: str = "localhost",
+    port: int = 6379,
+    password: str = None,
+) -> bool:
+    from redis.asyncio import ConnectionPool, Redis, ConnectionError
+    try:
+        if password:
+            redis_url = f"redis://:{password}@{host}:{port}/"
+        else:
+            redis_url = f"redis://{host}:{port}/"
 
+        async_redis_connection_pool = ConnectionPool.from_url(
+            redis_url,
+            socket_timeout=5,
+        )
+        redis = Redis(connection_pool=async_redis_connection_pool)
+        await redis.ping()
+        await redis.aclose()
+        await async_redis_connection_pool.disconnect()
+        return True
+    except ConnectionError:
+        return False
+
+def read_config(config_file: str):
+    """
+    Reads configuration from an INI file.
+    """
+    file_path = os.path.join(config_file)
+    if os.path.exists(file_path):
+        config = configparser.ConfigParser(
+            interpolation=configparser.ExtendedInterpolation(), allow_no_value=True)
+        config.read(file_path)
+        return config
+    return None
 
 def get_task_queue_name(
     service_name: str,
@@ -323,6 +338,14 @@ def extract_annotation(param: Parameter) -> str:
     else:    
         return annotation.__name__
 
+def to_camel_case(s: str) -> str:
+    # 첫 단어는 소문자로 변환
+    s = s.lower()
+    # 단어를 구분하는 구분자 (공백, 밑줄, 대시)를 찾아서 단어로 분리
+    parts = re.split(r'[_\-\s]', s)
+    # 첫 번째 단어는 그대로 두고, 나머지 단어는 첫 글자를 대문자로 변환
+    camel_case_str = parts[0] + ''.join(word.capitalize() for word in parts[1:])
+    return camel_case_str
 
 def to_snake_case(name: str) -> str:
     # Convert CamelCase or PascalCase to snake_case
@@ -337,7 +360,7 @@ def find_python_files_in_path(dir_path: str = './', from_replica: bool = False):
         only_master_service = False
         with open(p, 'r') as file:
             content = file.read()
-            if re.search(r'class\s+\w+\(AbstractService\)', content):
+            if re.search(r'class\s+\w+\(ArbiterWorker\)', content):
                 is_arbiter_service = True
             if re.search(r'master_only\s*=\s*True', content):
                 only_master_service = True

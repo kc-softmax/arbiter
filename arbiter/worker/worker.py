@@ -1,28 +1,36 @@
+from __future__ import annotations
+import pickle
+import json
 import inspect
 import asyncio
 import pickle
 import uuid
-from typing import Any, Callable
+from typing import  Any, Callable
 from pydantic import BaseModel
 from arbiter.exceptions import ArbiterTimeOutError
 from arbiter.constants import (
-    ArbiterDataType,
-    ArbiterTypedData,
     HEALTH_CHECK_RETRY,
     ARBITER_SERVICE_HEALTH_CHECK_INTERVAL,
-    ARBITER_SERVICE_TIMEOUT
+    ARBITER_SERVICE_TIMEOUT,
+    ALLOWED_TYPES,
+    ASYNC_TASK_CLOSE_MESSAGE
 )
-from arbiter.database.model import ArbiterTaskModel, Node, Service
-from arbiter.utils import get_pickled_data
+from arbiter.models import (
+    ArbiterTypedData,
+    ArbiterDataType,
+    ArbiterTaskModel,
+    Node,
+    Service
+)
+from arbiter.utils import get_task_queue_name, get_pickled_data
 from arbiter import Arbiter
 
-
-class ServiceMeta(type):
+class WorkerMeta(type):
 
     def __new__(cls, name: str, bases: tuple, class_dict: dict[str, Any]):
         new_cls = super().__new__(cls, name, bases, class_dict)
 
-        tasks: list[Callable] = []
+        task_functions: list[Callable] = []
 
         combined_attrs = set(class_dict.keys())
         for base in bases:
@@ -35,7 +43,7 @@ class ServiceMeta(type):
                         getattr(base, attr_name),
                         'is_task_function', False)
                 ):
-                    tasks.append(getattr(base, attr_name))
+                    task_functions.append(getattr(base, attr_name))
 
         # 현재 클래스에서 decorator 수집
         for attr_name, attr_value in class_dict.items():
@@ -43,7 +51,7 @@ class ServiceMeta(type):
                 callable(attr_value) and getattr(
                     attr_value, 'is_task_function', False)
             ):
-                tasks.append(attr_value)
+                task_functions.append(attr_value)
         # 각각이 중복되지 않는지 확인
 
         # start, shutdown attribute가 있는지 확인한다.
@@ -58,8 +66,8 @@ class ServiceMeta(type):
         depth = len(new_cls.mro()) - 3
         if depth < 0:
             return new_cls
-        for task in tasks:
-            signature = inspect.signature(task)
+        for task_function in task_functions:
+            signature = inspect.signature(task_function)
             
             # Print the parameters of the function
             for index, param in enumerate(signature.parameters.values()):
@@ -79,22 +87,12 @@ class ServiceMeta(type):
                     #                 name} - {rpc_func.__name__} function must have a User instance as the second argument"
                     #         )
                     pass
-        setattr(new_cls, 'tasks', tasks)
+        setattr(new_cls, 'task_functions', task_functions)
         return new_cls
 
-
-# 이 구독을 하는 이유는, 발행을 검사하기 위함..? 구독 채널을 관리하기 위함이라고 생각하자
-
-
-class AbstractService(metaclass=ServiceMeta):
-    """
-        Service 의 동작로직을 정의하는 추상클래스
-        서비스는 instance화시 broker를 통해 consuming_task를 생성하고, start()를 호출하여 동작을 시작한다.
-    """
-    # set by metaclass
-    decorator_exceptions = []
-    tasks = []
-    depth = 0
+class ArbiterWorker(metaclass=WorkerMeta):
+    
+    task_functions: list[Callable] = []
 
     # set by launch
     node_id: str = None
@@ -108,12 +106,19 @@ class AbstractService(metaclass=ServiceMeta):
         self,
         node_id: str,
         service_id: str,
+        broker_host: str,
+        broker_port: int,
+        broker_password: str,
     ):
         self.service: Service = None
         self.node_id = node_id
         self.service_id = service_id
         self.force_stop = False
-        self.arbiter = Arbiter()
+        self.arbiter = Arbiter(
+            broker_host,
+            broker_port,
+            broker_password
+        )
         self.system_subscribe_task: asyncio.Task = None
         self.health_check_task: asyncio.Task = None
         self.health_check_time = 0
@@ -122,11 +127,17 @@ class AbstractService(metaclass=ServiceMeta):
     async def launch(
         cls,
         node_id: str, 
-        service_id: str
+        service_id: str,
+        broker_host: str,
+        broker_port: int,
+        broker_password: str,
     ):
         instance = cls(
             node_id,
-            service_id
+            service_id,
+            broker_host,
+            broker_port,
+            broker_password
         )
         service = asyncio.create_task(instance.start())
         await instance.on_launch()
@@ -162,7 +173,6 @@ class AbstractService(metaclass=ServiceMeta):
                             data=self.service_id).model_dump_json(),
                         wait_response=True)
                     if response:
-                        print
                         if response == self.service.shutdown_code:
                             print('Shutdown')
                             return 'Service Shutdown by System'
@@ -205,7 +215,6 @@ class AbstractService(metaclass=ServiceMeta):
         서비스가 시작되면, manage_task를 통해 initialize 하는 과정을 진행하고,
         initialize가 완료되면 consuming_task와 start_task를 실행합니다.
         """
-        
         assert self.service_id, "Service ID is not set"
         await self.arbiter.connect()
         dynamic_tasks: list[asyncio.Task] = []
@@ -227,10 +236,20 @@ class AbstractService(metaclass=ServiceMeta):
             self.system_subscribe_task = asyncio.create_task(
                 self.get_system_message())
 
-            for task in self.tasks:
-                for _ in range(task.num_of_tasks):
+            for task_function in self.task_functions:
+                queue = getattr(task_function, 'queue', None)
+                num_of_tasks = getattr(task_function, 'num_of_tasks', 1)
+                worker_required = getattr(task_function, 'worker_required', False)
+                if not queue:
+                    queue = get_task_queue_name(
+                        self.__class__.__name__, 
+                        task_function.__name__)
+                params = [self.arbiter, queue]
+                if worker_required:
+                    params.append(self)
+                for _ in range(num_of_tasks):
                     dynamic_tasks.append(
-                        asyncio.create_task(task(self))
+                        asyncio.create_task(task_function (*params))
                     )
             await self.on_start()
             await self.health_check_task
