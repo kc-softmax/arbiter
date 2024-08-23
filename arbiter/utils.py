@@ -27,6 +27,7 @@ from typing import (
     Callable,
     Optional
 )
+from arbiter.constants import CONFIG_FILE
 
 async def check_redis_running(
     host: str = "localhost",
@@ -410,3 +411,33 @@ def get_all_subclasses(cls) -> list[type]:
     for subclass in subclasses:
         all_subclasses.extend(get_all_subclasses(subclass))
     return all_subclasses
+
+
+def get_arbiter_setting(config_file: str) -> tuple[str, bool]:
+    """
+        os.environ.get('ARBITER_HOME') 등에 대해 고려도 해봐야겠다
+        기준은 최초 arbiter를 실행한 시점으로(좋은 방법은 아니기 때문에 다른방법이 생각나면 교체)
+        base_path(현재경로)부터 home_path(user 경로)까지 검사한다
+
+        arbiter.setting.ini파일은 현재 경로부터 유저경로까지 탐색하기 때문에 파일을 찾게되면 생성하지 않는다
+    """
+
+    arbiter_home = os.environ.get("ARBITER_HOME", os.getcwd())
+
+    home_path = Path(os.path.expanduser("~"))
+    base_path = Path(arbiter_home)
+    depth_path = base_path
+    arbiter_setting = depth_path.joinpath(config_file)
+    is_arbiter_setting = False
+    while home_path != depth_path:
+        if arbiter_setting.exists():
+            is_arbiter_setting = True
+            break
+        depth_path = depth_path.parent
+        arbiter_setting = depth_path.joinpath(config_file)
+
+    # arbiter.setting.ini파일을 못찾았기 때문에 현재 실행경로에 생성할 수 있도록 경로를 지정한다
+    if not is_arbiter_setting:
+        arbiter_setting = base_path.joinpath(config_file)
+
+    return arbiter_setting, is_arbiter_setting

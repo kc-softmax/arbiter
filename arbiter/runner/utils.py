@@ -62,7 +62,6 @@ def create_config(project_path='.'):
         ".": [CONFIG_FILE],
     }
     template_root_path = f'{os.path.abspath(os.path.dirname(__file__))}/templates'
-    print(template_root_path)
     for directory, files in project_structure.items():
         dir_path = os.path.join(project_path, directory)
         os.makedirs(dir_path, exist_ok=True)
