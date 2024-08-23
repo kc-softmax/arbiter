@@ -1,8 +1,6 @@
-import os
 import signal
 import typer
 import asyncio
-import sys
 from configparser import ConfigParser
 from rich.console import Console
 from typing_extensions import Annotated
@@ -14,6 +12,7 @@ from arbiter.enums import (
 from arbiter.utils import (
     check_redis_running,
     read_config,
+    get_arbiter_setting,
 )
 from arbiter.runner.utils import (
     create_config,
@@ -166,11 +165,18 @@ class ArbiterRunner:
         """
         Read the config file.
         """
-        sys.path.insert(0, os.getcwd())
-        config = read_config(CONFIG_FILE)
-        if config is None:
-            create_config()
-            config = read_config(CONFIG_FILE)
+        # It need to add when use cli command
+        # sys.path.insert(0, os.getcwd())
+
+        arbiter_setting, is_arbiter_setting = get_arbiter_setting(CONFIG_FILE)
+        if not is_arbiter_setting:
+            create_config(arbiter_setting)
+        config = read_config(arbiter_setting)
+
+        # config = read_config(CONFIG_FILE)
+        # if config is None:
+        #     create_config()
+        #     config = read_config(CONFIG_FILE)
         # update config with command line arguments
         
         """
