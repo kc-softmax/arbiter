@@ -361,7 +361,18 @@ class ArbiterApp:
                     '--log-level', log_level,  # Log level
                     'arbiter.api:get_app'  # Application module and variable,
                 ])
-                await self._start_process(gunicorn_command, 'gunicorn')
+                # arbiter_app_script = '\n'.join([
+                #     "from arbiter.api.app import ArbiterUvicornWorker;",
+                #     "from arbiter.api import get_app;",
+                #     "import asyncio;",
+                #     f"asyncio.run(ArbiterUvicornWorker.run(get_app(), '{self.node.unique_id}'));"
+                # ])
+                # uvicorn_command = ' '.join([
+                #     f"{sys.executable}", '-c', f'"{arbiter_app_script}"'
+                # ])
+                
+                # await self._start_process(gunicorn_command, 'gunicorn')
+                await self._start_process(gunicorn_command, 'uvicorn')
                 # fastAPI 서버가 실행되면서 보내오는 메세지를 받아야 한다.
                 # -> database 에서 해당 서비스를 찾아서 상태를 변경한다.
                 # 예제 사용법            
