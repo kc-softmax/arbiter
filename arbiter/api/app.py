@@ -1,13 +1,9 @@
 from __future__ import annotations
-import os
 import json
 import uuid
 import asyncio
 import pickle
-from contextlib import asynccontextmanager
 from pydantic import create_model, BaseModel, ValidationError
-from configparser import ConfigParser
-from uvicorn.workers import UvicornWorker
 from typing import Union, Type, Any
 from fastapi import FastAPI, Query, WebSocket, Depends, WebSocketDisconnect, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,57 +19,28 @@ from arbiter.utils import (
     get_pickled_data
 )
 from arbiter.models import (
-    Node,
-    WebService,
-    WebServiceTask,
     ArbiterTaskModel,
     ArbiterStreamMessage
 )
 from arbiter.enums import (
-    ServiceState,
-    HttpMethod,
     StreamMethod,
     StreamCommunicationType
 )
-
-ArbiterUvicornWorker = UvicornWorker
-ArbiterUvicornWorker.CONFIG_KWARGS = {"loop": "asyncio", "http": "auto"}
-
-class SubscribeChannel:
-    
-    def __init__(self, channel: str, target: int | str = None):
-        self.channel = channel
-        self.target = target
-        
-    def get_channel(self):
-        if self.target:
-            return f"{self.channel}_{self.target}"
-        return self.channel
-    
-    def __eq__(self, value: SubscribeChannel) -> bool:
-        return self.get_channel() == value.get_channel()
-
-    def __hash__(self):
-        return self.get_channel().__hash__()
-
+from arbiter.api.constants import SubscribeChannel
 
 class ArbiterApiApp(FastAPI):
 
     def __init__(
         self,
-        node_id: str,
-        broker_host: str = "localhost",
-        broker_port: int = 6379,
-        broker_password: str = None,
+        arbiter: Arbiter,
+        lifespan: Any,
         allow_origins: str = "*",
         allow_methods: str = "*",
         allow_headers: str = "*",
         allow_credentials: bool = True,
     ) -> None:
-        super().__init__(lifespan=self.lifespan)
-        self.node_id = node_id
-        self.app_id = uuid.uuid4().hex
-        self.web_service: WebService = None
+        super().__init__(lifespan=lifespan)
+        self.arbiter = arbiter
         self.add_exception_handler(
             RequestValidationError,
             lambda request, exc: JSONResponse(
@@ -88,35 +55,8 @@ class ArbiterApiApp(FastAPI):
             allow_headers=allow_headers,
             allow_credentials=allow_credentials,
         )
-        # app.add_middleware(BaseHTTPMiddleware, dispatch=log_middleware)
-        self.router_task: asyncio.Task = None
-        self.arbiter: Arbiter = Arbiter(
-            host=broker_host,
-            port=broker_port,
-            password=broker_password
-        )
         self.stream_routes: dict[str, dict[str, ArbiterTaskModel]] = {}
     
-    @asynccontextmanager
-    async def lifespan(self, app: ArbiterApiApp):
-        await self.arbiter.connect()
-        self.router_task = asyncio.create_task(self.router_handler())
-        
-        # change to register
-        """
-            WebService 를 만든다,
-        
-        """
-        self.web_service = await self.arbiter.create_data(
-            WebService,
-            node_id=self.node_id,
-            app_id=self.app_id,
-            state=ServiceState.ACTIVE
-        )
-        yield
-        self.router_task and self.router_task.cancel()
-        await self.arbiter.disconnect()
-
     def get_dynamic_models(
         self,
         task_function: ArbiterTaskModel,
@@ -401,64 +341,4 @@ class ArbiterApiApp(FastAPI):
                 )(websocket_endpoint)
 
             self.stream_routes[service_name][task_function.name] = task_function
-
-    async def router_handler(self):
-        # message 는 어떤 router로 등록해야 하는가?에 따른다?
-        # TODO ADD router, remove Router?
-        async for message in self.arbiter.subscribe_listen(Node.routing_channel(self.node_id)):
-            if message == b"TEMP_SHUTDOWN":
-                await self.arbiter.update_data(
-                    self.web_service,
-                    state=ServiceState.INACTIVE)
-                continue
-            try:
-                task_model = ArbiterTaskModel.model_validate_json(message)
-                service_name = task_model.service_meta.name
-            except Exception as e: # TODO Exception type more detail
-                print(f"Error in router_handler: {e}")
-                continue
-            if task_model.method:
-                method = HttpMethod(task_model.method)
-                match method:
-                    case HttpMethod.POST:
-                        self.generate_post_function(
-                            service_name,
-                            task_model
-                        )
-            elif task_model.connection:
-                connection = StreamMethod(task_model.connection)
-                match connection:
-                    case StreamMethod.WEBSOCKET:
-                        self.generate_websocket_function(
-                            service_name,
-                            task_model)
-            await self.arbiter.create_data(
-                WebServiceTask,
-                web_service_id=self.web_service.id,
-                task_id=task_model.id
-            )
-                
-            self.openapi_schema = None
-
-
-def get_app() -> ArbiterApiApp:    
-    node_id = os.getenv("NODE_ID", "")
-    broker_config = os.getenv("BROKER_CONFIG", {})
-    server_config = os.getenv("SERVER_CONFIG", {})
-    assert node_id, "NODE_ID is not set"
-    assert broker_config, "BROKER_CONFIG is not set"
-    assert server_config, "SERVER_CONFIG is not set"
-    broker_config = json.loads(broker_config)
-    server_config = json.loads(server_config)
-    assert isinstance(broker_config, dict), "BROKER_CONFIG is not valid"
-    assert isinstance(server_config, dict), "SERVER_CONFIG is not valid"
-    return ArbiterApiApp(
-        node_id=node_id,
-        broker_host=broker_config.get("host", "localhost"),
-        broker_port=broker_config.get("port", 6379),
-        broker_password=broker_config.get("password", None),
-        allow_origins=server_config.get("allow_origins", "*"),
-        allow_methods=server_config.get("allow_methods", "*"),
-        allow_headers=server_config.get("allow_headers", "*"),
-        allow_credentials=server_config.get("allow_credentials", True),
-    )
+            
