@@ -1,46 +1,26 @@
-from .app import ArbiterApiApp, get_app
-from .app import ArbiterUvicornWorker
+import json
+import os
+from .app import ArbiterApiApp
+from .worker import ArbiterUvicornWorker
 
-# import json
-# import os
-# import uuid
-
-# from arbiter.runner.utils import create_config
-# from arbiter.utils import (
-#     get_arbiter_setting,
-#     read_config,
-# )
-# from arbiter.constants import CONFIG_FILE
-
-# from uvicorn.server import Server
-# from uvicorn.config import Config
-
-
-# class ArbiterUvicornWorker:
-
-#     @classmethod
-#     async def run(cls, app: ArbiterApiApp, unique_id: str | None = None):
-#         if unique_id is None:
-#             unique_id = uuid.uuid4().hex
-
-#         arbiter_setting, is_arbiter_setting = get_arbiter_setting(CONFIG_FILE)
-#         if not is_arbiter_setting:
-#             create_config(arbiter_setting)
-#         config = read_config(arbiter_setting)
-
-#         host = config.get("server", "host", fallback="localhost")
-#         port = config.get("server", "port", fallback="8080")
-#         log_level = config.get("server", "log_level", fallback="error")
-#         broker_config = dict(config['broker'])
-#         server_config = dict(config['server'])
-#         os.environ["NODE_ID"] = unique_id
-#         os.environ["BROKER_CONFIG"] = json.dumps(broker_config)
-#         os.environ["SERVER_CONFIG"] = json.dumps(server_config)
-
-#         config = Config(app=app, host=host, port=port, log_level=log_level)
-#         cls.server = Server(config)
-#         await cls.server.serve()
-
-#     @classmethod
-#     async def close(cls):
-#         await cls.server.shutdown()
+def get_app() -> ArbiterApiApp:    
+    node_id = os.getenv("NODE_ID", "")
+    broker_config = os.getenv("BROKER_CONFIG", {})
+    server_config = os.getenv("SERVER_CONFIG", {})
+    assert node_id, "NODE_ID is not set"
+    assert broker_config, "BROKER_CONFIG is not set"
+    assert server_config, "SERVER_CONFIG is not set"
+    broker_config = json.loads(broker_config)
+    server_config = json.loads(server_config)
+    assert isinstance(broker_config, dict), "BROKER_CONFIG is not valid"
+    assert isinstance(server_config, dict), "SERVER_CONFIG is not valid"
+    return ArbiterApiApp(
+        node_id=node_id,
+        broker_host=broker_config.get("host", "localhost"),
+        broker_port=broker_config.get("port", 6379),
+        broker_password=broker_config.get("password", None),
+        allow_origins=server_config.get("allow_origins", "*"),
+        allow_methods=server_config.get("allow_methods", "*"),
+        allow_headers=server_config.get("allow_headers", "*"),
+        allow_credentials=server_config.get("allow_credentials", True),
+    )

@@ -340,39 +340,45 @@ class ArbiterApp:
             try:
                 # gunicorn 실행
                 # start gunicorn
-                host = self.config.get("server", "host", fallback="localhost")
-                port = self.config.get("server", "port", fallback="8080")
-                workers  = self.config.get("server", "workers", fallback=1)
-                log_level = self.config.get("server", "log_level", fallback="error")
                 broker_config = dict(self.config['broker'])
                 server_config = dict(self.config['server'])
-                
-                if type(workers) is str:
-                    workers = int(workers)
-                os.environ["NODE_ID"] = self.node.unique_id
-                os.environ["BROKER_CONFIG"] = json.dumps(broker_config)
-                os.environ["SERVER_CONFIG"] = json.dumps(server_config)
 
-                gunicorn_command = ' '.join([
-                    'gunicorn',
-                    '-w', f"{workers }",  # Number of workers
-                    '--bind', f"{host}:{port}",  # Bind to port 8080
-                    '-k', 'arbiter.api.ArbiterUvicornWorker',  # Uvicorn worker class
-                    '--log-level', log_level,  # Log level
-                    'arbiter.api:get_app'  # Application module and variable,
+                # os.environ["NODE_ID"] = self.node.unique_id
+                # os.environ["BROKER_CONFIG"] = json.dumps(broker_config)
+                # os.environ["SERVER_CONFIG"] = json.dumps(server_config)
+                # gunicorn_command = ' '.join([
+                #     'gunicorn',
+                #     '-w', f"{workers }",  # Number of workers
+                #     '--bind', f"{host}:{port}",  # Bind to port 8080
+                #     '-k', 'arbiter.api.ArbiterUvicornWorker',  # Uvicorn worker class
+                #     '--log-level', log_level,  # Log level
+                #     'arbiter.api:get_app'  # Application module and variable,
+                # ])
+                params = ', '.join([
+                    f"'{self.node.unique_id}'",
+                    f"'{broker_config.get('host')}'",
+                    f"{broker_config.get('port')}",
+                    f"'{broker_config.get('password')}'",
+                    f"'{server_config.get('host')}'",
+                    f"{server_config.get('port')}",
+                    f"'{server_config.get('log_level')}'",
+                    f"'{server_config.get('allow_origins')}'",
+                    f"'{server_config.get('allow_methods')}'",
+                    f"'{server_config.get('allow_headers')}'",
+                    f"'{server_config.get('allow_credentials')}'",                    
                 ])
-                # arbiter_app_script = '\n'.join([
-                #     "from arbiter.api.app import ArbiterUvicornWorker;",
-                #     "from arbiter.api import get_app;",
-                #     "import asyncio;",
-                #     f"asyncio.run(ArbiterUvicornWorker.run(get_app(), '{self.node.unique_id}'));"
-                # ])
-                # uvicorn_command = ' '.join([
-                #     f"{sys.executable}", '-c', f'"{arbiter_app_script}"'
-                # ])
+                uvicorn_worker_script = '\n'.join([
+                    "from arbiter.api import ArbiterUvicornWorker;",
+                    "import asyncio;",
+                    f"wokrer = ArbiterUvicornWorker({params});",
+                    f"asyncio.run(wokrer.run());"
+                ])
+                uvicorn_command = ' '.join([
+                    f"{sys.executable}", '-c', f'"{uvicorn_worker_script}"'
+                ])
                 
+                await self._start_process(uvicorn_command, 'uvicorn')
                 # await self._start_process(gunicorn_command, 'gunicorn')
-                await self._start_process(gunicorn_command, 'gunicorn')
                 # fastAPI 서버가 실행되면서 보내오는 메세지를 받아야 한다.
                 # -> database 에서 해당 서비스를 찾아서 상태를 변경한다.
                 # 예제 사용법            
@@ -383,16 +389,10 @@ class ArbiterApp:
                 results = await fetch_data_within_timeout(
                     timeout=ARBITER_SERVICE_PENDING_TIMEOUT,
                     fetch_data=fetch_data,
-                    check_condition=lambda data: len(data) >= workers,
+                    check_condition=lambda data: len(data) > 0,
                 )
                 if not results:
                     raise ArbiterNoWebServiceError()
-                elif len(results) > workers:
-                    raise ArbiterTooManyWebServiceError()
-                elif len(results) < workers:
-                    await self._warp_in_queue.put(
-                        (WarpInTaskResult.WARNING, f"Not enough Web Services are started, {len(results)} expected {workers}")
-                    )
                 # start manger fasthtml process                
                 await self._warp_in_queue.put(
                     (WarpInTaskResult.SUCCESS, f"{WarpInPhase.INITIATION.name}...ok")
