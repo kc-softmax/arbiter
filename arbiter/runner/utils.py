@@ -63,11 +63,11 @@ def create_config(project_path='.'):
     }
     template_root_path = f'{os.path.abspath(os.path.dirname(__file__))}/templates'
     for directory, files in project_structure.items():
-        dir_path = os.path.join(project_path, directory)
-        os.makedirs(dir_path, exist_ok=True)
+        # dir_path = os.path.join(project_path, directory)
+        # os.makedirs(dir_path, exist_ok=True)
 
         for file in files:
-            file_path = os.path.join(dir_path, file)
+            file_path = project_path
             template_path = f'{template_root_path}'
             if str(file).find('.mako') != -1:
                 template_file = os.path.join(template_path, file)
