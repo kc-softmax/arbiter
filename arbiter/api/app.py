@@ -1,40 +1,464 @@
-import json
+from __future__ import annotations
 import os
+import json
 import uuid
-
-from arbiter.api import ArbiterApiApp
-from arbiter.runner.utils import create_config
+import asyncio
+import pickle
+from contextlib import asynccontextmanager
+from pydantic import create_model, BaseModel, ValidationError
+from configparser import ConfigParser
+from uvicorn.workers import UvicornWorker
+from typing import Union, Type, Any
+from fastapi import FastAPI, Query, WebSocket, Depends, WebSocketDisconnect, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi.websockets import WebSocketState
+from arbiter.api.exceptions import BadRequest
+from arbiter import Arbiter
 from arbiter.utils import (
-    get_arbiter_setting,
-    read_config,
+    to_snake_case,
+    create_model_from_schema,
+    get_type_from_type_name, 
+    get_pickled_data
 )
-from arbiter.constants import CONFIG_FILE
+from arbiter.models import (
+    Node,
+    WebService,
+    WebServiceTask,
+    ArbiterTaskModel,
+    ArbiterStreamMessage
+)
+from arbiter.enums import (
+    ServiceState,
+    HttpMethod,
+    StreamMethod,
+    StreamCommunicationType
+)
 
-from uvicorn.server import Server
-from uvicorn.config import Config
+ArbiterUvicornWorker = UvicornWorker
+ArbiterUvicornWorker.CONFIG_KWARGS = {"loop": "asyncio", "http": "auto"}
+
+class SubscribeChannel:
+    
+    def __init__(self, channel: str, target: int | str = None):
+        self.channel = channel
+        self.target = target
+        
+    def get_channel(self):
+        if self.target:
+            return f"{self.channel}_{self.target}"
+        return self.channel
+    
+    def __eq__(self, value: SubscribeChannel) -> bool:
+        return self.get_channel() == value.get_channel()
+
+    def __hash__(self):
+        return self.get_channel().__hash__()
 
 
-class ArbiterUvicornWorker:
+class ArbiterApiApp(FastAPI):
 
-    @staticmethod
-    async def run(app: ArbiterApiApp, unique_id: str | None = None):
-        if unique_id is None:
-            unique_id = uuid.uuid4().hex
+    def __init__(
+        self,
+        node_id: str,
+        broker_host: str = "localhost",
+        broker_port: int = 6379,
+        broker_password: str = None,
+        allow_origins: str = "*",
+        allow_methods: str = "*",
+        allow_headers: str = "*",
+        allow_credentials: bool = True,
+    ) -> None:
+        super().__init__(lifespan=self.lifespan)
+        self.node_id = node_id
+        self.app_id = uuid.uuid4().hex
+        self.web_service: WebService = None
+        self.add_exception_handler(
+            RequestValidationError,
+            lambda request, exc: JSONResponse(
+                status_code=BadRequest.STATUS_CODE,
+                content={"detail": BadRequest.DETAIL}
+            )
+        )
+        self.add_middleware(
+            CORSMiddleware,
+            allow_origins=allow_origins,
+            allow_methods=allow_methods,
+            allow_headers=allow_headers,
+            allow_credentials=allow_credentials,
+        )
+        # app.add_middleware(BaseHTTPMiddleware, dispatch=log_middleware)
+        self.router_task: asyncio.Task = None
+        self.arbiter: Arbiter = Arbiter(
+            host=broker_host,
+            port=broker_port,
+            password=broker_password
+        )
+        self.stream_routes: dict[str, dict[str, ArbiterTaskModel]] = {}
+    
+    @asynccontextmanager
+    async def lifespan(self, app: ArbiterApiApp):
+        await self.arbiter.connect()
+        self.router_task = asyncio.create_task(self.router_handler())
+        
+        # change to register
+        """
+            WebService 를 만든다,
+        
+        """
+        self.web_service = await self.arbiter.create_data(
+            WebService,
+            node_id=self.node_id,
+            app_id=self.app_id,
+            state=ServiceState.ACTIVE
+        )
+        yield
+        self.router_task and self.router_task.cancel()
+        await self.arbiter.disconnect()
 
-        arbiter_setting, is_arbiter_setting = get_arbiter_setting(CONFIG_FILE)
-        if not is_arbiter_setting:
-            create_config(arbiter_setting)
-        config = read_config(arbiter_setting)
+    def get_dynamic_models(
+        self,
+        task_function: ArbiterTaskModel,
+    ):
+        DynamicRequestModel = None
+        DynamicResponseModel = None
+        list_response = False
+        list_request = False
+        try:
+            if response := task_function.response:
+                response_type = json.loads(response)
+                list_response = isinstance(response_type, list)
+                if list_response:
+                    response_type = response_type[0]
+                if not response_type:
+                    DynamicResponseModel = None                    
+                elif isinstance(response_type, dict):
+                    DynamicResponseModel = create_model_from_schema(response_type)
+                else:
+                    DynamicResponseModel = get_type_from_type_name(response_type)
+                if list_response:
+                    DynamicResponseModel = list[DynamicResponseModel]
+                    
+            if params := task_function.params:
+                dynamic_params = {}
+                params: dict[str, str] = json.loads(params)
+                for name, flat_annotation in params.items():
+                    param = None
+                    list_param = isinstance(flat_annotation, list)
+                    if list_param:
+                        param = param[0]                        
+                    if isinstance(flat_annotation, dict):
+                        param_model = create_model_from_schema(flat_annotation)
+                    else:
+                        param_model = flat_annotation                        
+                    if list_request:
+                        param_model = list[param_model]
+                    dynamic_params[name] = (param_model, ...)
+                DynamicRequestModel = create_model(task_function.name + "Model", **dynamic_params)
+            return DynamicRequestModel, DynamicResponseModel
+        except Exception as e:
+            for k, v in params.items():
+                for name, details in v['properties'].items():
+                    print(name, details)
+                    print()
+            print('err in get_dynamic_models', e)
+            return None, None
 
-        host = config.get("server", "host", fallback="localhost")
-        port = config.get("server", "port", fallback="8080")
-        log_level = config.get("server", "log_level", fallback="error")
-        broker_config = dict(config['broker'])
-        server_config = dict(config['server'])
-        os.environ["NODE_ID"] = unique_id
-        os.environ["BROKER_CONFIG"] = json.dumps(broker_config)
-        os.environ["SERVER_CONFIG"] = json.dumps(server_config)
+    def generate_post_function(
+        self,
+        service_name: str,
+        task_function: ArbiterTaskModel,
+    ):
+        def get_task_function() -> ArbiterTaskModel:
+            return task_function
+        def get_app() -> ArbiterApiApp:
+            return self
+        
+        path = f'/{to_snake_case(service_name)}/{task_function.name}'
+        DynamicRequestModel, DynamicResponseModel = self.get_dynamic_models(task_function)
+        async def dynamic_function(
+            data: Type[BaseModel] = Depends(DynamicRequestModel),  # 동적으로 생성된 Pydantic 모델 사용 # type: ignore
+            app: ArbiterApiApp = Depends(get_app),
+            task_function: ArbiterTaskModel = Depends(get_task_function),
+        ) -> Union[dict, list[dict], None]:
+            try:
+                response_required = True if DynamicResponseModel else False
+                response = await app.arbiter.send_message(
+                    receiver_id=task_function.queue,
+                    data=data.model_dump_json(),
+                    wait_response=response_required)
+                # 값을 보낼때는 그냥 믿고 보내준다.
+                # 타입이 다르다고 하더라도, 그냥 보내준다.
+                #json 이고, response model 이 있을때만 validate 한다.
+                if DynamicResponseModel:
+                    # 검사를 해야한다 두 타입이 일치 하는지
+                    if issubclass(DynamicResponseModel, BaseModel):
+                        try:
+                            response = DynamicResponseModel.model_validate_json(response)
+                        except:
+                            # DynamicResponseModel로 packing 되는 경우도 있기 때문에
+                            pass
+                # if DynamicResponseModel and DynamicResponseModel != Any:
+                #     # 검사를 해야한다 두 타입이 일치 하는지
+                #     if issubclass(DynamicResponseModel, BaseModel):
+                #         response = DynamicResponseModel.model_validate_json(response)
+                #     if DynamicResponseModel != type(response):
+                #         raise HTTPException(status_code=400, detail=f"Response type is not valid")
+                return response
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Failed to get response {e}")
 
-        config = Config(app=app, host=host, port=port, log_level=log_level)
-        server = Server(config)
-        await server.serve()
+        self.router.post(
+            path,
+            tags=[service_name],
+            response_model=DynamicResponseModel
+        )(dynamic_function)
+
+    def generate_websocket_function(
+            self,
+            service_name: str,
+            task_function: ArbiterTaskModel,
+        ):
+            # currently not using DynamicRequestModel, DynamicResponseModel
+            # TODO if need to check request or response model validation, use it
+            # DynamicRequestModel, DynamicResponseModel = self.get_dynamic_models(task_function)
+            async def async_websocket_function(
+                websocket: WebSocket,
+                query: str = None
+            ):
+                # 웹소켓 연결시 고유의 pubsub_id_prefix와 pubsub_id를 관리하여 이후에 unsub하는 리스트를 생성
+                pubsub_id_prefix = uuid.uuid4().hex
+                pubsub_channels: list[str] = []
+
+                async def message_listen_queue(websocket: WebSocket, queue: str, timeout: int = 10):
+                    try:
+                        async for data in self.arbiter.listen_bytes(queue, timeout):
+                            if data is None:
+                                data = {"from": queue, "data": 'Timeout'}
+                                await websocket.send_text(json.dumps(data))
+                                break
+                            data = get_pickled_data(data)
+                            
+                            # if DynamicResponseModel and issubclass(DynamicResponseModel, BaseModel):
+                            #     try:
+                            #         data = DynamicResponseModel.model_validate_json(data)
+                            #     except Exception as e:
+                            #         print(f"Error in model_validate_json {e}")
+                            #     # DynamicResponseModel로 packing 되는 경우도 있기 때문에
+                            #         pass
+                            # if isinstance(data, BaseModel):
+                            #     data = data.model_dump()
+                            data = {"from": queue, "data": data}
+                            await websocket.send_text(json.dumps(data))
+                    except asyncio.CancelledError:
+                        pass
+                        
+                async def message_subscribe_channel(websocket: WebSocket, channel: str, pubsub_id: str):
+                    # print(f"Start of message_subscribe_channel {channel}")
+                    try:
+                        async for data in self.arbiter.subscribe_listen(channel, pubsub_id):
+                            data = get_pickled_data(data)
+                            if isinstance(data, BaseModel):
+                                data = data.model_dump()
+                            data = {"from": channel, "data": data}
+                            await websocket.send_text(json.dumps(data))
+                    except asyncio.CancelledError:
+                        pass
+                        # print(f"Subscription to {channel} cancelled")
+                    # finally:
+                        # print(f"End of message_subscribe_channel {channel}")
+                
+                stream_route = self.stream_routes[service_name]
+                # query에 관한 처리가 있어야 한다.
+                # service의 handle query 같은것이 필요하다.
+                
+                await websocket.accept()
+                response_task: asyncio.Task = None
+                response_queue = uuid.uuid4().hex                          
+                # response task가 만들어질때, response_queue를 인자로 넘겨준다.
+                subscribe_tasks: dict[SubscribeChannel, asyncio.Task] = {}
+                try:
+                    destination: str | None = None
+                    target_task_function: ArbiterTaskModel | None = None
+                    while True:
+                        receive_data = await websocket.receive_text()
+                        if not receive_data: 
+                            continue
+                        try:                            
+                            json_data = json.loads(receive_data)
+                            
+                            to_remove_tasks = [
+                                key for key, value in subscribe_tasks.items() if value.done()
+                            ]
+                            for key in to_remove_tasks:
+                                subscribe_tasks.pop(key)
+                            stream_message = ArbiterStreamMessage.model_validate(json_data)
+                            if channel := stream_message.channel:
+                                # get StreamTaskFunction from channel
+                                task_function = stream_route.get(channel)
+                                if not task_function:
+                                    await websocket.send_text(f"Channel {channel} is not valid")
+                                    await websocket.send_text(f"Valid channels are {list(stream_route.keys())}")
+                                    continue
+
+                                target = stream_message.target
+                                if (
+                                    task_function.communication_type != StreamCommunicationType.BROADCAST and
+                                    not target
+                                ):
+                                    # if target is not set, use response_queue
+                                    target = response_queue
+                                                                    
+                                match task_function.communication_type:
+                                    case StreamCommunicationType.SYNC_UNICAST:
+                                        destination = target
+                                    case StreamCommunicationType.ASYNC_UNICAST:
+                                        destination = target
+                                    case StreamCommunicationType.BROADCAST:
+                                        new_subscribe_channel = SubscribeChannel(channel, stream_message.target)
+                                        destination = new_subscribe_channel.get_channel()
+                                        # validate target
+                                        if target:
+                                            try:
+                                                target = int(target)
+                                            except ValueError:
+                                                await websocket.send_text(f"in broadcast type, Target must be integer")
+                                                continue
+                                            if target > task_function.num_of_channels:
+                                                await websocket.send_text(f"Target must be less than {task_function.num_of_channels}")
+                                                continue
+                                        to_subscribe_task = True
+                                        for subscribe_channel in subscribe_tasks:
+                                            if subscribe_channel.channel != channel:
+                                                continue
+                                            if subscribe_channel == new_subscribe_channel:
+                                                # await websocket.send_text(f"Already subscribed to {network_channel.get_channel()}")
+                                                to_subscribe_task = False
+                                                break
+                                            subscribe_tasks[subscribe_channel].cancel()
+                                            await subscribe_tasks[subscribe_channel]
+
+                                        if to_subscribe_task:
+                                            # 채널별로 pubsub이 생성 vs 한 개의 pubsub에 여러개의 채널을 구독한다
+                                            pubsub_id = f"{pubsub_id_prefix}_{destination}"
+                                            pubsub_channels.append(pubsub_id)
+                                            subscribe_tasks[new_subscribe_channel] = asyncio.create_task(
+                                                message_subscribe_channel(websocket, destination, pubsub_id))
+
+                                target_task_function = task_function
+                                if not stream_message.data:
+                                    await websocket.send_text('OK')
+                            if stream_message.data:
+                                if not target_task_function or not destination:
+                                    # server error 확률 높
+                                    await websocket.send_text(f"Target is not set")
+                                    continue
+                                    # data
+                                if not response_task or response_task.done():
+                                    response_task = asyncio.create_task(
+                                        message_listen_queue(websocket, response_queue, 0))
+                                if target_task_function.connection_info:
+                                    data = {
+                                        "connection_info": {
+                                            "host": websocket.client.host,
+                                            "port": websocket.client.port
+                                        },
+                                        "data": stream_message.data
+                                    }
+                                else:
+                                    data = stream_message.data
+                                data = pickle.dumps((
+                                        destination, 
+                                        data))
+                                await self.arbiter.push_message(
+                                    target_task_function.queue,
+                                    data)
+                            
+                        # excepe pydantic_core._pydantic_core.ValidationError as e:
+                        except ValidationError as e:
+                            await websocket.send_text(f"Data is not valid {e}")
+                        except json.JSONDecodeError:
+                            await websocket.send_text(f"Data is not valid json")
+                except WebSocketDisconnect:
+                    for pubsub_id in pubsub_channels:
+                        await self.arbiter.punsubscribe(pubsub_id)
+
+                if response_task:
+                    response_task.cancel()
+                await asyncio.gather(*subscribe_tasks.values(), return_exceptions=True)
+                if not websocket.client_state == WebSocketState.DISCONNECTED:
+                    await websocket.close()
+            
+            async def websocket_endpoint(websocket: WebSocket, query: str = Query(None)):
+                # response channel must be unique for each websocket
+                await async_websocket_function(websocket, query)
+
+            if service_name not in self.stream_routes:
+                self.stream_routes[service_name] = {}            
+                self.router.websocket(
+                    f"/stream/{to_snake_case(service_name)}",
+                )(websocket_endpoint)
+
+            self.stream_routes[service_name][task_function.name] = task_function
+
+    async def router_handler(self):
+        # message 는 어떤 router로 등록해야 하는가?에 따른다?
+        # TODO ADD router, remove Router?
+        async for message in self.arbiter.subscribe_listen(Node.routing_channel(self.node_id)):
+            if message == b"TEMP_SHUTDOWN":
+                await self.arbiter.update_data(
+                    self.web_service,
+                    state=ServiceState.INACTIVE)
+                continue
+            try:
+                task_model = ArbiterTaskModel.model_validate_json(message)
+                service_name = task_model.service_meta.name
+            except Exception as e: # TODO Exception type more detail
+                print(f"Error in router_handler: {e}")
+                continue
+            if task_model.method:
+                method = HttpMethod(task_model.method)
+                match method:
+                    case HttpMethod.POST:
+                        self.generate_post_function(
+                            service_name,
+                            task_model
+                        )
+            elif task_model.connection:
+                connection = StreamMethod(task_model.connection)
+                match connection:
+                    case StreamMethod.WEBSOCKET:
+                        self.generate_websocket_function(
+                            service_name,
+                            task_model)
+            await self.arbiter.create_data(
+                WebServiceTask,
+                web_service_id=self.web_service.id,
+                task_id=task_model.id
+            )
+                
+            self.openapi_schema = None
+
+
+def get_app() -> ArbiterApiApp:    
+    node_id = os.getenv("NODE_ID", "")
+    broker_config = os.getenv("BROKER_CONFIG", {})
+    server_config = os.getenv("SERVER_CONFIG", {})
+    assert node_id, "NODE_ID is not set"
+    assert broker_config, "BROKER_CONFIG is not set"
+    assert server_config, "SERVER_CONFIG is not set"
+    broker_config = json.loads(broker_config)
+    server_config = json.loads(server_config)
+    assert isinstance(broker_config, dict), "BROKER_CONFIG is not valid"
+    assert isinstance(server_config, dict), "SERVER_CONFIG is not valid"
+    return ArbiterApiApp(
+        node_id=node_id,
+        broker_host=broker_config.get("host", "localhost"),
+        broker_port=broker_config.get("port", 6379),
+        broker_password=broker_config.get("password", None),
+        allow_origins=server_config.get("allow_origins", "*"),
+        allow_methods=server_config.get("allow_methods", "*"),
+        allow_headers=server_config.get("allow_headers", "*"),
+        allow_credentials=server_config.get("allow_credentials", True),
+    )

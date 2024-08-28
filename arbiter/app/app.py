@@ -372,7 +372,7 @@ class ArbiterApp:
                 # ])
                 
                 # await self._start_process(gunicorn_command, 'gunicorn')
-                await self._start_process(gunicorn_command, 'uvicorn')
+                await self._start_process(gunicorn_command, 'gunicorn')
                 # fastAPI 서버가 실행되면서 보내오는 메세지를 받아야 한다.
                 # -> database 에서 해당 서비스를 찾아서 상태를 변경한다.
                 # 예제 사용법            
