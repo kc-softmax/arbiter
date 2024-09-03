@@ -717,26 +717,29 @@ class ArbiterApp:
                 break
 
     async def health_manage_func(self):
+        """
+            아직 어떤 기능을 수행할지 정하지 못하였다.
+        """
         while not self.health_check_task.done():
             current_time = time.time()
             description = ''
             removed_services = []
-            pending_or_active_services = await self.arbiter.search_data(
-                ArbiterServiceNode, state=NodeState.PENDING)
-            pending_or_active_services.extend(
-                await self.arbiter.search_data(ArbiterServiceNode, state=NodeState.ACTIVE))            
-            for service in pending_or_active_services:
-                elapsed_time = current_time - service.updated_at.timestamp()
-                if service.state == NodeState.ACTIVE:
-                    description = 'Service is not responding.'
-                    timeout = ARBITER_SERVICE_ACTIVE_TIMEOUT
-                elif service.state == NodeState.PENDING:
-                    description = f'Service is not started within {elapsed_time} seconds.'
-                    timeout = ARBITER_SERVICE_PENDING_TIMEOUT
-                else:
-                    raise ValueError('Invalid Service State')
-                if elapsed_time > timeout:
-                    removed_services.append((service, description))
+            # pending_or_active_services = await self.arbiter.search_data(
+            #     ArbiterServiceNode, state=NodeState.PENDING)
+            # pending_or_active_services.extend(
+            #     await self.arbiter.search_data(ArbiterServiceNode, state=NodeState.ACTIVE))            
+            # for service in pending_or_active_services:
+            #     elapsed_time = current_time - service.updated_at.timestamp()
+            #     if service.state == NodeState.ACTIVE:
+            #         description = 'Service is not responding.'
+            #         timeout = ARBITER_SERVICE_ACTIVE_TIMEOUT
+            #     elif service.state == NodeState.PENDING:
+            #         description = f'Service is not started within {elapsed_time} seconds.'
+            #         timeout = ARBITER_SERVICE_PENDING_TIMEOUT
+            #     else:
+            #         raise ValueError('Invalid Service State')
+            #     if elapsed_time > timeout:
+            #         removed_services.append((service, description))
 
             await asyncio.sleep(ARBITER_APP_HELATH_MANAGE_FUNC_CLOCK)
 

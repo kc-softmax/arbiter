@@ -210,7 +210,6 @@ class ArbiterService(metaclass=ServiceMeta):
                 print('unexpected error', e)
                 break
                 
-    
     async def listen_system_func(self):
         async for message in self.arbiter.subscribe_listen(
             channel=self.arbiter_node.get_system_channel()
