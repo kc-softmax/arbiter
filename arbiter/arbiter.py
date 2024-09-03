@@ -152,19 +152,7 @@ class Arbiter:
         except Exception as e:
             await self.remove_message(target, encoded_message)
         return None
-        
-        
-        #     _, raw_data = response
-        #     pickled_data = get_pickled_data(raw_data)
-        #     if pickled_data is not None:
-        #         return pickled_data
-        #     # fail to pickle data
-        #     return raw_data.decode()
-        # except TimeoutError as e:
-        #     print(f"Timeout in getting response from {target}: {e}")
-        # except Exception as e:
-        #     print(f"Error in getting response from {target}: {e}")
-
+    
     async def get_message(
         self,
         message_id: str,
