@@ -65,7 +65,7 @@ class ArbiterRunner:
                 ) as arbiter_runner:
                     try:
                         console.print(f"[bold green]Warp In [bold yellow]Arbiter[/bold yellow] [bold green]{arbiter_runner.name}...[/bold green]")
-                        if not arbiter_runner.is_replica:
+                        if arbiter_runner.arbiter_node.is_master:
                             console.print(f"[bold green]{arbiter_runner.name}[/bold green] is the [bold green]Master[/bold green].")
                         else:
                             console.print(f"[bold green]{arbiter_runner.name}[/bold green] is the [bold blue]Replica[/bold blue].")
@@ -80,16 +80,6 @@ class ArbiterRunner:
                                     raise Exception(message)
 
                         async for result, message in arbiter_runner.start_phase(WarpInPhase.INITIATION):
-                            match result:
-                                case WarpInTaskResult.SUCCESS:
-                                    console.print(f"[bold green]{arbiter_runner.name}[/bold green] [bold yellow]{message}[/bold yellow].")
-                                    break
-                                case WarpInTaskResult.WARNING:
-                                    console.print(f"[bold yellow]{arbiter_runner.name}[/bold yellow] [bold blue]{message}[/bold blue].")
-                                case WarpInTaskResult.FAIL:
-                                    raise Exception(message)
-
-                        async for result, message in arbiter_runner.start_phase(WarpInPhase.CHANNELING):
                             match result:
                                 case WarpInTaskResult.SUCCESS:
                                     console.print(f"[bold green]{arbiter_runner.name}[/bold green] [bold yellow]{message}[/bold yellow].")
@@ -115,7 +105,6 @@ class ArbiterRunner:
                         ## 공통적으로 시스템 로그를 출력해주는 queue가 필요할까?
                         async with TerminalInterface(
                             system_queue=system_queue,
-                            is_replica=arbiter_runner.is_replica
                         ) as system_queue:
                             system_queue.put_nowait(ArbiterCliCommand.H.name)
                             # need intro message

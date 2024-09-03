@@ -1,5 +1,12 @@
 from enum import IntEnum
 
+class NodeState(IntEnum):
+    PENDING = 1
+    ACTIVE = 2
+    INACTIVE = 3
+    ERROR = 4
+    STOPPED = 5
+    
 class ServiceState(IntEnum):
     PENDING = 1
     ACTIVE = 2
@@ -56,14 +63,11 @@ class WarpInPhase(IntEnum):
     
     INITIATION = 14
     """소환 시작 단계"""
-    
-    CHANNELING = 15
-    """에너지를 모으는 단계"""
-    
-    MATERIALIZATION = 16
+        
+    MATERIALIZATION = 15
     """건물이 구체화되는 단계"""
     
-    DISAPPEARANCE = 17
+    DISAPPEARANCE = 16
     """완료 후 사라지는 단계"""
     
 class WarpInTaskResult(IntEnum):
@@ -106,4 +110,5 @@ class ArbiterDataType(IntEnum):
     API_ROUTE_UNREGISTER = 17
     # # Error messages
     ACK = 19
+    NACK = 20
     ERROR = 100

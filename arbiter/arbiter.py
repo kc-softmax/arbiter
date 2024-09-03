@@ -1,15 +1,19 @@
 from __future__ import annotations
 import time
+import uuid
+import pickle
 import asyncio
 import redis.asyncio as aioredis
+from pydantic import BaseModel
 from datetime import timezone, datetime
 from redis.asyncio.client import PubSub
-from typing import AsyncGenerator, Any, TypeVar, Optional, Type
-from arbiter.models import DefaultModel, ArbiterMessage
+from typing import AsyncGenerator, Any, Callable, TypeVar, Optional, Type
 from arbiter.utils import to_snake_case, get_pickled_data
-from arbiter.exceptions import ArbiterTimeOutError, ArbiterDecodeError
+from arbiter.data.models import DefaultModel
+from arbiter.exceptions import ArbiterDecodeError, AribterEncodeError
 from arbiter.constants import (
-    ARIBTER_DEFAULT_TASK_TIMEOUT,
+    ARBITER_SEND_TIMEOUT,
+    ARBITER_GET_TIMEOUT,
     ASYNC_TASK_CLOSE_MESSAGE,
 )
 
@@ -77,53 +81,32 @@ class Arbiter:
     async def clear_database(self):
         await self.client.flushdb()
 
-    ################ generic management ################
-    async def get_next_id(self, table_name: str) -> int:
-        # Redis INCR 명령을 사용하여 auto_increment 구현
-        return await self.client.incr(f'{table_name}:id_counter')
-    
-    async def get_data(self, model_class: Type[T], id: int) -> Optional[T]:
+    ################ generic management ################    
+    async def get_data(self, model_class: Type[T], id: str) -> Optional[T]:
         table_name = to_snake_case(model_class.__name__)
         data = await self.client.get(f'{table_name}:{id}')
         if data:
             return model_class.model_validate_json(data)
         return None
 
-    async def create_data(self, model_class: Type[T], **kwargs) -> T:
-        table_name = to_snake_case(model_class.__name__)
-        new_id = await self.get_next_id(table_name)
-        data = model_class(
-            id=new_id,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
-            **kwargs,
-        )
-        await self.client.set(f'{table_name}:{data.id}', data.model_dump_json())
-        return data
+    async def delete_data(self, model_data: T) -> bool:
+        table_name = to_snake_case(model_data.__class__.__name__)
+        return await self.client.delete(f'{table_name}:{model_data.id}')
 
-    async def update_data(
-        self,
-        data: T,
-        **kwargs
-    ) -> Optional[T]:
-        table_name = to_snake_case(data.__class__.__name__)
-        for k, v in kwargs.items():
-            if hasattr(data, k):
-                setattr(data, k, v)
-        if hasattr(data, 'updated_at'):
-            setattr(data, 'updated_at', datetime.now(timezone.utc))
-        await self.client.set(f'{table_name}:{data.id}', data.json())
-        return data
+    async def save_data(self, model_data: T) -> T:
+        table_name = to_snake_case(model_data.__class__.__name__)
+        if hasattr(model_data, 'updated_at'):
+            setattr(model_data, 'updated_at', datetime.now(timezone.utc))
+                
+        await self.client.set(
+            f'{table_name}:{model_data.id}', model_data.model_dump_json()
+        )
+        return model_data
 
     async def search_data(self, model_class: Type[T], **kwargs) -> list[T]:
         table_name = to_snake_case(model_class.__name__)
         results = []
-        keys = [
-            key
-            for key in await self.client.keys(f"{table_name}:*")
-            if b'id_counter' not in key
-        ]
-        for key in keys:
+        for key in await self.client.keys(f"{table_name}:*"):
             data = await self.client.get(key)
             if data:
                 model_data = model_class.model_validate_json(data)
@@ -136,44 +119,15 @@ class Arbiter:
                 if all(conditions):
                     results.append(model_data)
         return results
-
-    async def send_message(
-        self,
-        receiver_id: str,
-        data: str | bytes,
-        wait_response: bool = False,
-        timeout: float = ARIBTER_DEFAULT_TASK_TIMEOUT,
-    ):
-        message = ArbiterMessage(data=data)
-        
-        await self.client.rpush(receiver_id, message.model_dump_json())
-        if not wait_response:
-            return None
-        try:
-            response_data = await self.client.blpop(message.id, timeout=timeout)
-        except Exception as e:
-            print(f"Error in getting response from {receiver_id}: {e}")
-        if response_data:
-            pickle_data = get_pickled_data(response_data[1])
-            if pickle_data is not None:
-                return pickle_data
-            return response_data[1].decode()
-        else:
-            response_data = None
-        # TODO MARK Test ref check
-        await self.delete_message(message.id)
-        return response_data
+    ################################################    
+    async def encode_message(self, data: Any) -> bytes:
+        message_id = uuid.uuid4().hex
+        return message_id, pickle.dumps((message_id, data))
 
     async def push_message(self, target: str, message: Any):
         if message is None:
             return
         await self.client.rpush(target, message)
-
-    async def get_message(self, queue: str, timeout: int = ARIBTER_DEFAULT_TASK_TIMEOUT) -> bytes:
-        response_data = await self.client.blpop(queue, timeout=timeout)
-        if response_data:
-            return response_data[1]
-        raise TimeoutError(f"Timeout in getting message from {queue}")
 
     async def delete_message(self, message_id: str):
         await self.client.delete(message_id)
@@ -181,11 +135,97 @@ class Arbiter:
     async def remove_message(self, queue: str, message: str):
         await self.client.lrem(queue, 0, message)
 
+    async def send_message(
+        self,
+        target: str,
+        data: str | bytes,
+    ) -> str | None:
+        try:
+            message_id, encoded_message = await self.encode_message(data)
+        except Exception as e:
+            raise AribterEncodeError(f"Error in encoding message: {e}")
+        
+        try:
+            # target validation?
+            await self.client.rpush(target, encoded_message)
+            return message_id
+        except Exception as e:
+            await self.remove_message(target, encoded_message)
+        return None
+        
+        
+        #     _, raw_data = response
+        #     pickled_data = get_pickled_data(raw_data)
+        #     if pickled_data is not None:
+        #         return pickled_data
+        #     # fail to pickle data
+        #     return raw_data.decode()
+        # except TimeoutError as e:
+        #     print(f"Timeout in getting response from {target}: {e}")
+        # except Exception as e:
+        #     print(f"Error in getting response from {target}: {e}")
+
+    async def get_message(
+        self,
+        message_id: str,
+        timeout: float = ARBITER_SEND_TIMEOUT,
+    ) -> Any | None:
+        try:
+            response = await self.client.blpop(message_id, timeout)
+            if response:
+                _, data = response
+                pickled_data = get_pickled_data(data)
+                if pickled_data is not None:
+                    return pickled_data
+                # fail to pickle data, maybe it is a string
+                return data.decode()
+        except TimeoutError as e:
+            print(f"Timeout in getting response from {message_id}: {e}")
+        except Exception as e:
+            print(f"Error in getting response from {message_id}: {e})")
+        return None
+
+    async def get_stream(
+        self,
+        message_id: str,
+        timeout: float = ARBITER_SEND_TIMEOUT
+    ) -> Any | None:
+        try:
+            async for data in self.listen(message_id, timeout):
+                pickled_data = get_pickled_data(data)
+                if pickled_data is not None:
+                    yield pickled_data
+                # fail to pickle data, maybe it is a string
+                yield data.decode()
+        except asyncio.CancelledError:
+            pass
+        except TimeoutError as e:
+            print(f"Timeout in getting response from {message_id}: {e}")
+        except Exception as e:
+            print(f"Error in getting response from {message_id}: {e})")
+        
+    async def listen(
+        self,
+        channel: str,
+        timeout: int = 0
+    ) -> AsyncGenerator[
+        bytes,
+        None
+    ]:
+        while True:
+            message = await self.client.blpop(channel, timeout)
+            if message:
+                if message[1] == ASYNC_TASK_CLOSE_MESSAGE:
+                    break
+                yield message[1]
+            else:
+                raise TimeoutError(f"Timeout in getting message from {channel}")
+
     async def subscribe_listen(
         self,
         channel: str,
         pubsub_id: str = None
-    ) -> AsyncGenerator[str, None]:
+    ) -> AsyncGenerator[bytes, None]:
         # arbiter에서 사용되는 pubsub은 시스템 종료시 리소스를 반환한다
         # pubsub 객체를 따로 관리하지 않는다
         pubsub = self.client.pubsub()
@@ -208,41 +248,6 @@ class Arbiter:
         message: str | bytes,
     ):
         await self.client.publish(topic, message)
-
-    async def listen_bytes(
-        self,
-        channel: str,
-        timeout: int = 0
-    ) -> AsyncGenerator[
-        bytes,
-        None
-    ]:
-        while True:
-            message = await self.client.blpop(channel, timeout)
-            if message:
-                if message[1] == ASYNC_TASK_CLOSE_MESSAGE:
-                    break
-                yield message[1]
-            else:
-                raise ArbiterTimeOutError(f"Timeout in getting message from {channel}")
-
-    async def listen(
-        self,
-        channel: str,
-        timeout: int = 0
-    ) -> AsyncGenerator[
-        Optional[ArbiterMessage],
-        None
-    ]:
-        while True:
-            message = await self.client.blpop(channel, timeout)
-            if message:
-                try:
-                    yield ArbiterMessage.model_validate_json(message[1])
-                except Exception as e:
-                    raise ArbiterDecodeError(f"Error in decoding message: {e}")
-            else:
-                raise ArbiterTimeOutError(f"Timeout in getting message from {channel}")
 
     async def periodic_listen(
         self,

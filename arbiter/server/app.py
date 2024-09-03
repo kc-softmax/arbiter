@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.websockets import WebSocketState
-from arbiter.api.exceptions import BadRequest
+from arbiter.server.exceptions import BadRequest
 from arbiter import Arbiter
 from arbiter.utils import (
     to_snake_case,
@@ -18,15 +18,19 @@ from arbiter.utils import (
     get_type_from_type_name, 
     get_pickled_data
 )
-from arbiter.models import (
+from arbiter.data.models import (
     ArbiterTaskModel,
-    ArbiterStreamMessage
+    ArbiterHttpTaskModel,
+    ArbiterStreamTaskModel,
+    ArbiterServerModel
 )
+from arbiter.data.messages import ArbiterStreamMessage
 from arbiter.enums import (
+    HttpMethod,
     StreamMethod,
     StreamCommunicationType
 )
-from arbiter.api.constants import SubscribeChannel
+from arbiter.server.constants import SubscribeChannel
 
 class ArbiterApiApp(FastAPI):
 
@@ -41,6 +45,7 @@ class ArbiterApiApp(FastAPI):
     ) -> None:
         super().__init__(lifespan=lifespan)
         self.arbiter = arbiter
+        self.arbiter_server_model: ArbiterServerModel = None
         self.add_exception_handler(
             RequestValidationError,
             lambda request, exc: JSONResponse(
@@ -55,8 +60,8 @@ class ArbiterApiApp(FastAPI):
             allow_headers=allow_headers,
             allow_credentials=allow_credentials,
         )
-        self.stream_routes: dict[str, dict[str, ArbiterTaskModel]] = {}
-    
+        self.stream_routes: dict[str, dict[str, ArbiterStreamTaskModel]] = {}
+        
     def get_dynamic_models(
         self,
         task_function: ArbiterTaskModel,
@@ -105,40 +110,39 @@ class ArbiterApiApp(FastAPI):
             print('err in get_dynamic_models', e)
             return None, None
 
-    def generate_post_function(
+    def generate_http_function(
         self,
-        service_name: str,
-        task_function: ArbiterTaskModel,
+        task_function: ArbiterHttpTaskModel,
     ):
-        def get_task_function() -> ArbiterTaskModel:
+        def get_task_function() -> ArbiterHttpTaskModel:
             return task_function
         def get_app() -> ArbiterApiApp:
             return self
-        
+        service_name = task_function.service_name
         path = f'/{to_snake_case(service_name)}/{task_function.name}'
         DynamicRequestModel, DynamicResponseModel = self.get_dynamic_models(task_function)
         async def dynamic_function(
             data: Type[BaseModel] = Depends(DynamicRequestModel),  # 동적으로 생성된 Pydantic 모델 사용 # type: ignore
             app: ArbiterApiApp = Depends(get_app),
-            task_function: ArbiterTaskModel = Depends(get_task_function),
+            task_function: ArbiterHttpTaskModel = Depends(get_task_function),
         ) -> Union[dict, list[dict], None]:
             try:
-                response_required = True if DynamicResponseModel else False
-                response = await app.arbiter.send_message(
-                    receiver_id=task_function.queue,
-                    data=data.model_dump_json(),
-                    wait_response=response_required)
+                message_id = await app.arbiter.send_message(
+                    target=task_function.queue,
+                    data=data.model_dump_json())
+                if not DynamicResponseModel:
+                    return
+                
+                response = await app.arbiter.get_message(message_id)
                 # 값을 보낼때는 그냥 믿고 보내준다.
-                # 타입이 다르다고 하더라도, 그냥 보내준다.
-                #json 이고, response model 이 있을때만 validate 한다.
-                if DynamicResponseModel:
-                    # 검사를 해야한다 두 타입이 일치 하는지
-                    if issubclass(DynamicResponseModel, BaseModel):
-                        try:
-                            response = DynamicResponseModel.model_validate_json(response)
-                        except:
-                            # DynamicResponseModel로 packing 되는 경우도 있기 때문에
-                            pass
+                # 타입이 다르다고 하더라도, 그냥 보내준다.                
+                # 검사를 해야한다 두 타입이 일치 하는지
+                if issubclass(DynamicResponseModel, BaseModel):
+                    try:
+                        response = DynamicResponseModel.model_validate_json(response)
+                    except:
+                        # DynamicResponseModel로 packing 되는 경우도 있기 때문에
+                        pass
                 # if DynamicResponseModel and DynamicResponseModel != Any:
                 #     # 검사를 해야한다 두 타입이 일치 하는지
                 #     if issubclass(DynamicResponseModel, BaseModel):
@@ -149,20 +153,22 @@ class ArbiterApiApp(FastAPI):
             except Exception as e:
                 raise HTTPException(status_code=400, detail=f"Failed to get response {e}")
 
+        http_method = HttpMethod(task_function.method)
+        # TODO MARK : GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD, TRACE, CONNECT
         self.router.post(
             path,
             tags=[service_name],
             response_model=DynamicResponseModel
         )(dynamic_function)
 
-    def generate_websocket_function(
+    def generate_stream_function(
             self,
-            service_name: str,
             task_function: ArbiterTaskModel,
         ):
             # currently not using DynamicRequestModel, DynamicResponseModel
             # TODO if need to check request or response model validation, use it
             # DynamicRequestModel, DynamicResponseModel = self.get_dynamic_models(task_function)
+            service_name = task_function.service_name
             async def async_websocket_function(
                 websocket: WebSocket,
                 query: str = None
@@ -173,7 +179,7 @@ class ArbiterApiApp(FastAPI):
 
                 async def message_listen_queue(websocket: WebSocket, queue: str, timeout: int = 10):
                     try:
-                        async for data in self.arbiter.listen_bytes(queue, timeout):
+                        async for data in self.arbiter.listen(queue, timeout):
                             if data is None:
                                 data = {"from": queue, "data": 'Timeout'}
                                 await websocket.send_text(json.dumps(data))
@@ -298,19 +304,17 @@ class ArbiterApiApp(FastAPI):
                                 if not response_task or response_task.done():
                                     response_task = asyncio.create_task(
                                         message_listen_queue(websocket, response_queue, 0))
-                                if target_task_function.connection_info:
-                                    data = {
-                                        "connection_info": {
-                                            "host": websocket.client.host,
-                                            "port": websocket.client.port
-                                        },
-                                        "data": stream_message.data
-                                    }
-                                else:
-                                    data = stream_message.data
-                                data = pickle.dumps((
-                                        destination, 
-                                        data))
+                                # if target_task_function.connection_info:
+                                #     data = {
+                                #         "connection_info": {
+                                #             "host": websocket.client.host,
+                                #             "port": websocket.client.port
+                                #         },
+                                #         "data": stream_message.data
+                                #     }
+                                # else:
+                                data = stream_message.data
+                                data = pickle.dumps((destination, data))
                                 await self.arbiter.push_message(
                                     target_task_function.queue,
                                     data)

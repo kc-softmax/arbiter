@@ -361,7 +361,7 @@ def find_python_files_in_path(dir_path: str = './', from_replica: bool = False):
         only_master_service = False
         with open(p, 'r') as file:
             content = file.read()
-            if re.search(r'class\s+\w+\(ArbiterWorker\)', content):
+            if re.search(r'class\s+\w+\(ArbiterServiceWorker\)', content):
                 is_arbiter_service = True
             if re.search(r'master_only\s*=\s*True', content):
                 only_master_service = True

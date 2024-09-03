@@ -2,8 +2,7 @@ import asyncio
 from datetime import datetime
 from pydantic import BaseModel
 from typing import AsyncGenerator, Optional, Any
-from arbiter.worker import ArbiterWorker
-from arbiter.models import ConnectionInfo
+from arbiter.service import ArbiterService
 from arbiter.enums import (
     HttpMethod,
     StreamMethod,
@@ -41,7 +40,7 @@ class TestModel(BaseModel):
     time: datetime
 
 
-class TestWorker(ArbiterWorker):
+class TestService(ArbiterService):
     
     # input과 output을 모두 검사
     @http_task(method=HttpMethod.POST, queue="num_of_params", num_of_tasks=1)
@@ -132,20 +131,6 @@ class TestWorker(ArbiterWorker):
     ) -> AsyncGenerator[str, None]:
         pass
     
-    @stream_task(
-        connection=StreamMethod.WEBSOCKET,
-        communication_type=StreamCommunicationType.ASYNC_UNICAST,
-        connection_info=True)
-    async def stream_async_task(
-        self,
-        message: str,
-        connectin_info: ConnectionInfo
-    ) -> AsyncGenerator[str, None]:
-        async for result in self.send_async_task(
-            queue="test_service_return_async_task",
-            data=message):
-            yield result
-
     @stream_task(
         connection=StreamMethod.WEBSOCKET,
         communication_type=StreamCommunicationType.SYNC_UNICAST)
