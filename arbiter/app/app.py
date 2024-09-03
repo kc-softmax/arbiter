@@ -5,6 +5,7 @@ import uuid
 import sys
 import time
 import json
+import importlib
 from configparser import ConfigParser
 from asyncio.subprocess import Process
 from inspect import Parameter
@@ -235,6 +236,7 @@ class ArbiterApp:
         """
             WarpInPhase Arbiter MATERIALIZATION
             Start all services that are set to auto_start, and wait for the response
+            
         """
         initial_service_models = [
             service_model
@@ -244,6 +246,11 @@ class ArbiterApp:
         try:
             for service_model in initial_service_models:
                 for _ in range(service_model.num_of_services):
+                    try:    
+                        module = importlib.import_module(service_model.module_name)
+                        getattr(module, service_model.name)
+                    except (ImportError, AttributeError):
+                        continue
                     pending_service = await self._start_service(service_model)
                     fetch_data = lambda: self.arbiter.search_data(
                         ArbiterServiceNode,
@@ -452,7 +459,6 @@ class ArbiterApp:
                 pass
  
     async def _start_service(self, service_model: ArbiterServiceModel) -> ArbiterServiceNode:
-        # 여러가지 검사한다
         service_node = ArbiterServiceNode(
             state=NodeState.PENDING,
             arbiter_node_id=self.arbiter_node.id,
@@ -651,18 +657,24 @@ class ArbiterApp:
             # TODO task function이 다르면 에러를 발생시킨다.
             # raise ArbiterInconsistentServiceMetaError()
             service_model = already_service_models[0]
-            if all(service_model.task_models[i] == task_models[i] for i in range(len(task_models))):
-                raise ArbiterInconsistentServiceModelError()
-            if all(service_model.async_task_models[i] == async_task_models[i] for i in range(len(async_task_models))):
-                raise ArbiterInconsistentServiceModelError()
-            if all(service_model.http_task_models[i] == http_task_models[i] for i in range(len(http_task_models))):
-                raise ArbiterInconsistentServiceModelError()
-            if all(service_model.stream_task_models[i] == stream_task_models[i] for i in range(len(stream_task_models))):
-                raise ArbiterInconsistentServiceModelError()
-            if all(service_model.periodic_task_models[i] == periodic_task_models[i] for i in range(len(periodic_task_models))):
-                raise ArbiterInconsistentServiceModelError()
-            if all(service_model.subscribe_task_models[i] == subscribe_task_models[i] for i in range(len(subscribe_task_models))):
-                raise ArbiterInconsistentServiceModelError()
+            for task_model in task_models:
+                if task_model not in service_model.task_models:
+                    raise ArbiterInconsistentServiceModelError()
+            for async_task_model in async_task_models:
+                if async_task_model not in service_model.async_task_models:
+                    raise ArbiterInconsistentServiceModelError()
+            for http_task_model in http_task_models:
+                if http_task_model not in service_model.http_task_models:
+                    raise ArbiterInconsistentServiceModelError()
+            for stream_task_model in stream_task_models:
+                if stream_task_model not in service_model.stream_task_models:
+                    raise ArbiterInconsistentServiceModelError()
+            for periodic_task_model in periodic_task_models:
+                if periodic_task_model not in service_model.periodic_task_models:
+                    raise ArbiterInconsistentServiceModelError()
+            for subscribe_task_model in subscribe_task_models:
+                if subscribe_task_model not in service_model.subscribe_task_models:
+                    raise ArbiterInconsistentServiceModelError()
             return False, service_model
         else:
             service_model = ArbiterServiceModel(
@@ -709,7 +721,7 @@ class ArbiterApp:
                 ])
                 process = await self._start_process(
                     f'{sys.executable} -c "{service_start_script}"',
-                    service_model.get_service_name())
+                    service_node.id)
                 self.processes[service_model.get_service_name()] = process
             except Exception as e:
                 await self.arbiter.delete_data(service_node)

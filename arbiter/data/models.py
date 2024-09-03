@@ -88,6 +88,9 @@ class ArbiterTaskModel(ArbiterBaseModel):
     raw_message: bool = Field(default=False)
     retry_count: int = Field(default=0)
     task_nodes: list[ArbiterTaskNode] = Field(default_factory=list)
+    
+    def __eq__(self, other: ArbiterTaskModel) -> bool:
+        return self.name == other.name and self.queue == other.queue
 
 class ArbiterAsyncTaskModel(ArbiterTaskModel):
     # async task model, 나누는 이유는 검사를 위해
