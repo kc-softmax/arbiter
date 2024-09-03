@@ -35,3 +35,60 @@ class ArbiterServiceNodeFaileToStartError(Exception):
     """Raised when the arbiter service node fails to start."""
     def __init__(self, message="The arbiter service node fails to start."):
         super().__init__(message)
+
+
+### Exception Group ###
+class BaseError(Exception):
+    """Top Level Error"""
+
+
+class RetryExceed(BaseError):
+    """When exceed number of retry"""
+
+
+class SystemNodeBaseError(BaseError):
+    """System Node Level Error"""
+
+
+class WorkerNodeBaseError(BaseError):
+    """Worker Node Level Error"""
+
+
+class TaskNodeBaseError(BaseError):
+    """Task Node Level Error"""
+
+
+class ConnectionTimeout(TaskNodeBaseError):
+    """When connection timeout with other system resource"""
+
+    def __init__(self, message: str = "system resource timeout when connect", timeout: int = 5) -> None:
+        self.message = message
+        self.timeout = timeout
+        super().__init__(f"{self.message} {self.timeout}s")
+
+    def __repr__(self) -> str:
+        return "ConnectionTimeout()"
+
+
+class ConnectionExceed(TaskNodeBaseError):
+    """When connection exceeded with other system resource"""
+
+    def __init__(self, message: str = "Exceed number of maximum connection", number: int = 5) -> None:
+        self.message = message
+        self.number = number
+        super().__init__(f"{self.message} connections: {self.number}")
+
+    def __repr__(self) -> str:
+        return "ConnectionExceed()"
+
+
+class TaskTimeout(TaskNodeBaseError):
+    """When timeout in logic"""
+
+    def __init__(self, message: str = "task timeout in running", timeout: int = 5) -> None:
+        self.message = message
+        self.timeout = timeout
+        super().__init__(f"{self.message} {self.timeout}s")
+
+    def __repr__(self) -> str:
+        return "TaskTimeout()"

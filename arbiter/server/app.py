@@ -53,6 +53,13 @@ class ArbiterApiApp(FastAPI):
                 content={"detail": BadRequest.DETAIL}
             )
         )
+        self.add_exception_handler(
+            500,
+            lambda request, exc: JSONResponse(
+                status_code=500,
+                content={"detail": str(exc)}
+            )
+        )
         self.add_middleware(
             CORSMiddleware,
             allow_origins=allow_origins,
@@ -199,7 +206,7 @@ class ArbiterApiApp(FastAPI):
                             await websocket.send_text(json.dumps(data))
                     except asyncio.CancelledError:
                         pass
-                        
+
                 async def message_subscribe_channel(websocket: WebSocket, channel: str, pubsub_id: str):
                     # print(f"Start of message_subscribe_channel {channel}")
                     try:
@@ -214,11 +221,11 @@ class ArbiterApiApp(FastAPI):
                         # print(f"Subscription to {channel} cancelled")
                     # finally:
                         # print(f"End of message_subscribe_channel {channel}")
-                
+
                 stream_route = self.stream_routes[service_name]
                 # query에 관한 처리가 있어야 한다.
                 # service의 handle query 같은것이 필요하다.
-                
+
                 await websocket.accept()
                 response_task: asyncio.Task = None
                 response_queue = uuid.uuid4().hex                          
@@ -233,7 +240,7 @@ class ArbiterApiApp(FastAPI):
                             continue
                         try:                            
                             json_data = json.loads(receive_data)
-                            
+
                             to_remove_tasks = [
                                 key for key, value in subscribe_tasks.items() if value.done()
                             ]
@@ -255,7 +262,7 @@ class ArbiterApiApp(FastAPI):
                                 ):
                                     # if target is not set, use response_queue
                                     target = response_queue
-                                                                    
+
                                 match task_function.communication_type:
                                     case StreamCommunicationType.SYNC_UNICAST:
                                         destination = target
@@ -318,7 +325,7 @@ class ArbiterApiApp(FastAPI):
                                 await self.arbiter.push_message(
                                     target_task_function.queue,
                                     data)
-                            
+
                         # excepe pydantic_core._pydantic_core.ValidationError as e:
                         except ValidationError as e:
                             await websocket.send_text(f"Data is not valid {e}")
