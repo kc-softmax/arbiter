@@ -282,39 +282,6 @@ class ArbiterApp:
             topic=self.arbiter_node.get_system_channel(),
             message=self.arbiter_node.shutdown_code)
         
-        # if not self.is_replica:
-        #     fetch_replica_nodes = lambda: self.arbiter.search_data(
-        #         Node,
-        #         state=ServiceState.ACTIVE,
-        #         name=self.name,
-        #         master_id=self.node.id
-        #     )
-        #     if replica_nodes := await fetch_replica_nodes():
-        #         for replica_node in replica_nodes:
-        #             # send shutdown message to all replica nodes                    
-        #             await self.arbiter.send_message(
-        #                 receiver_id=replica_node.unique_id,
-        #                 data=ArbiterTypedData(
-        #                     type=ArbiterDataType.SHUTDOWN,
-        #                     data=replica_node.shutdown_code
-        #                 ).model_dump_json()
-        #             )
-        #         results = await fetch_data_within_timeout(
-        #             timeout=ARBITER_SERVICE_PENDING_TIMEOUT,
-        #             fetch_data=fetch_replica_nodes,
-        #             check_condition=lambda data: len(data) == 0,
-        #         )
-        #         if results:
-        #             await self._warp_in_queue.put(
-        #                 (WarpInTaskResult.WARNING, f"{len(results)} nodes are not shutdown")
-        #             )
-        # check all services are shutdown
-        # try catch로 감싸서 에러를 처리해야 한다.
-                #         arbiter_server_node = ArbiterServerNode(
-                #     arbiter_server_model_id=server_model.id,
-                #     arbiter_node_id=self.arbiter_node.id,
-                #     state=NodeState.PENDING,
-                # )
         fetch_data = lambda: self.arbiter.search_data(
             ArbiterServerNode,
             arbiter_node_id=self.arbiter_node.id,
@@ -404,35 +371,29 @@ class ArbiterApp:
             Create Master Node or Replica Node
         """
         await self.arbiter.connect()
-        # Check if there is a master node with the same name (and some configuration)        
+        # Check if there is a master node with the same name (and some configuration)  
+        is_master = True      
         if arbiter_models := await self.arbiter.search_data(
             ArbiterModel,
             name=self.name,
         ):
             if len(arbiter_models) > 1:
-                raise ValueError('Too many Arbiter Models')
-            
+                raise ValueError('Too many Arbiter Models')           
             self.arbiter_model = arbiter_models[0]  
             active_nodes = await self.arbiter.search_data(
                 ArbiterNode,
                 arbiter_model_id=self.arbiter_model.id,
                 state=NodeState.ACTIVE)
             if active_nodes:
-                # 만약 matser node가 없으면 오류이다.
-                if not next(
-                    node
-                    for node in active_nodes
-                    if node.is_master
-                ):
-                    raise ValueError('Master Node is not found, but there are nodes with the same name.')
-                is_master = False
-            else:
-                is_master = True
+                # 만약 matser node가 없으면 Master Node가 된다.
+                for node in active_nodes:
+                    if node.is_master:
+                        is_master = False
+                        break
         else:
             self.arbiter_model = ArbiterModel(
                 name=self.name,
             )
-            is_master = True
         self.arbiter_node = ArbiterNode(
             state=NodeState.ACTIVE,
             arbiter_model_id=self.arbiter_model.id,
