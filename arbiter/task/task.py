@@ -24,17 +24,11 @@ from arbiter.enums import (
     StreamMethod,
     StreamCommunicationType,
 )
-from arbiter.models import (
-    ArbiterTypedData,
-    ArbiterDataType,
+from arbiter.data.models import (
     ArbiterTaskModel,
-    ArbiterMessage,
-    ConnectionInfo,
-    Node,
-    Service
 )
 from arbiter.utils import get_task_queue_name, parse_request_body, get_pickled_data
-from arbiter.worker import ArbiterWorker
+from arbiter.service import ArbiterService
 from arbiter import Arbiter
 
 # consider func using protocol
@@ -43,7 +37,6 @@ class BaseTask:
     def __init__(
         self,
         queue: str = None,
-        raw_message: bool = False,
         cold_start: bool = False,
         num_of_tasks: int = 1,
         retry_count: int = 0,
@@ -51,7 +44,6 @@ class BaseTask:
     ):
         assert num_of_tasks > 0, "num_of_tasks should be greater than 0"
         self.queue = queue
-        self.raw_message = raw_message
         self.cold_start = cold_start
         self.retry_count = retry_count
         self.activate_duration = activate_duration
@@ -65,16 +57,18 @@ class BaseTask:
         self.func = func 
         setattr(func, 'is_task_function', True)
         setattr(func, 'task_name', func.__name__)
+        setattr(func, 'task_type', self.__class__.__name__)
         params = {}
         signature = inspect.signature(func)
-        for param in signature.parameters.values():
+        for i, param in enumerate(signature.parameters.values()):
             # 만약 self나 app이라는 이름의 파라미터가 있다면 첫번째 파라미터인지 검사 한후, 
             if param.name == 'self':
-                setattr(func, 'worker_required', True)
+                if i != 0:
+                    raise ValueError("self parameter should be the first parameter")
                 continue
             
-            if param.annotation is ArbiterWorker:
-                raise ValueError("if ArbiterWorker is used, it should be the first parameter and named 'self'")
+            if param.annotation is ArbiterService:
+                raise ValueError("if ArbiterService is used, it should be the first parameter and named 'self'")
             
             if param.name in params:
                 raise ValueError(f"Duplicate parameter name: {param.name}")
@@ -204,36 +198,45 @@ class BaseTask:
             return params
 
 class ArbiterTask(BaseTask):
-   
+        
     def __call__(self, func: Callable) -> Callable:
         super().__call__(func)
         @functools.wraps(func)
-        async def wrapper(arbiter: Arbiter, queue: str, instance: Callable = None):
-            worker_required = getattr(func, "worker_required", False)
-            if worker_required:
-                assert instance, "Worker instance is required"
+        async def wrapper(arbiter: Arbiter, queue: str, instance: ArbiterService):
             async for message in arbiter.listen(queue):
-                assert isinstance(message, ArbiterMessage), f"Invalid message type: {type(message)}"
-                try:
-                    if getattr(func, "raw_message", False):
-                        params = [instance, message.data] if instance else [message.data]
-                        results = await func(*params)
-                    else:
-                        params = {'self': instance} if instance else {}
-                        params.update(self.parse_data(message.data))                        
-                        results = await func(**params)
+                try:                    
+                    message_id, data = get_pickled_data(message)
+                    params = {'self': instance}
+                    params.update(self.parse_data(data))                        
+                    results = await func(**params)
                     if not getattr(func, "has_response", False):
                         continue
-                    if not message.id:
-                        # 답장할주소가 없기때문에
-                        continue
                     response = self.pack_data(results)
-                    if response and message.id:
-                        await arbiter.push_message(
-                            message.id, 
-                            response)
+                    await arbiter.push_message(
+                        message_id, 
+                        response)
                 except Exception as e:
                     print(e, "exception in task")
+        return wrapper
+
+class ArbiterAsyncTask(ArbiterTask):
+
+    def __call__(self, func: Callable) -> Callable:
+        super().__call__(func)
+        @functools.wraps(func)
+        async def wrapper(arbiter: Arbiter, queue: str, instance: ArbiterService):
+            async for message in arbiter.listen(queue):
+                try:
+                    message_id, data = get_pickled_data(message)
+                    params = {'self': instance}
+                    params.update(self.parse_data(data))                        
+                        
+                    async for results in func(**params):
+                        results = self.pack_data(results)
+                        await arbiter.push_message(message_id, results)
+                    await arbiter.push_message(message_id, ASYNC_TASK_CLOSE_MESSAGE)                        
+                except Exception as e:
+                    print(e)
         return wrapper
 
 class ArbiterHttpTask(ArbiterTask):
@@ -246,74 +249,45 @@ class ArbiterHttpTask(ArbiterTask):
             **kwargs
         )
         self.method = method
-
-class ArbiterAsyncTask(BaseTask):
-
-    def __call__(self, func: Callable) -> Callable:
-        super().__call__(func)
-        @functools.wraps(func)
-        async def wrapper(arbiter: Arbiter, queue: str, instance: Callable = None):
-            worker_required = getattr(func, "worker_required", False)
-            if worker_required:
-                assert instance, "Worker instance is required"
-            async for message in arbiter.listen_bytes(queue):
-                try:
-                    target, data = pickle.loads(message)
-                    kwargs = {'self': instance} if instance else {}
-                    if data:
-                        params = self.parse_data(data)
-                        kwargs.update(params)
-                    async for results in func(**kwargs):
-                        results = self.pack_data(results)
-                        await arbiter.push_message(target, results)
-                    await arbiter.push_message(target, ASYNC_TASK_CLOSE_MESSAGE)                        
-                except Exception as e:
-                    print(e)
-        return wrapper
     
-class ArbiterStreamTask(BaseTask):
+class ArbiterStreamTask(ArbiterTask):
     def __init__(
         self,
         connection: StreamMethod,
         communication_type: StreamCommunicationType,
-        connection_info = False,
         num_of_channels = 1,
         **kwargs,   
     ):
         super().__init__(
             **kwargs
         )
-        self.connection_info_param = None
-        self.connection_info = connection_info
+        # self.connection_info_param = None
         self.connection = connection
         self.communication_type = communication_type
         self.num_of_channels = num_of_channels
 
     def __call__(self, func: Callable) -> Callable:
         super().__call__(func)
-        if self.connection_info:
-            connection_info_param = [
-                param for param in self.params.values() if param.annotation == ConnectionInfo
-            ]
-            if not connection_info_param:
-                raise ValueError("ConnectionInfo paramter is required for connection_info=True")
-            assert len(connection_info_param) == 1, "Only one ConnectionInfo is allowed"
-            self.connection_info_param = self.params.pop(connection_info_param[0].name)
+        # if self.connection_info:
+        #     connection_info_param = [
+        #         param for param in self.params.values() if param.annotation == ConnectionInfo
+        #     ]
+        #     if not connection_info_param:
+        #         raise ValueError("ConnectionInfo paramter is required for connection_info=True")
+        #     assert len(connection_info_param) == 1, "Only one ConnectionInfo is allowed"
+        #     self.connection_info_param = self.params.pop(connection_info_param[0].name)
             
         @functools.wraps(func)
-        async def wrapper(arbiter: Arbiter, queue: str, instance: Callable = None):
-            worker_required = getattr(func, "worker_required", False)
-            if worker_required:
-                assert instance, "Worker instance is required"
-            async for message in arbiter.listen_bytes(queue):
+        async def wrapper(arbiter: Arbiter, queue: str, instance: ArbiterService):
+            async for message in arbiter.listen(queue):
                 try:
                     target, data = pickle.loads(message)
                     kwargs = {'self': instance} if instance else {}
-                    if self.connection_info:
-                        connection_info = data.get('connection_info', None)
-                        data = data.get('data', None)
-                        kwargs.update(
-                            {self.connection_info_param.name: ConnectionInfo(**connection_info)})
+                    # if self.connection_info:
+                    #     connection_info = data.get('connection_info', None)
+                    #     data = data.get('data', None)
+                    #     kwargs.update(
+                    #         {self.connection_info_param.name: ConnectionInfo(**connection_info)})
                     if data:
                         params = self.parse_data(data)
                         kwargs.update(params)
@@ -347,10 +321,7 @@ class ArbiterPeriodicTask(BaseTask):
     def __call__(self, func: Callable) -> Callable:
         super().__call__(func)        
         @functools.wraps(func)
-        async def wrapper(arbiter: Arbiter, queue: str, instance: Callable = None):
-            worker_required = getattr(func, "worker_required", False)
-            if worker_required:
-                assert instance, "Worker instance is required"
+        async def wrapper(arbiter: Arbiter, queue: str, instance: ArbiterService):
             async for messages in arbiter.periodic_listen(queue, self.interval):
                 params = [instance, messages] if instance else [messages]
                 await func(*params)
@@ -369,10 +340,7 @@ class ArbiterSubscribeTask(BaseTask):
     def __call__(self, func: Callable) -> Callable:
         super().__call__(func)
         @functools.wraps(func)
-        async def wrapper(arbiter: Arbiter, queue: str, instance: Callable = None):
-            worker_required = getattr(func, "worker_required", False)
-            if worker_required:
-                assert instance, "Worker instance is required"
+        async def wrapper(arbiter: Arbiter, queue: str, instance: ArbiterService):
             async for message in arbiter.subscribe_listen(self.channel):
                 params = [instance, message] if instance else [message]
                 await func(*params)

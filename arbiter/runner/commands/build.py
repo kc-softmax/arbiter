@@ -15,7 +15,7 @@ from arbiter.runner.utils import (
     Communication,
     SupportedModules,
 )
-from arbiter.worker import ArbiterWorker
+from arbiter.service import ArbiterServiceWorker
 
 
 app = AsyncTyper()
@@ -38,7 +38,7 @@ def cloud():
         # rewrite command by inputing value
         # get available service and main app
         python_files_in_root = find_python_files_in_path()
-        registered_services = find_registered_services(python_files_in_root, ArbiterWorker)
+        registered_services = find_registered_services(python_files_in_root, ArbiterServiceWorker)
         service_list = json.dumps(
             {
                 service.__module__: service.__name__

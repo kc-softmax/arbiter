@@ -1,7 +1,7 @@
 import json
 import os
 from .app import ArbiterApiApp
-from .worker import ArbiterUvicornWorker
+from .service import ArbiterServerService
 
 def get_app() -> ArbiterApiApp:    
     node_id = os.getenv("NODE_ID", "")

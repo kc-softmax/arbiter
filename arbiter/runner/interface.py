@@ -11,9 +11,7 @@ class TerminalInterface:
     def __init__(
         self,
         system_queue: asyncio.Queue[Annotated[str, "command"]],
-        is_replica: bool = False
     ):
-        self.is_replica = is_replica
         self.system_queue = system_queue
     
     @asynccontextmanager
@@ -65,9 +63,3 @@ class TerminalInterface:
         """Exit the async context manager."""
         await self.interact_manager.__aexit__(exc_type, exc_value, traceback)
         await self.raw_mode_manager.__aexit__(exc_type, exc_value, traceback)
-
-
-
-# Usage example:
-# async with TerminalInterface(is_replica=False) as interface:
-#     pass  # The run method is automatically called
