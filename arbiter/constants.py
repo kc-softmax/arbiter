@@ -2,7 +2,7 @@ from __future__ import annotations
 from pydantic import BaseModel
 from datetime import datetime
 
-ALLOWED_TYPES = (BaseModel, list, int, str, float, bool, datetime)
+ALLOWED_TYPES = (BaseModel, list, int, str, float, bool, datetime, None)
 
 ASYNC_TASK_CLOSE_MESSAGE = b'q__end__q'
 
