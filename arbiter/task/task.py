@@ -108,7 +108,7 @@ class BaseTask:
                     raise ValueError(
                         f"Invalid return type: {return_annotation}, expected: list[Type]")
                 origin_type = return_params[0]
-            if not (issubclass(origin_type, BaseModel) or origin_type in ALLOWED_TYPES):
+            if not (origin_type in ALLOWED_TYPES or issubclass(origin_type, BaseModel)):
                 raise ValueError(f"Invalid response type: {response_type}, allowed types: {ALLOWED_TYPES}")
             self.response_type = response_type
 
