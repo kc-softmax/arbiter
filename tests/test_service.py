@@ -169,5 +169,23 @@ class TestService(ArbiterService):
     async def hello_world(self, messages: list[bytes]):
         pass
         # print(f"hello_world: {messages}")
-        
-        
+
+
+### exception test worker ###
+class TestException(ArbiterWorker):
+
+    @http_task(method=HttpMethod.POST)
+    async def connection_timeout(self) -> str:
+        """not yet"""
+        return "connection timeout"
+
+    @http_task(method=HttpMethod.POST)
+    async def connection_exceed(self) -> str:
+        """Add number of connection until limitation"""
+        return "connection exceed"
+
+    @http_task(method=HttpMethod.POST)
+    async def task_timeout(self) -> str:
+        """Didn't return anything during DEFAULT TIMEOUT"""
+        await asyncio.sleep(5.1)
+        return "task timeout"
