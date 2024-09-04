@@ -16,6 +16,11 @@ from arbiter.task import (
     async_task,
     task
 )
+from arbiter.exceptions import (
+    ConnectionExceed,
+    ConnectionTimeout,
+    TaskTimeout
+)
 
 
 class NumOfParam(BaseModel):
@@ -177,15 +182,18 @@ class TestException(ArbiterWorker):
     @http_task(method=HttpMethod.POST)
     async def connection_timeout(self) -> str:
         """not yet"""
-        return "connection timeout"
+        raise ConnectionTimeout()
+        # return "connection timeout"
 
     @http_task(method=HttpMethod.POST)
     async def connection_exceed(self) -> str:
         """Add number of connection until limitation"""
-        return "connection exceed"
+        raise ConnectionExceed()
+        # return "connection exceed"
 
     @http_task(method=HttpMethod.POST)
     async def task_timeout(self) -> str:
         """Didn't return anything during DEFAULT TIMEOUT"""
-        await asyncio.sleep(5.1)
-        return "task timeout"
+        raise TaskTimeout()
+        # await asyncio.sleep(5.1)
+        # return "task timeout"
