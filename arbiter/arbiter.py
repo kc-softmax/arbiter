@@ -168,7 +168,7 @@ class Arbiter:
                 # fail to pickle data, maybe it is a string
                 return data.decode()
         except TimeoutError as e:
-            print(f"Timeout in getting response from {message_id}: {e}")
+            return e
         except Exception as e:
             print(f"Error in getting response from {message_id}: {e})")
         return None
@@ -180,11 +180,13 @@ class Arbiter:
     ) -> Any | None:
         try:
             async for data in self.listen(message_id, timeout):
+                if not data:
+                    continue
                 pickled_data = get_pickled_data(data)
                 if pickled_data is not None:
                     yield pickled_data
-                # fail to pickle data, maybe it is a string
-                yield data.decode()
+                else:
+                    yield data.decode()
         except asyncio.CancelledError:
             pass
         except TimeoutError as e:
