@@ -258,34 +258,6 @@ class ArbiterHttpTask(ArbiterTask):
             **kwargs
         )
         self.method = method
-<<<<<<< HEAD
-=======
-
-
-class ArbiterAsyncTask(BaseTask):
-
-    def __call__(self, func: Callable) -> Callable:
-        super().__call__(func)
-        @functools.wraps(func)
-        async def wrapper(arbiter: Arbiter, queue: str, instance: Callable = None):
-            worker_required = getattr(func, "worker_required", False)
-            if worker_required:
-                assert instance, "Worker instance is required"
-            async for message in arbiter.listen_bytes(queue):
-                try:
-                    target, data = pickle.loads(message)
-                    kwargs = {'self': instance} if instance else {}
-                    if data:
-                        params = self.parse_data(data)
-                        kwargs.update(params)
-                    async for results in func(**kwargs):
-                        results = self.pack_data(results)
-                        await arbiter.push_message(target, results)
-                    await arbiter.push_message(target, ASYNC_TASK_CLOSE_MESSAGE)                        
-                except Exception as e:
-                    print(e)
-        return wrapper
->>>>>>> d404e7f ([UPDATE] exception send to apiapp)
     
 class ArbiterStreamTask(ArbiterTask):
     def __init__(
