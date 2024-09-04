@@ -164,7 +164,7 @@ class BaseTask:
             setattr(func, attribute, value)
     
     def pack_data(self, data: Any) -> Any:
-        # MARK TODO Change 
+        # MARK TODO Change
         if isinstance(data, BaseModel):
             packed_data = data.model_dump_json()
         else:
@@ -184,12 +184,22 @@ class BaseTask:
                 )
             return params
         try:
-            data: dict[str, Any] = json.loads(data)
+            if not isinstance(data, dict):
+                data: dict[str, Any] = json.loads(data)
             """
                 사용자로 부터 받은 데이터를 request_params에 맞게 파싱한다.
             """
+            if isinstance(data, list):
+                # temphandle list of data
+                # task params에 기본값을 제외한 걸 가져온다
+                without_default_params = {k: v for k, v in self.params.items() if v.default == inspect.Parameter.empty}
+                if len(without_default_params) != len(data):
+                    raise ValueError("Invalid data length")
+                # 순서대로 매핑하여 request_body를 만든다.
+                data = {k: v for k, v in zip(without_default_params.keys(), data)}
             params = parse_request_body(data, self.params)
-        except (json.JSONDecodeError, TypeError):
+        except (json.JSONDecodeError, TypeError) as e:
+            print(e)
             # if len(self.params) != 1:
                 # 이렇게되면, 첫번째 파라미터에만 데이터가 들어가게 된다.
             param_name = list(self.params.keys())[0]
@@ -207,7 +217,7 @@ class ArbiterTask(BaseTask):
                 try:                    
                     message_id, data = get_pickled_data(message)
                     params = {'self': instance}
-                    params.update(self.parse_data(data))                        
+                    params.update(self.parse_data(data))
                     results = await func(**params)
                     if not getattr(func, "has_response", False):
                         continue
@@ -230,7 +240,6 @@ class ArbiterAsyncTask(ArbiterTask):
                     message_id, data = get_pickled_data(message)
                     params = {'self': instance}
                     params.update(self.parse_data(data))                        
-                        
                     async for results in func(**params):
                         results = self.pack_data(results)
                         await arbiter.push_message(message_id, results)

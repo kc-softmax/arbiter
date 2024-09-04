@@ -1,4 +1,5 @@
 import os
+import json
 import configparser
 import platform
 import re
@@ -228,6 +229,12 @@ def create_model_from_schema(schema: dict) -> BaseModel:
     return create_model(schema['title'], **fields)  
 
 def convert_param(param_type: type, request_param: Any) -> Any:
+    # request_param을 한번 더 json.loads를 시도한다>
+    if isinstance(request_param, str):
+        try:
+            request_param = json.loads(request_param)
+        except json.JSONDecodeError:
+            pass
     if issubclass(param_type, BaseModel):
         return param_type.model_validate(request_param)
     else:
