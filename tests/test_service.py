@@ -17,9 +17,10 @@ from arbiter.task import (
     task
 )
 from arbiter.exceptions import (
-    ConnectionExceed,
-    ConnectionTimeout,
-    TaskTimeout
+    TaskConnectionExceed,
+    TaskConnectionTimeout,
+    TaskExecutionTimeout,
+    TaskAlreadyRegistered
 )
 
 
@@ -177,23 +178,33 @@ class TestService(ArbiterService):
 
 
 ### exception test worker ###
-class TestException(ArbiterWorker):
+class TestException(ArbiterService):
 
     @http_task(method=HttpMethod.POST)
     async def connection_timeout(self) -> str:
         """not yet"""
-        raise ConnectionTimeout()
+        raise TaskConnectionTimeout()
         # return "connection timeout"
 
     @http_task(method=HttpMethod.POST)
     async def connection_exceed(self) -> str:
         """Add number of connection until limitation"""
-        raise ConnectionExceed()
+        raise TaskConnectionExceed()
         # return "connection exceed"
 
     @http_task(method=HttpMethod.POST)
     async def task_timeout(self) -> str:
         """Didn't return anything during DEFAULT TIMEOUT"""
-        raise TaskTimeout()
+        raise TaskExecutionTimeout()
         # await asyncio.sleep(5.1)
         # return "task timeout"
+
+    @http_task(method=HttpMethod.POST)
+    async def check_error(self, error_type: str) -> str:
+        """Check all of error"""
+        match error_type:
+            case "0": raise TaskAlreadyRegistered()
+            case "1": raise TaskConnectionExceed()
+            case "2": raise TaskConnectionTimeout()
+            case "3": raise TaskExecutionTimeout()
+            case _: raise Exception("Unknown Error")

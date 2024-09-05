@@ -31,6 +31,7 @@ from arbiter.enums import (
     StreamCommunicationType
 )
 from arbiter.server.constants import SubscribeChannel
+from arbiter.exceptions import TaskBaseError
 
 class ArbiterApiApp(FastAPI):
 
@@ -141,6 +142,9 @@ class ArbiterApiApp(FastAPI):
                     return
                 
                 response = await app.arbiter.get_message(message_id)
+                if isinstance(response, Exception):
+                    raise response
+
                 # 값을 보낼때는 그냥 믿고 보내준다.
                 # 타입이 다르다고 하더라도, 그냥 보내준다.                
                 # 검사를 해야한다 두 타입이 일치 하는지
@@ -157,6 +161,8 @@ class ArbiterApiApp(FastAPI):
                 #     if DynamicResponseModel != type(response):
                 #         raise HTTPException(status_code=400, detail=f"Response type is not valid")
                 return response
+            except TaskBaseError as e:
+                raise e
             except Exception as e:
                 raise HTTPException(status_code=400, detail=f"Failed to get response {e}")
 

@@ -222,11 +222,13 @@ class ArbiterTask(BaseTask):
                     if not getattr(func, "has_response", False):
                         continue
                     response = self.pack_data(results)
+                except Exception as e:
+                    print(e, "exception in task")
+                    response = self.pack_data(e)
+                finally:
                     await arbiter.push_message(
                         message_id, 
                         response)
-                except Exception as e:
-                    print(e, "exception in task")
         return wrapper
 
 class ArbiterAsyncTask(ArbiterTask):
