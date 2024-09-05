@@ -25,3 +25,9 @@ def test_exception_task_timeout():
     with httpx.Client(base_url=base_url.format(protocol="http")) as arbiter:
         response = arbiter.post("/test_exception/task_timeout", timeout=10)
         assert response.json()['detail'], logger.error(response.text)
+
+
+def test_exception_cases():
+    with httpx.Client(base_url=base_url.format(protocol="http")) as arbiter:
+        response = arbiter.post("/test_exception/check_error?error_type=0", timeout=10)
+        assert response.json()['detail'], logger.error(response.text)

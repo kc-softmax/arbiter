@@ -57,29 +57,41 @@ class ServiceBaseError(BaseError):
 class TaskBaseError(BaseError):
     """Task Node Level Error"""
 
+    def __init__(self, *args: object) -> None:
+        super().__init__(*args)
 
-class ConnectionTimeout(TaskBaseError):
+
+class TaskConnectionTimeout(TaskBaseError):
     """When connection timeout with other system resource"""
 
-    def __init__(self, message: str = "system resource timeout when connect", timeout: int = 5) -> None:
-        self.message = message
-        self.timeout = timeout
-        super().__init__(f"{self.message}, {self.timeout}s")
+    def __init__(self, *args, **kwargs) -> None:
+        self.message = kwargs.get("message", "system resource timeout when connect")
+        self.timeout = kwargs.get("timeout", 5)
+        super().__init__(f"{self.message} {self.timeout}s")
 
 
-class ConnectionExceed(TaskBaseError):
+class TaskConnectionExceed(TaskBaseError):
     """When connection exceeded with other system resource"""
 
-    def __init__(self, message: str = "Exceed number of maximum connection", number: int = 5) -> None:
-        self.message = message
-        self.number = number
-        super().__init__(f"{self.message}, {self.number}")
+    def __init__(self, *args, **kwargs) -> None:
+        self.message = kwargs.get("message", "Exceed number of maximum connection")
+        self.number = kwargs.get("number", 5)
+        super().__init__(f"{self.message} {self.number}")
 
 
-class TaskTimeout(TaskBaseError):
+class TaskExecutionTimeout(TaskBaseError):
     """When timeout in logic"""
 
-    def __init__(self, message: str = "task timeout in running", timeout: int = 5) -> None:
-        self.message = message
-        self.timeout = timeout
-        super().__init__(f"{self.message}, {self.timeout}s")
+    def __init__(self, *args, **kwargs) -> None:
+        self.message = kwargs.get("message", "task timeout in running")
+        self.timeout = kwargs.get("timeout", 5)
+        super().__init__(f"{self.message} {self.timeout}s")
+
+
+class TaskAlreadyRegistered(TaskBaseError):
+    """When timeout in logic"""
+
+    def __init__(self, *args, **kwargs) -> None:
+        self.message = kwargs.get("message", "task already registered")
+        self.task_name = kwargs.get("task_name")
+        super().__init__(f"{self.message} {self.task_name}")
