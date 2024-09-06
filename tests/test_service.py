@@ -50,7 +50,27 @@ class TestService(ArbiterService):
     
     # input과 output을 모두 검사
     @http_task(method=HttpMethod.POST, queue="num_of_params", num_of_tasks=1)
-    async def num_of_param(self, param: NumOfParam) -> Receive:
+    async def num_of_param(self, param: NumOfParam) -> Receive | None:
+        return Receive(
+            first=param.first,
+            second='second',
+            third=True,
+        )
+
+    @http_task(method=HttpMethod.POST)
+    async def single_params(self, token: str) -> str:
+        return token + 'single_params'
+
+    @http_task(method=HttpMethod.POST)
+    async def two_params(self, user_id: int, item_id: int | None) -> Receive | None:
+        return Receive(
+            first=1,
+            second='second',
+            third=True,
+        )
+
+    @http_task(method=HttpMethod.POST)
+    async def list_params(self, user_ids: list[int], item_ids: list[NumOfParam]) -> Receive | None:
         return Receive(
             first=1,
             second='second',
@@ -93,38 +113,47 @@ class TestService(ArbiterService):
 
     # 이 두개를 어떻게 묶을 것인가? 시스템적으로 묶으려면,... task에 dependency를 넣어야 할 것 같다.
     # 일단 내부에서 사용하려면 이렇게 해야할 것 같다.    
-    @task()
-    async def return_task(self, data: Any) -> Receive:
+    @task(queue="test_service_return_task")
+    async def return_task(self, data: int) -> Receive:
         return Receive(
-            first=1,
+            first=data,
             second='1',
             third=True,
         )
     
-    @async_task()
-    async def return_async_task(self, data: Any):
+    @async_task(queue="test_service_return_async_task")
+    async def return_async_task(self, data: str, item_id: int) -> AsyncGenerator[str, None]:
         for i in range(3):
-            yield f"{data} return_async_task qwer qwer {i}"
-            await asyncio.sleep(1)
+            yield f"{data} return_async_task qwer qwer {i}, {item_id}"
+            await asyncio.sleep(0.1)
     
     @http_task(method=HttpMethod.POST)
     async def task_chain(self):
-        response = await self.send_task(
-            queue="test_service_return_task",
-            data='3434',
-            wait_response=True)
+        response = await self.arbiter.async_task(
+            target="test_service_return_task",
+            data='3434')
         return response
 
     @http_task(method=HttpMethod.POST)
+    async def async_task_chain(self):
+        async for response in self.arbiter.async_stream_task(
+            target="test_service_return_async_task",
+            data='3434',
+            item_id=3
+        ):
+            print(response)
+
+    @http_task(method=HttpMethod.POST)
     async def return_constant(self):
-        return "HI"
+        x = 4
+        return x
     
     @http_task(method=HttpMethod.POST)
     async def return_annotation(self) -> str:
         return "it's me"
     
     @http_task(method=HttpMethod.POST)
-    async def return_pydantic_model(self) -> list[TestModel]:
+    async def return_pydantic_model(self) -> list[TestModel | None]:
         return []
 
     @stream_task(

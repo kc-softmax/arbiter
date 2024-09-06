@@ -9,16 +9,27 @@ from arbiter.enums import (
 
 ############################################
 class DefaultModel(BaseModel):
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    #abstarct
+    
+    def get_id(self) -> str:
+        raise NotImplementedError()
 
 class ArbiterBaseModel(DefaultModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
     
+    def get_id(self) -> str:
+        return self.id
+    
 class ArbiterBaseNode(DefaultModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     state: NodeState
     shutdown_code: str = Field(default_factory=lambda: str(uuid.uuid4()))
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
+
+    def get_id(self) -> str:
+        return self.id
 
 ############################################
 class ArbiterModel(ArbiterBaseModel):
@@ -46,8 +57,8 @@ class ArbiterNode(ArbiterBaseNode):
 class ArbiterServerModel(ArbiterBaseModel):
     arbiter_model_id: str
     num_of_services: int = Field(default=1)
-    http_task_models: list[ArbiterHttpTaskModel] = Field(default_factory=list)
-    stream_task_models: list[ArbiterStreamTaskModel] = Field(default_factory=list)
+    http_task_models: list[ArbiterTaskModel] = Field(default_factory=list)
+    stream_task_models: list[ArbiterTaskModel] = Field(default_factory=list)
 
 class ArbiterServerNode(ArbiterBaseNode):
     arbiter_node_id: str
@@ -59,11 +70,6 @@ class ArbiterServiceModel(ArbiterBaseModel):
     auto_start: bool = Field(default=False)
     num_of_services: int = Field(default=1)
     task_models: list[ArbiterTaskModel] = Field(default_factory=list)
-    async_task_models: list[ArbiterAsyncTaskModel] = Field(default_factory=list)
-    http_task_models: list[ArbiterHttpTaskModel] = Field(default_factory=list)
-    stream_task_models: list[ArbiterStreamTaskModel] = Field(default_factory=list)
-    periodic_task_models: list[ArbiterPeriodicTaskModel] = Field(default_factory=list)
-    subscribe_task_models: list[ArbiterSubscribeTaskModel] = Field(default_factory=list)
     
     def get_service_name(self) -> str:
         return f"{self.name}_{self.id}"
@@ -77,53 +83,36 @@ class ArbiterServiceNode(ArbiterBaseNode):
     description: Optional[str] = Field(default=None)
     
 ############################################
-class ArbiterTaskModel(ArbiterBaseModel):
+class ArbiterTaskModel(DefaultModel):
+    name: str
+    queue: str
     service_name: str
     num_of_tasks: int
-    queue: str
-    params: str = Field(default='')
-    response: str = Field(default='')
+    transformed_parameters: str = Field(default='')
+    transformed_return_type: str = Field(default='')
     activate_duration: int = Field(default=0)
     cold_start: bool = Field(default=False)
     raw_message: bool = Field(default=False)
     retry_count: int = Field(default=0)
     task_nodes: list[ArbiterTaskNode] = Field(default_factory=list)
     
-    def __eq__(self, other: ArbiterTaskModel) -> bool:
-        return self.name == other.name and self.queue == other.queue
-
-class ArbiterAsyncTaskModel(ArbiterTaskModel):
-    # async task model, 나누는 이유는 검사를 위해
-    pass
-
-class ArbiterHttpTaskModel(ArbiterTaskModel):
-    # http task model, 나누는 이유는 검사를 위해
     method: int = Field(default=0)
-
-class ArbiterStreamTaskModel(ArbiterTaskModel):
+    stream: bool = Field(default=False)
     connection: int = Field(default=0)
     communication_type: int = Field(default=0)
     num_of_channels: int = Field(default=1)
-
-class ArbiterPeriodicTaskModel(ArbiterTaskModel):
     interval: int = Field(default=0)
-    
-class ArbiterSubscribeTaskModel(ArbiterTaskModel):
     channel: str = Field(default='')
+    def get_id(self) -> str:
+        return self.queue
+    
+    def __eq__(self, other: ArbiterTaskModel) -> bool:
+        return self.name == other.name and self.queue == other.queue
 
 class ArbiterTaskNode(ArbiterBaseNode):
     model: ArbiterTaskModel
     service_node: ArbiterServiceNode
-    pass
-#     task_meta: TaskMeta
-#     shutdown_code: str = Field(default_factory=lambda: str(uuid.uuid4()))
-#     description: Optional[str] = Field(default=None)
-    
-#     def get_task_name(self) -> str:
-#         return f"{self.task_meta.name}_{self.id}"
-    
-#     def get_task_channel(self) -> str:
-#         return f"__task__{self.get_task_name()}"
+
 
 
 # class ArbiterTaskModel(DefaultModel):

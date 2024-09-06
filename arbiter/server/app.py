@@ -4,7 +4,7 @@ import uuid
 import asyncio
 import pickle
 from pydantic import create_model, BaseModel, ValidationError
-from typing import Union, Type, Any
+from typing import Union, Type, Any, Optional, get_args
 from fastapi import FastAPI, Query, WebSocket, Depends, WebSocketDisconnect, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
@@ -13,15 +13,13 @@ from fastapi.websockets import WebSocketState
 from arbiter.server.exceptions import BadRequest
 from arbiter import Arbiter
 from arbiter.utils import (
+    is_optional_type,
     to_snake_case,
-    create_model_from_schema,
-    get_type_from_type_name, 
-    get_pickled_data
+    get_pickled_data,
+    restore_type,
 )
 from arbiter.data.models import (
     ArbiterTaskModel,
-    ArbiterHttpTaskModel,
-    ArbiterStreamTaskModel,
     ArbiterServerModel
 )
 from arbiter.data.messages import ArbiterStreamMessage
@@ -68,111 +66,55 @@ class ArbiterApiApp(FastAPI):
             allow_headers=allow_headers,
             allow_credentials=allow_credentials,
         )
-        self.stream_routes: dict[str, dict[str, ArbiterStreamTaskModel]] = {}
-        
-    def get_dynamic_models(
-        self,
-        task_function: ArbiterTaskModel,
-    ):
-        DynamicRequestModel = None
-        DynamicResponseModel = None
-        list_response = False
-        list_request = False
-        try:
-            if response := task_function.response:
-                response_type = json.loads(response)
-                list_response = isinstance(response_type, list)
-                if list_response:
-                    response_type = response_type[0]
-                if not response_type:
-                    DynamicResponseModel = None                    
-                elif isinstance(response_type, dict):
-                    DynamicResponseModel = create_model_from_schema(response_type)
-                else:
-                    DynamicResponseModel = get_type_from_type_name(response_type)
-                if list_response:
-                    DynamicResponseModel = list[DynamicResponseModel]
-                    
-            if params := task_function.params:
-                dynamic_params = {}
-                params: dict[str, str] = json.loads(params)
-                for name, flat_annotation in params.items():
-                    param = None
-                    list_param = isinstance(flat_annotation, list)
-                    if list_param:
-                        param = param[0]                        
-                    if isinstance(flat_annotation, dict):
-                        param_model = create_model_from_schema(flat_annotation)
-                    else:
-                        param_model = flat_annotation                        
-                    if list_request:
-                        param_model = list[param_model]
-                    dynamic_params[name] = (param_model, ...)
-                DynamicRequestModel = create_model(task_function.name + "Model", **dynamic_params)
-            return DynamicRequestModel, DynamicResponseModel
-        except Exception as e:
-            for k, v in params.items():
-                for name, details in v['properties'].items():
-                    print(name, details)
-                    print()
-            print('err in get_dynamic_models', e)
-            return None, None
+        self.stream_routes: dict[str, dict[str, ArbiterTaskModel]] = {} 
 
     def generate_http_function(
         self,
-        task_function: ArbiterHttpTaskModel,
+        task_function: ArbiterTaskModel,
     ):
-        def get_task_function() -> ArbiterHttpTaskModel:
+        def get_task_function() -> ArbiterTaskModel:
             return task_function
         def get_app() -> ArbiterApiApp:
             return self
+       
         service_name = task_function.service_name
         path = f'/{to_snake_case(service_name)}/{task_function.name}'
-        DynamicRequestModel, DynamicResponseModel = self.get_dynamic_models(task_function)
-        async def dynamic_function(
-            data: Type[BaseModel] = Depends(DynamicRequestModel),  # 동적으로 생성된 Pydantic 모델 사용 # type: ignore
-            app: ArbiterApiApp = Depends(get_app),
-            task_function: ArbiterHttpTaskModel = Depends(get_task_function),
-        ) -> Union[dict, list[dict], None]:
-            try:
-                message_id = await app.arbiter.send_message(
-                    target=task_function.queue,
-                    data=data.model_dump_json())
-                if not DynamicResponseModel:
-                    return
-                
-                response = await app.arbiter.get_message(message_id)
-                if isinstance(response, Exception):
-                    raise response
 
-                # 값을 보낼때는 그냥 믿고 보내준다.
-                # 타입이 다르다고 하더라도, 그냥 보내준다.                
-                # 검사를 해야한다 두 타입이 일치 하는지
-                if issubclass(DynamicResponseModel, BaseModel):
-                    try:
-                        response = DynamicResponseModel.model_validate_json(response)
-                    except:
-                        # DynamicResponseModel로 packing 되는 경우도 있기 때문에
-                        pass
-                # if DynamicResponseModel and DynamicResponseModel != Any:
-                #     # 검사를 해야한다 두 타입이 일치 하는지
-                #     if issubclass(DynamicResponseModel, BaseModel):
-                #         response = DynamicResponseModel.model_validate_json(response)
-                #     if DynamicResponseModel != type(response):
-                #         raise HTTPException(status_code=400, detail=f"Response type is not valid")
-                return response
+        try:
+            parameters: dict = json.loads(task_function.transformed_parameters)
+            parameters = {
+                k: (restore_type(v), ...)
+                for k, v in parameters.items()
+            }
+            requset_model = create_model(task_function.name, **parameters)
+            return_type = restore_type(json.loads(task_function.transformed_return_type))
+        except Exception as e:
+            print('Error in generate_http_function', e)
+        
+        async def dynamic_post_function(
+            data: Type[BaseModel] = Depends(requset_model),  # 동적으로 생성된 Pydantic 모델 사용 # type: ignore
+            app: ArbiterApiApp = Depends(get_app),
+            task_function: ArbiterTaskModel = Depends(get_task_function),
+        ):
+            try:
+                results = await app.arbiter.async_task(
+                    target=task_function.queue,
+                    **data.model_dump())
+                                
+                if isinstance(results, Exception):
+                    raise results
+                return results
             except TaskBaseError as e:
                 raise e
             except Exception as e:
                 raise HTTPException(status_code=400, detail=f"Failed to get response {e}")
 
-        http_method = HttpMethod(task_function.method)
         # TODO MARK : GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD, TRACE, CONNECT
         self.router.post(
             path,
             tags=[service_name],
-            response_model=DynamicResponseModel
-        )(dynamic_function)
+            response_model=return_type
+        )(dynamic_post_function)
 
     def generate_stream_function(
             self,
@@ -198,23 +140,12 @@ class ArbiterApiApp(FastAPI):
                                 await websocket.send_text(json.dumps(data))
                                 break
                             data = get_pickled_data(data)
-                            
-                            # if DynamicResponseModel and issubclass(DynamicResponseModel, BaseModel):
-                            #     try:
-                            #         data = DynamicResponseModel.model_validate_json(data)
-                            #     except Exception as e:
-                            #         print(f"Error in model_validate_json {e}")
-                            #     # DynamicResponseModel로 packing 되는 경우도 있기 때문에
-                            #         pass
-                            # if isinstance(data, BaseModel):
-                            #     data = data.model_dump()
                             data = {"from": queue, "data": data}
                             await websocket.send_text(json.dumps(data))
                     except asyncio.CancelledError:
                         pass
 
                 async def message_subscribe_channel(websocket: WebSocket, channel: str, pubsub_id: str):
-                    # print(f"Start of message_subscribe_channel {channel}")
                     try:
                         async for data in self.arbiter.subscribe_listen(channel, pubsub_id):
                             data = get_pickled_data(data)
@@ -222,12 +153,12 @@ class ArbiterApiApp(FastAPI):
                                 data = data.model_dump()
                             data = {"from": channel, "data": data}
                             await websocket.send_text(json.dumps(data))
-                    except asyncio.CancelledError:
+                    except asyncio.CancelledError as e:
+                        print(e)
                         pass
-                        # print(f"Subscription to {channel} cancelled")
-                    # finally:
-                        # print(f"End of message_subscribe_channel {channel}")
-
+                    except Exception as e:
+                        print(e)
+                
                 stream_route = self.stream_routes[service_name]
                 # query에 관한 처리가 있어야 한다.
                 # service의 handle query 같은것이 필요하다.
@@ -304,6 +235,7 @@ class ArbiterApiApp(FastAPI):
                                             pubsub_channels.append(pubsub_id)
                                             subscribe_tasks[new_subscribe_channel] = asyncio.create_task(
                                                 message_subscribe_channel(websocket, destination, pubsub_id))
+                                            await asyncio.sleep(0.1)
 
                                 target_task_function = task_function
                                 if not stream_message.data:
@@ -317,16 +249,9 @@ class ArbiterApiApp(FastAPI):
                                 if not response_task or response_task.done():
                                     response_task = asyncio.create_task(
                                         message_listen_queue(websocket, response_queue, 0))
-                                # if target_task_function.connection_info:
-                                #     data = {
-                                #         "connection_info": {
-                                #             "host": websocket.client.host,
-                                #             "port": websocket.client.port
-                                #         },
-                                #         "data": stream_message.data
-                                #     }
-                                # else:
                                 data = stream_message.data
+                                if not isinstance(data, dict):
+                                    data = [data]
                                 data = pickle.dumps((destination, data))
                                 await self.arbiter.push_message(
                                     target_task_function.queue,

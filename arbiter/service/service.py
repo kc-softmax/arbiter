@@ -1,12 +1,8 @@
 from __future__ import annotations
-import pickle
-import json
 import inspect
 import asyncio
 import pickle
-import uuid
 from typing import  Any, Callable
-from pydantic import BaseModel
 from arbiter.enums import NodeState
 from arbiter.constants import (
     HEALTH_CHECK_RETRY,
@@ -15,7 +11,7 @@ from arbiter.constants import (
     ARBITER_SERVICE_TIMEOUT,
 )
 from arbiter.data.models import ArbiterServiceNode, ArbiterServerNode, ArbiterNode
-from arbiter.utils import get_task_queue_name, get_pickled_data
+from arbiter.utils import get_task_queue_name
 from arbiter.exceptions import ArbiterServiceHealthCheckError
 from arbiter import Arbiter
 
@@ -122,89 +118,6 @@ class ArbiterService(metaclass=ServiceMeta):
         
     async def on_start(self):
         pass
-    
-
-# test_func("TaskQueue.GET_USER_INFO", 1, 3, 4, user_id=1, test="test")
-    async def async_task(self, target: str, *args, **kwargs):
-
-        assert len(args) == 0 or len(kwargs) == 0, "currently, args and kwargs cannot be used together"
-        data: list | dict = None
-        if len(args) > 0:
-            data = []
-            for arg in args:
-                # assert isinstance(arg, (str, int, float, bool)), "args must be str, int, float, bool"
-                if isinstance(arg, BaseModel):
-                    data.append(arg.model_dump_json())
-                else:
-                    data.append(arg)
-        elif len(kwargs) > 0:
-            data = {}
-            for key, value in kwargs.items():
-                # assert isinstance(value, (str, int, float, bool)), "args must be str, int, float, bool"
-                if isinstance(value, BaseModel):
-                    data[key] = value.model_dump_json()
-                else:
-                    data[key] = value
-        else:
-            data = None
-            
-        message_id = await self.arbiter.send_message(
-            target=target,
-            data=data
-        )
-        results = await self.arbiter.get_message(message_id)
-        if isinstance(results, TimeoutError):
-            return None
-            # raise TimeoutError
-        try:
-            results = json.loads(results)
-        except json.JSONDecodeError as e:
-            pass
-            # print('json', e)
-        except Exception as e:
-            # print('unexpected', e)
-            pass
-        
-        return results
-
-    async def async_stream_task(self, target: str, *args, **kwargs):
-        assert len(args) == 0 or len(kwargs) == 0, "currently, args and kwargs cannot be used together"
-        data: list | dict = None
-        if len(args) > 0:
-            data = []
-            for arg in args:
-                # assert isinstance(arg, (str, int, float, bool)), "args must be str, int, float, bool"
-                if isinstance(arg, BaseModel):
-                    data.append(arg.model_dump_json())
-                else:
-                    data.append(arg)
-        elif len(kwargs) > 0:
-            data = {}
-            for key, value in kwargs.items():
-                # assert isinstance(value, (str, int, float, bool)), "args must be str, int, float, bool"
-                if isinstance(value, BaseModel):
-                    data[key] = value.model_dump_json()
-                else:
-                    data[key] = value
-        else:
-            data = None
-            
-        message_id = await self.arbiter.send_message(
-            target=target,
-            data=data
-        )
-        
-        async for result in self.arbiter.get_stream(message_id):
-            try:
-                result = json.loads(result)
-            except json.JSONDecodeError:
-                pass
-            yield result
-        # results = await self.arbiter.get_message(message_id)
-        # if isinstance(results, TimeoutError):
-        #     return None
-        #     # raise TimeoutError
-        # return json.loads(results)
 
     async def start(self):
         error = None

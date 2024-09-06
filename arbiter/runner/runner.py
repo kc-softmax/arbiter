@@ -162,11 +162,6 @@ class ArbiterRunner:
             create_config(arbiter_setting)
         config = read_config(arbiter_setting)
 
-        # config = read_config(CONFIG_FILE)
-        # if config is None:
-        #     create_config()
-        #     config = read_config(CONFIG_FILE)
-        # update config with command line arguments
         
         """
         Set the config to the app.

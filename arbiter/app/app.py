@@ -6,6 +6,7 @@ import sys
 import time
 import json
 import importlib
+from collections import defaultdict
 from configparser import ConfigParser
 from asyncio.subprocess import Process
 from inspect import Parameter
@@ -31,11 +32,6 @@ from arbiter.data.models import (
     ArbiterServiceModel,
     ArbiterServiceNode,
     ArbiterTaskModel,
-    ArbiterAsyncTaskModel,
-    ArbiterHttpTaskModel,
-    ArbiterStreamTaskModel,
-    ArbiterPeriodicTaskModel,
-    ArbiterSubscribeTaskModel,
     ArbiterTaskNode,
     ArbiterServerModel,
     ArbiterServerNode,
@@ -62,12 +58,14 @@ from arbiter.exceptions import (
     ArbiterInconsistentServiceModelError
 )
 from arbiter.utils import (
+    restore_type,
     get_ip_address,
     fetch_data_within_timeout,
     get_data_within_timeout,
     get_pickled_data,
     get_task_queue_name,
     terminate_process,
+    transform_type_from_annotation,
     # find_python_files_in_path,
     # get_all_subclasses
 )
@@ -174,7 +172,7 @@ class ArbiterApp:
                     self.arbiter_model.service_models.append(service_model)
                     await self.arbiter.save_data(self.arbiter_model)
                 await self.arbiter.save_data(service_model)
-                    
+   
             await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.PREPARATION.name}...ok"))
         except Exception as e:
             await self._warp_in_queue.put(
@@ -436,27 +434,28 @@ class ArbiterApp:
     
     async def _stop_service(self, service_id: int):
         # 해당 서비스 id를 가진 서비스를 찾아서 종료한다.
-        if service := await self.arbiter.get_data(Service, service_id):
-            if service.state != ServiceState.ACTIVE:
-                return
-            #node 에게
-            await self.arbiter.update_data(service, state=ServiceState.STOPPED)
-            fetch_data = lambda: self.arbiter.get_data(
-                Service,
-                service_id
-            )
-            try:
-                result = await get_data_within_timeout(
-                    timeout=ARBITER_SERVICE_PENDING_TIMEOUT,
-                    fetch_data=fetch_data,
-                    check_condition=lambda data: data.state == ServiceState.INACTIVE,
-                )
-                if not result:
-                    # failed to stop service
-                    raise Exception('Failed to stop service')
-            except Exception as e:
-                # add faield log in the future
-                pass
+        pass
+        # if service := await self.arbiter.get_data(Service, service_id):
+        #     if service.state != ServiceState.ACTIVE:
+        #         return
+        #     #node 에게
+        #     await self.arbiter.update_data(service, state=ServiceState.STOPPED)
+        #     fetch_data = lambda: self.arbiter.get_data(
+        #         Service,
+        #         service_id
+        #     )
+        #     try:
+        #         result = await get_data_within_timeout(
+        #             timeout=ARBITER_SERVICE_PENDING_TIMEOUT,
+        #             fetch_data=fetch_data,
+        #             check_condition=lambda data: data.state == ServiceState.INACTIVE,
+        #         )
+        #         if not result:
+        #             # failed to stop service
+        #             raise Exception('Failed to stop service')
+        #     except Exception as e:
+        #         # add faield log in the future
+        #         pass
  
     async def _start_service(self, service_model: ArbiterServiceModel) -> ArbiterServiceNode:
         service_node = ArbiterServiceNode(
@@ -521,11 +520,13 @@ class ArbiterApp:
         for service_model in self.arbiter_model.service_models:
             # service_model의 등록된 http_task_models, stream_task_models를 가져온다.
             # server model의 http_task_model 및 stream_task_model을 비교하여 없다면 추가한다.
-            for task_model in service_model.http_task_models:
+            for task_model in service_model.task_models:
+                # task_model.connection 혹은 task_model.method가 있어야 한다.
+                if not task_model.connection and not task_model.method:
+                    continue
+                
                 if not any(task_model == http_task_model for http_task_model in registed_http_task_models):
-                    registed_http_task_models.append(task_model)
-                    
-            for task_model in service_model.stream_task_models:
+                    registed_http_task_models.append(task_model)                    
                 if not any(task_model == stream_task_model for stream_task_model in registed_stream_task_models):
                     registed_stream_task_models.append(task_model)
                     
@@ -539,18 +540,12 @@ class ArbiterApp:
         """
             Service Worker를 생성한다.
         """
-        name = service.__name__
+        service_name = service.__name__
         module_name = service.__module__
-        
         # task function을 먼저 검사한다.
-        assert len(service.task_functions) > 0, f"{name} has no task functions"
+        assert len(service.task_functions) > 0, f"{service_name} has no task functions"
         
         task_models: list[ArbiterTaskModel] = []
-        async_task_models: list[ArbiterAsyncTaskModel] = []
-        http_task_models: list[ArbiterHttpTaskModel] = []
-        stream_task_models: list[ArbiterStreamTaskModel] = []
-        periodic_task_models: list[ArbiterPeriodicTaskModel] = []
-        subscribe_task_models: list[ArbiterSubscribeTaskModel] = []
         
         for task_function in service.task_functions:
             task_type = getattr(task_function, 'task_type', None)
@@ -558,101 +553,76 @@ class ArbiterApp:
                          
             queue = getattr(task_function, 'queue', None)
             if not queue:
-                queue = get_task_queue_name(name, task_function.__name__)
-                
-            params = getattr(task_function, 'params', {})
-    
-            assert queue is not None, 'Task Queue is not found'
-            assert params is not None, 'Task Params is not found'
+                # task를 생성할때 queue를 지정하지 않으면 task function의 이름을 사용한다.
+                queue = get_task_queue_name(service_name, task_function.__name__)
+                        
+            parameters = getattr(task_function, 'parameters', {})
+            return_type = getattr(task_function, 'return_type', None)
             
-            task_response_type = getattr(task_function, 'response_type', None)
-            task_has_response = getattr(task_function, 'has_response', True)
-            # response type 이 있을경우 has_response는 True여야 한다.
-            assert task_response_type is None or task_has_response, 'Task has response but response type is not found'
+            transformed_parameters: dict[str, list] = defaultdict(list)
+            transformed_return_type: list = []
             
-            flatten_params = {}
-            flatten_response = ''
-            
-            for param_name, parameter in params.items():
-                assert isinstance(parameter, Parameter), f"{param_name} is not a parameter"
+            for name, parameter in parameters.items():
+                assert isinstance(parameter, Parameter), f"{name} is not a parameter"
                 annotation = parameter.annotation
-                param_model_type = None
-                flatten_param = None
-                origin = get_origin(annotation)
-                param_is_list = origin is list or origin is List
-                if param_is_list:
-                    param_model_type = get_args(annotation)[0]
-                else:
-                    param_model_type = annotation
-                if get_origin(param_model_type) is Union:
-                    flatten_param = param_model_type.__name__
-                elif get_origin(param_model_type) is UnionType:
-                    args = get_args(param_model_type)
-                    param_type = args[0] if args else None
-                    if not param_type:
-                        flatten_param = 'Any'
+                parameter_types = transform_type_from_annotation(annotation)
+                for parameter_type in parameter_types:
+                    if issubclass(parameter_type, BaseModel):
+                        transformed_parameters[name].append(parameter_type.model_json_schema())
                     else:
-                        flatten_param = param_type.__name__
-                elif issubclass(param_model_type, BaseModel):
-                    flatten_param = param_model_type.model_json_schema()
-                else:
-                    flatten_param = param_model_type.__name__
-                if param_is_list:
-                    flatten_param = [flatten_param]
-                flatten_params.update({param_name: flatten_param})
-                    
-            if task_has_response and task_response_type:
-                origin = get_origin(task_response_type)
-                response_is_list = origin is list or origin is List
-                response_model_type = None
-                if response_is_list:
-                    response_model_type = get_args(task_response_type)[0]
-                else:
-                    response_model_type = task_response_type
-                if issubclass(response_model_type, BaseModel):
-                    flatten_response = response_model_type.model_json_schema()
-                else:
-                    flatten_response = response_model_type.__name__
-                if response_is_list:
-                    flatten_response = [flatten_response]
-            
+                        transformed_parameters[name].append(parameter_type.__name__)
+            if return_type:
+                for return_type in transform_type_from_annotation(return_type):
+                    if issubclass(return_type, BaseModel):
+                        transformed_return_type.append(return_type.model_json_schema())
+                    else:
+                        transformed_return_type.append(return_type.__name__)
+                        
             task_data = dict(
                 name=task_function_name,
-                service_name=name,
+                service_name=service_name,
                 queue=queue,
                 num_of_tasks=getattr(task_function, 'num_of_tasks', 1),
-                params=json.dumps(flatten_params),
-                response=json.dumps(flatten_response),
+                transformed_parameters=json.dumps(dict(transformed_parameters)),
+                transformed_return_type=json.dumps(transformed_return_type),
             )
+            
             match task_type:
                 case "ArbiterTask":
-                    task_models.append(ArbiterTaskModel(**task_data))
+                    pass
                 case "ArbiterAsyncTask":
-                    async_task_models.append(ArbiterAsyncTaskModel(**task_data))
+                    task_data.update(
+                        stream=True)                    
                 case "ArbiterHttpTask":
                     task_data.update(method=getattr(task_function, 'method', 0))
-                    http_task_models.append(ArbiterHttpTaskModel(**task_data))
                 case "ArbiterStreamTask":
                     task_data.update(
                         connection=getattr(task_function, 'connection', 0),
                         communication_type=getattr(task_function, 'communication_type', 0),
                         num_of_channels=getattr(task_function, 'num_of_channels', 1))
-                    stream_task_models.append(ArbiterStreamTaskModel(**task_data))
                 case "ArbiterPeriodicTask":
                     task_data.update(interval=getattr(task_function, 'interval', 0))
-                    periodic_task_models.append(ArbiterPeriodicTaskModel(**task_data))
                 case "ArbiterSubscribeTask":
                     task_data.update(channel=getattr(task_function, 'channel', ''))
-                    subscribe_task_models.append(ArbiterSubscribeTaskModel(**task_data))
                 case _:
                     raise ValueError(f'Invalid Task Type - {task_type}')
+            task_model = ArbiterTaskModel(**task_data)
+
+            if task:= await self.arbiter.get_data(ArbiterTaskModel, queue):
+                if task != task_model:
+                    raise Exception("Task already exists")
+                    
+            
+
+            task_models.append(task_model)        
+            await self.arbiter.save_data(task_model)
         # 현재 arbiter model에 등록된 service model과 비교한다.
         get_service_models = lambda _name: [
             sm
             for sm in self.arbiter_model.service_models
             if sm.name == _name]
         
-        if already_service_models := get_service_models(name):
+        if already_service_models := get_service_models(service_name):
             # TODO if 기존 서비스 모델과 더 정교하게 비교하여 다른 경우에는 에러를 발생시킨다.
             # TODO task function이 다르면 에러를 발생시킨다.
             # raise ArbiterInconsistentServiceMetaError()
@@ -660,34 +630,14 @@ class ArbiterApp:
             for task_model in task_models:
                 if task_model not in service_model.task_models:
                     raise ArbiterInconsistentServiceModelError()
-            for async_task_model in async_task_models:
-                if async_task_model not in service_model.async_task_models:
-                    raise ArbiterInconsistentServiceModelError()
-            for http_task_model in http_task_models:
-                if http_task_model not in service_model.http_task_models:
-                    raise ArbiterInconsistentServiceModelError()
-            for stream_task_model in stream_task_models:
-                if stream_task_model not in service_model.stream_task_models:
-                    raise ArbiterInconsistentServiceModelError()
-            for periodic_task_model in periodic_task_models:
-                if periodic_task_model not in service_model.periodic_task_models:
-                    raise ArbiterInconsistentServiceModelError()
-            for subscribe_task_model in subscribe_task_models:
-                if subscribe_task_model not in service_model.subscribe_task_models:
-                    raise ArbiterInconsistentServiceModelError()
             return False, service_model
         else:
             service_model = ArbiterServiceModel(
-                name=name,
+                name=service_name,
                 module_name=module_name,
                 auto_start=service.auto_start,
                 num_of_services=service.num_of_services,
                 task_models=task_models,
-                async_task_models=async_task_models,
-                http_task_models=http_task_models,
-                stream_task_models=stream_task_models,
-                periodic_task_models=periodic_task_models,
-                subscribe_task_models=subscribe_task_models,
             )
             return True, service_model
      
@@ -701,7 +651,9 @@ class ArbiterApp:
                 if service_node is None:
                     # shutdown
                     break
-                service_model = await self.arbiter.get_data(ArbiterServiceModel, service_node.arbiter_service_model_id)
+                service_model = await self.arbiter.get_data(
+                    ArbiterServiceModel, 
+                    service_node.arbiter_service_model_id)
                 broker_host = self.config.get("broker", "host")
                 broker_port = self.config.get("broker", "port")
                 broker_password = self.config.get("broker", "password")
