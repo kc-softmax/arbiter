@@ -11,24 +11,30 @@ import inspect
 import time
 import asyncio
 import importlib
+import warnings
 import psutil
+from collections import abc
 from asyncio.subprocess import Process
 from datetime import datetime
 from pydantic import BaseModel, create_model
 from warnings import warn
 from inspect import Parameter
 from pathlib import Path
+from types import NoneType, UnionType
 from typing import (
+    AsyncGenerator,
+    Tuple,
     Union, 
     get_origin,
     get_args,
     Any,
+    Dict,
     List,
     Awaitable,
     Callable,
     Optional
 )
-from arbiter.constants import CONFIG_FILE
+from arbiter.constants import ALLOWED_TYPES, CONFIG_FILE
 
 async def check_redis_running(
     host: str = "localhost",
@@ -151,7 +157,102 @@ async def get_data_within_timeout(
             if data:
                 return data
         await asyncio.sleep(sleep_interval)
-    
+
+def is_optional_type(annotation: Any) -> bool:
+    origin = get_origin(annotation)
+    if origin is Union or isinstance(annotation, UnionType):
+        return type(None) in get_args(annotation)
+    return False
+
+def get_type_in_optional_type(annotation: Any) -> Any:
+    if is_optional_type(annotation):
+        args = get_args(annotation)
+        return [arg for arg in args if arg is not type(None)][0]
+    return annotation
+
+def restore_type(transformed_type: list[Any]) -> Any:
+    def get_type(type: Any) -> Any:
+        if isinstance(type, dict):
+            return create_model_from_schema(type)
+        else:
+            return get_type_from_type_name(type)
+        
+    if not transformed_type:
+        return None
+    elif len(transformed_type) == 1:
+        # single type
+        return get_type(transformed_type[0])
+    elif len(transformed_type) > 1:
+        # Union type or List type or Dict type
+        type_definition = transformed_type[0]
+        if type_definition == 'list' or type_definition == 'tuple':
+            return list[restore_type(transformed_type[1:])]
+        elif type_definition == 'dict':
+            key = transformed_type[1]
+            value = transformed_type[2]
+            key = restore_type(key) if isinstance(key, list) else get_type(key)
+            value = restore_type(value) if isinstance(value, list) else get_type(value)
+            return dict[key, value]
+        else:
+            return Union[tuple(get_type(type) for type in transformed_type)]
+    else:
+        return Any
+
+def transform_type_from_annotation(annotation: Any) -> list[type]:
+    parameter_types = []
+    if (
+        get_origin(annotation) == AsyncGenerator or 
+        get_origin(annotation) == types.AsyncGeneratorType or
+        get_origin(annotation) == abc.AsyncGenerator
+    ):
+        args = get_args(annotation)
+        if len(args) > 2:
+            raise ValueError(
+                f"Invalid return type: {annotation}, expected: AsyncGenerator[Type, None]")
+        if args[1] is not NoneType:
+            raise ValueError(
+                f"Invalid return type: {annotation}, expected: AsyncGenerator[Type, None]")
+        parameter_types = [args[0]]
+    elif (
+        get_origin(annotation) is Union or
+        isinstance(annotation, UnionType)
+    ):
+        parameter_types = get_args(annotation)
+    elif (
+        get_origin(annotation) is list or
+        get_origin(annotation) is tuple or
+        get_origin(annotation) is List or
+        get_origin(annotation) is Tuple
+    ):
+        parameters = get_args(annotation)
+        parameter_types = [list]
+        # TODO MARK 재귀함수로 만들어야 하나?
+        for parameter in parameters:
+            if (
+                get_origin(parameter) is Union or
+                isinstance(parameter, UnionType)
+            ):
+                parameter_types += get_args(parameter)
+            else:
+                parameter_types.append(parameter)
+    elif (
+        get_origin(annotation) is dict or
+        get_origin(annotation) is Dict
+    ):
+        if get_origin(annotation):
+            args = get_args(annotation)
+            if len(args) != 2:
+                raise ValueError(
+                    f"Invalid return type: {annotation}, expected: dict[Type, Type] or Dict[Type, Type]")
+            parameter_types = [dict, args[0], args[1]]
+        else:
+            parameter_types = [dict, Any, Any]    
+    else:
+        # check if return type is allowed
+        if not (annotation in ALLOWED_TYPES or issubclass(annotation, BaseModel)):
+            raise ValueError(f"Invalid response type: {annotation}, allowed types: {ALLOWED_TYPES}")                
+        parameter_types = [annotation]
+    return parameter_types
 
 def get_ip_address() -> str:
     """
@@ -166,7 +267,6 @@ def get_ip_address() -> str:
     except Exception as e:
         ip_address = ''
     return ip_address
-
 
 def get_pickled_data(data: bytes) -> None | Any:
     """
@@ -205,6 +305,8 @@ def get_type_from_type_name(type_name: str, default_type=None) -> type | None:
         'datetime': datetime,
         'array': list,
         'object': dict[str, Any],
+        'list': list[Any],
+        'dict': dict[Any, Any],
         'Any': Any,
     }
     return type_mapping.get(type_name, default_type)
@@ -228,106 +330,26 @@ def create_model_from_schema(schema: dict) -> BaseModel:
         fields[name] = (field_type, ...)
     return create_model(schema['title'], **fields)  
 
-def convert_param(param_type: type, request_param: Any) -> Any:
-    # request_param을 한번 더 json.loads를 시도한다>
-    if isinstance(request_param, str):
-        try:
-            request_param = json.loads(request_param)
-        except json.JSONDecodeError:
-            pass
-    if issubclass(param_type, BaseModel):
-        return param_type.model_validate(request_param)
-    else:
-        if param_type == bool:
-            # 특별 처리 로직
-            return request_param.lower() in ('true', '1', 'yes')
-        elif param_type == Any:
-            return request_param
-        return param_type(request_param)
+def convert_data_to_annotation(data: Any, annotation: Any) -> Any:
+    if data is None:
+        return None
+    valid_annotation = get_type_in_optional_type(annotation)
+    origin = get_origin(valid_annotation)
 
-def parse_request_body(
-    request_body: dict[str, Any],
-    func_params: dict[str, Parameter],
-) -> dict[str, Any]:
-    """
-        사용자 부터 받은 request_body를 func_params에 맞게 파싱합니다. 
-    """
-    params = {}
-    for param_name, param in func_params.items():
-        if param_name not in request_body:
-            # 사용자로 부터 받은 request_body에 param_name이 없다면
-            if param.default != inspect.Parameter.empty:
-                # 기본값이 있는 경우
-                params[param_name] = param.default
-            elif (
-                get_origin(param.annotation) is Union or
-                isinstance(param.annotation, types.UnionType)
-            ):
-                # Union type 이지만 None이 없는 경우
-                if type(None) not in get_args(param.annotation):
-                    raise ValueError(
-                        f"Invalid parameter: {param_name}, {param_name} is required")
-                # Optional type
-                params[param_name] = get_default_type_value(param)                            
-            else:
-                raise ValueError(
-                    f"Invalid parameter: {param_name}, {param_name} is required"
-                )
+    if origin is list or origin is List:        
+        args = get_args(valid_annotation)[0]
+        return [convert_data_to_annotation(item, args) for item in data]
+    else:
+        if issubclass(valid_annotation, BaseModel):
+            return valid_annotation.model_validate(data)
         else:
-            #사용자로 부터 받은 request_body에 param_name이 있다.
-            request_param = request_body.pop(param_name, None)
-            param_type = param.annotation
-            is_list = False
-            origin = get_origin(param_type)
-            if origin is list or origin is List:
-                if not isinstance(request_param, list):
-                    raise ValueError(
-                        f"Invalid parameter: {param_name}, {param_name} must be a list of {param_type.__name__}")
-                param_type = get_args(param_type)[0]
-                is_list = True
-            try:
-                if is_list:
-                    params[param_name] = [
-                        convert_param(item)
-                        for item in request_param]
-                else:
-                    params[param_name] = convert_param(param_type, request_param)
-            except Exception as e:
-                print(e)
-                raise ValueError(
-                    f"Invalid parameter: {param_name}, {e}")
-            
-    if request_body:
-        warn(f"Unexpected parameters: {request_body.keys()}")
-    
-    return params
-
-def get_default_type_value(param: Parameter) -> any:
-    annotation = param.annotation
-    if get_origin(annotation) is Union or isinstance(annotation, types.UnionType):
-        # Handle Union types
-        args = get_args(annotation)
-        if type(None) in args:
-            non_none_args = [arg for arg in args if arg is not type(None)]
-            if non_none_args:
-                # Recursively get the default value for the non-None type
-                return get_default_type_value(Parameter(name=param.name, kind=param.kind, default=param.default, annotation=non_none_args[0]))
-            else:
-                return None
-    elif annotation == str:
-        return ""
-    elif annotation == int:
-        return 0
-    elif annotation == float:
-        return 0.0
-    elif annotation == list:
-        return []
-    elif annotation == dict:
-        return {}
-    elif annotation == bool:
-        return False
-    else:
-        return None  # Default value for unspecified types
+            origin = get_origin(valid_annotation)
+            if valid_annotation == Any:
+                return data
+            if valid_annotation == bool:
+                # 특별 처리 로직
+                return data.lower() in ('true', '1', 'yes')
+            return valid_annotation(data)
 
 def extract_annotation(param: Parameter) -> str:
     annotation = param.annotation

@@ -15,6 +15,21 @@ allowed types: (<class 'pydantic.main.BaseModel'>, <class 'list'>,
 <class 'datetime.datetime'>) 리턴 타입 참고
 """
 
+def test_http_task_chain():
+    with httpx.Client(base_url=base_url.format(protocol="http")) as arbiter:
+        response = arbiter.post("/test_service/task_chain")
+        assert response.status_code == 200, logger.error(response.text)
+
+def test_http_async_task_chain():
+    with httpx.Client(base_url=base_url.format(protocol="http")) as arbiter:
+        response = arbiter.post("/test_service/async_task_chain")
+        assert response.status_code == 200, logger.error(response.text)
+
+def test_http_num_of_param_status_code():
+    with httpx.Client(base_url=base_url.format(protocol="http")) as arbiter:
+        response = arbiter.post("/test_service/num_of_param", json={"first": '1', "second": 1})
+        assert response.status_code == 200, logger.error(response.text)
+
 def test_http_num_of_param_status_code():
     with httpx.Client(base_url=base_url.format(protocol="http")) as arbiter:
         response = arbiter.post("/test_service/num_of_param", json={"first": '1', "second": 1})
@@ -42,7 +57,7 @@ def test_http_empty_type_of_param_status_code():
 def test_http_wrong_type_of_param_status_code():
     with httpx.Client(base_url=base_url.format(protocol="http")) as arbiter:
         response = arbiter.post("/test_service/wrong_type_of_param", json={"first": True, "second": 2}, timeout=10)
-        assert response.status_code == 500, logger.error(response.text)
+        assert response.status_code == 400, logger.error(response.text)
 
 
 def test_http_wrong_url_status_code():

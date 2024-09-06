@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 import time
 import uuid
 import pickle
@@ -7,9 +8,9 @@ import redis.asyncio as aioredis
 from pydantic import BaseModel
 from datetime import timezone, datetime
 from redis.asyncio.client import PubSub
-from typing import AsyncGenerator, Any, Callable, TypeVar, Optional, Type
-from arbiter.utils import to_snake_case, get_pickled_data
-from arbiter.data.models import DefaultModel
+from typing import AsyncGenerator, Any, Callable, TypeVar, Optional, Type, get_args
+from arbiter.utils import is_optional_type, restore_type, to_snake_case, get_pickled_data
+from arbiter.data.models import ArbiterTaskModel, DefaultModel
 from arbiter.exceptions import ArbiterDecodeError, AribterEncodeError
 from arbiter.constants import (
     ARBITER_SEND_TIMEOUT,
@@ -97,9 +98,8 @@ class Arbiter:
         table_name = to_snake_case(model_data.__class__.__name__)
         if hasattr(model_data, 'updated_at'):
             setattr(model_data, 'updated_at', datetime.now(timezone.utc))
-                
         await self.client.set(
-            f'{table_name}:{model_data.id}', model_data.model_dump_json()
+            f'{table_name}:{model_data.get_id()}', model_data.model_dump_json()
         )
         return model_data
 
@@ -120,6 +120,94 @@ class Arbiter:
                     results.append(model_data)
         return results
     ################################################    
+    async def request_packer(
+        self,
+        parameters: dict,
+        *args, 
+        **kwargs
+    ):
+        # TODO Pass model parameter
+        # validate model? not yet
+        assert len(args) == 0 or len(kwargs) == 0, "currently, args and kwargs cannot be used together"
+        data: list | dict = None
+        if len(args) > 0:
+            data = []
+            for arg in args:
+                # assert isinstance(arg, (str, int, float, bool)), "args must be str, int, float, bool"
+                if isinstance(arg, BaseModel):
+                    data.append(arg.model_dump_json())
+                else:
+                    data.append(arg)
+        elif len(kwargs) > 0:
+            data = {}
+            for key, value in kwargs.items():
+                # assert isinstance(value, (str, int, float, bool)), "args must be str, int, float, bool"
+                if isinstance(value, BaseModel):
+                    data[key] = value.model_dump_json()
+                else:
+                    data[key] = value
+        else:
+            data = None
+            
+        return data
+    
+    async def results_unpacker(self, return_type: Any, results: Any):
+        if is_optional_type(return_type):
+            if results is None:
+                return None
+            return_type = get_args(return_type)[0]
+        if issubclass(return_type, BaseModel):
+            results = return_type.model_validate_json(results)
+        return results
+    
+    ################ task management ################
+    async def get_task_return_and_parameters(self, task_queue: str):
+        task_model = await self.get_data(ArbiterTaskModel, task_queue)
+        parameter_dict: dict = json.loads(task_model.transformed_parameters)
+        parameters = {
+            k: (restore_type(v), ...)
+            for k, v in parameter_dict.items()
+        }
+        return_type = restore_type(json.loads(task_model.transformed_return_type))
+        return parameters, return_type
+    
+    async def async_task(self, target: str, *args, **kwargs):
+        parameters, return_type = await self.get_task_return_and_parameters(target)
+        data = await self.request_packer(
+            parameters,
+            *args,
+            **kwargs
+        )
+        message_id = await self.send_message(
+            target=target,
+            data=data
+        )
+        if not return_type:
+            return None 
+        results = await self.get_message(message_id)
+        if isinstance(results, Exception):
+            raise results
+        return await self.results_unpacker(return_type, results)
+
+
+    async def async_stream_task(self, target: str, *args, **kwargs):
+        parameters, return_type = await self.get_task_return_and_parameters(target)
+        
+        data = await self.request_packer(
+            parameters,
+            *args,
+            **kwargs
+        )
+
+        message_id = await self.send_message(
+            target=target,
+            data=data
+        )
+        
+        async for results in self.get_stream(message_id):
+            yield await self.results_unpacker(return_type, results)
+
+    ################ message management ################
     async def encode_message(self, data: Any) -> bytes:
         message_id = uuid.uuid4().hex
         return message_id, pickle.dumps((message_id, data))
@@ -164,6 +252,7 @@ class Arbiter:
                 _, data = response
                 pickled_data = get_pickled_data(data)
                 if pickled_data is not None:
+                    print(f"Get response from {message_id}: {pickled_data}")
                     return pickled_data
                 # fail to pickle data, maybe it is a string
                 return data.decode()
@@ -209,6 +298,7 @@ class Arbiter:
                     break
                 yield message[1]
             else:
+                # TODO Change return Exception
                 raise TimeoutError(f"Timeout in getting message from {channel}")
 
     async def subscribe_listen(
