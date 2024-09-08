@@ -314,8 +314,8 @@ class ArbiterPeriodicTask(BaseTask):
         @functools.wraps(func)
         async def wrapper(arbiter: Arbiter, queue: str, instance: ArbiterService):
             async for messages in arbiter.periodic_listen(queue, self.interval):
-                params = [instance, messages] if instance else [messages]
-                await func(*params)
+                data = self.parse_requset(messages)
+                await func(instance, **data)
                     
         return wrapper
 
