@@ -333,7 +333,7 @@ class Arbiter:
         self,
         queue: str,
         interval: float = 1
-    ) -> AsyncGenerator[list[ArbiterMessage], None]:
+    ) -> AsyncGenerator[list[bytes], None]:
         while True:
             collected_messages = []
             start_time = time.monotonic()
@@ -345,13 +345,7 @@ class Arbiter:
                 # 비동기적으로 메시지를 가져옴
                 response = await self.client.blpop(queue, timeout=1)
                 if response:
-                    message = ArbiterMessage.model_validate_json(response[1])
-                else:
-                    message = None
-                if message:
-                    # 메시지가 있으면 수집하고 continue로 다시 시도
-                    collected_messages.append(message)
-                    continue
+                    collected_messages.append(response[1])
             if collected_messages:
                 yield collected_messages
             else:
