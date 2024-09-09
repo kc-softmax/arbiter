@@ -57,9 +57,10 @@ def test():
             create_config,
         )
         from arbiter.constants import CONFIG_FILE
-        from tests.test_service import TestService
+        from tests.test_service import TestService, TestException
         app = ArbiterApp()
         app.add_service(TestService)
+        app.add_service(TestException)
         arbiter_setting, is_arbiter_setting = get_arbiter_setting(CONFIG_FILE)
         if not is_arbiter_setting:
             create_config(arbiter_setting)
@@ -118,7 +119,7 @@ def test():
                 start = timeit.default_timer()
                 while not running_state["pytest"]:
                     await asyncio.sleep(0.1)
-                    # 5초 이상 걸리면 종료
+                    # 30초 이상 걸리면 종료
                     if timeit.default_timer() - start > DEFAULT_TIMEOUT:
                         raise TimeoutError("time over")
             except Exception as e:
@@ -143,6 +144,7 @@ def test():
             start = timeit.default_timer()
             while not running_state["arbiter"]:
                 await asyncio.sleep(0.1)
+                # 30초 이상 걸리면 종료
                 if timeit.default_timer() - start > DEFAULT_TIMEOUT:
                     raise TimeoutError("time over")
             if arbiter_task.done():
