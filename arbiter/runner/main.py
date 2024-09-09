@@ -29,11 +29,14 @@ def run(
     )
 
 
-@app.command(help="test case run")
+@app.command(help="run arbiter testcase")
 def test():
     import asyncio
     import logging
+    import timeit
+    DEFAULT_TIMEOUT = 30
     logging.basicConfig(level=logging.INFO, format='ARBITER - TEST %(asctime)s - %(levelname)s - %(message)s')
+
     logger = logging.getLogger()
     running_state: dict[str, bool] = {
         "arbiter": False,
@@ -79,7 +82,7 @@ def test():
                     logger.info("master")
                 else:
                     logger.info("slave")
-                
+
                 async for result, message in arbiter_runner.start_phase(WarpInPhase.PREPARATION):
                     match result:
                         # Danimoth is the warp-in master.
@@ -112,8 +115,12 @@ def test():
                 logger.info("ARBITER started")
                 running_state["arbiter"] = True
                 # pytest가 끝날때까지 기다린다
+                start = timeit.default_timer()
                 while not running_state["pytest"]:
                     await asyncio.sleep(0.1)
+                    # 5초 이상 걸리면 종료
+                    if timeit.default_timer() - start > DEFAULT_TIMEOUT:
+                        raise TimeoutError("time over")
             except Exception as e:
                 logger.error(e)
             finally:
@@ -133,8 +140,11 @@ def test():
     async def run_pytest(arbiter_task: asyncio.Task):
         try:
             # arbiter가 실행될때까지 기다린다
+            start = timeit.default_timer()
             while not running_state["arbiter"]:
                 await asyncio.sleep(0.1)
+                if timeit.default_timer() - start > DEFAULT_TIMEOUT:
+                    raise TimeoutError("time over")
             if arbiter_task.done():
                 raise Exception("Error with something")
             command = "pytest"
