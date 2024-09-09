@@ -76,12 +76,6 @@ class Arbiter:
         await self.async_redis_connection_pool.disconnect()
         await self.async_redis_connection_pool.aclose()
 
-    async def initialize(self):
-        await self.clear_database()
-
-    async def clear_database(self):
-        await self.client.flushdb()
-
     ################ generic management ################    
     async def get_data(self, model_class: Type[T], id: str) -> Optional[T]:
         table_name = to_snake_case(model_class.__name__)
@@ -189,7 +183,6 @@ class Arbiter:
             raise results
         return await self.results_unpacker(return_type, results)
 
-
     async def async_stream_task(self, target: str, *args, **kwargs):
         parameters, return_type = await self.get_task_return_and_parameters(target)
         
@@ -252,7 +245,6 @@ class Arbiter:
                 _, data = response
                 pickled_data = get_pickled_data(data)
                 if pickled_data is not None:
-                    print(f"Get response from {message_id}: {pickled_data}")
                     return pickled_data
                 # fail to pickle data, maybe it is a string
                 return data.decode()

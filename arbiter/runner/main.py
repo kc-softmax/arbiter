@@ -1,7 +1,12 @@
 import typer
 # from arbiter.runner.commands.build import app as build_app
+from arbiter.constants import CONFIG_FILE
 from arbiter.runner.runner import ArbiterRunner
+from arbiter.runner.repl import ArbiterConsole
 from arbiter.app import ArbiterApp
+from arbiter import Arbiter
+from arbiter.runner.utils import create_config
+from arbiter.utils import get_arbiter_setting, read_config
 
 app = typer.Typer()
 # app.add_typer(
@@ -10,6 +15,29 @@ app = typer.Typer()
 #     rich_help_panel="build environment",
 #     help="Configure build environment for deploying service")
 
+@app.command()
+def console():
+    arbiter_setting, is_arbiter_setting = get_arbiter_setting(CONFIG_FILE)
+    if not is_arbiter_setting:
+        create_config(arbiter_setting)
+    config = read_config(arbiter_setting)
+    
+    # arbiter_setting, _ = get_arbiter_setting(CONFIG_FILE)
+    # config = read_config(arbiter_setting)
+    arbiter = Arbiter(
+        host=config.get("broker", "host"),
+        port=config.getint("broker", "port"),
+        password=config.get("broker", "password"),
+    )
+    # ArbiterRunner.run(
+    #     app=app,
+    #     name=name,
+    #     reload=reload,
+    #     log_level=log_level
+    # )
+
+    console = ArbiterConsole(arbiter)
+    console.interact("Aribter REPL without >>>")
 
 @app.command(help="run arbiter service")
 def run(
