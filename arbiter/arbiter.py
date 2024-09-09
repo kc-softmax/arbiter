@@ -135,7 +135,7 @@ class Arbiter:
             for arg in args:
                 # assert isinstance(arg, (str, int, float, bool)), "args must be str, int, float, bool"
                 if isinstance(arg, BaseModel):
-                    data.append(arg.model_dump_json())
+                    data.append(arg.model_dump())
                 else:
                     data.append(arg)
         elif len(kwargs) > 0:
@@ -143,7 +143,7 @@ class Arbiter:
             for key, value in kwargs.items():
                 # assert isinstance(value, (str, int, float, bool)), "args must be str, int, float, bool"
                 if isinstance(value, BaseModel):
-                    data[key] = value.model_dump_json()
+                    data[key] = value.model_dump()
                 else:
                     data[key] = value
         else:
