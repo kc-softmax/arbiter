@@ -195,7 +195,6 @@ class Arbiter:
             target=target,
             data=data
         )
-        print(data)
         async for results in self.get_stream(message_id):
             yield await self.results_unpacker(return_type, results)
 
