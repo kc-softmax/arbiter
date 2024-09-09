@@ -628,8 +628,17 @@ class ArbiterApp:
             # raise ArbiterInconsistentServiceMetaError()
             service_model = already_service_models[0]
             for task_model in task_models:
-                if task_model not in service_model.task_models:
-                    raise ArbiterInconsistentServiceModelError()
+                if same_model := next(
+                    (tm for tm in service_model.task_models if tm == task_model), None):
+                    pass
+                    # 같은 큐를 가진 task model이 있다.
+                    # 같은 parameter와 같은 return type을 가진지 검사해야 한다.
+                    if same_model.transformed_parameters != task_model.transformed_parameters:
+                        raise ArbiterTaskAlreadyExistsError()
+                    if same_model.transformed_return_type != task_model.transformed_return_type:
+                        raise ArbiterTaskAlreadyExistsError()
+                # 같은 이름을 가진 큐가 없다. -> 추가한다.
+                service_model.task_models.append(task_model)
             return False, service_model
         else:
             service_model = ArbiterServiceModel(

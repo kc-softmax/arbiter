@@ -192,7 +192,6 @@ class Arbiter:
 
     async def async_stream_task(self, target: str, *args, **kwargs):
         parameters, return_type = await self.get_task_return_and_parameters(target)
-        
         data = await self.request_packer(
             parameters,
             *args,
@@ -203,7 +202,7 @@ class Arbiter:
             target=target,
             data=data
         )
-        
+        print(data)
         async for results in self.get_stream(message_id):
             yield await self.results_unpacker(return_type, results)
 
@@ -252,7 +251,6 @@ class Arbiter:
                 _, data = response
                 pickled_data = get_pickled_data(data)
                 if pickled_data is not None:
-                    print(f"Get response from {message_id}: {pickled_data}")
                     return pickled_data
                 # fail to pickle data, maybe it is a string
                 return data.decode()
@@ -279,9 +277,9 @@ class Arbiter:
         except asyncio.CancelledError:
             pass
         except TimeoutError as e:
-            print(f"Timeout in getting response from {message_id}: {e}")
+            raise e
         except Exception as e:
-            print(f"Error in getting response from {message_id}: {e})")
+            raise e
         
     async def listen(
         self,

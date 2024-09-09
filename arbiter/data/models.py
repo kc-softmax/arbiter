@@ -107,7 +107,7 @@ class ArbiterTaskModel(DefaultModel):
         return self.queue
     
     def __eq__(self, other: ArbiterTaskModel) -> bool:
-        return self.name == other.name and self.queue == other.queue
+        return self.queue == other.queue
 
 class ArbiterTaskNode(ArbiterBaseNode):
     model: ArbiterTaskModel
