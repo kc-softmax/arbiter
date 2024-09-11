@@ -156,7 +156,7 @@ class Arbiter:
             if results is None:
                 return None
             return_type = get_args(return_type)[0]
-        if issubclass(return_type, BaseModel):
+        if isinstance(return_type, type) and issubclass(return_type, BaseModel):
             results = return_type.model_validate_json(results)
         return results
     
