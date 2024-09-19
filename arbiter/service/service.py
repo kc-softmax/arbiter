@@ -169,6 +169,7 @@ class ArbiterService(metaclass=ServiceMeta):
             
             self.system_subscribe_task = asyncio.create_task(
                 self.listen_system_func())
+            
             for task_function in self.task_functions:
                 queue = getattr(task_function, 'queue', None)
                 num_of_tasks = getattr(task_function, 'num_of_tasks', 1)
@@ -176,12 +177,11 @@ class ArbiterService(metaclass=ServiceMeta):
                     queue = get_task_queue_name(
                         self.__class__.__name__, 
                         task_function.__name__)
-                task_model = await self.arbiter.get_data(
-                    ArbiterTaskModel, queue)
+                task_model = await self.arbiter.get_data(ArbiterTaskModel, queue)
                 if not task_model:
                     raise ValueError(f"Task model {queue} not found")
-                params = [self.arbiter, queue, self]
                 for _ in range(num_of_tasks):
+                    params = [self.arbiter, queue, self]
                     task_node = ArbiterTaskNode(
                         service_node_id=self.service_node_id,
                         parent_model_id=task_model.id,
@@ -196,7 +196,7 @@ class ArbiterService(metaclass=ServiceMeta):
             await self.health_check_task
         except Exception as e:
             error = e
-            print("Error in start", e)
+            print("Error in start", e, self.__class__.__name__)
         finally:
             if not self.service_node:
                 return

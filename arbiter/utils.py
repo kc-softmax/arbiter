@@ -7,17 +7,14 @@ import pickle
 import signal
 import socket
 import types
-import inspect
 import time
 import asyncio
 import importlib
-import warnings
 import psutil
 from collections import abc
 from asyncio.subprocess import Process
 from datetime import datetime
-from pydantic import BaseModel, Field, create_model
-from warnings import warn
+from pydantic import BaseModel
 from inspect import Parameter
 from pathlib import Path
 from types import NoneType, UnionType
@@ -34,7 +31,8 @@ from typing import (
     Callable,
     Optional
 )
-from arbiter.constants import ALLOWED_TYPES, CONFIG_FILE
+from arbiter.constants import ALLOWED_TYPES
+from arbiter.parser import pydantic_from_schema
 
 async def check_redis_running(
     host: str = "localhost",
@@ -173,8 +171,7 @@ def get_type_in_optional_type(annotation: Any) -> Any:
 def restore_type(transformed_type: list[Any]) -> Any:
     def get_type(type: Any) -> Any:
         if isinstance(type, dict):
-            return parse_json_schema_to_pydantic(type)
-            # return create_model_from_schema(type)
+            return pydantic_from_schema(type)
         else:
             return get_type_from_type_name(type)
         
@@ -311,109 +308,6 @@ def get_type_from_type_name(type_name: str, default_type=None) -> type | None:
         'Any': Any,
     }
     return type_mapping.get(type_name, default_type)
-
-def parse_json_schema_to_pydantic(schema: dict):
-    properties = schema.get('properties', {})
-    required = schema.get('required', [])
-    additional_properties = schema.get('additionalProperties', True)
-
-    # 필드 타입 매핑 함수
-    def map_field_type(field_schema: dict):
-        field_type = field_schema.get('type')
-        title = field_schema.get('title', None)
-        default = field_schema.get('default', None)
-        format = field_schema.get('format', None)
-        if format == 'date-time':
-            return datetime, Field(default, title=title)
-
-        if 'anyOf' in field_schema:
-            types = [sub_schema['type'] for sub_schema in field_schema['anyOf']]
-            if 'null' in types:
-                non_null_type = next(t for t in types if t != 'null')
-                if non_null_type == 'integer':
-                    return Optional[int], Field(default, title=title)
-                elif non_null_type == 'string':
-                    return Optional[str], Field(default, title=title)
-            return Any, Field(default, title=title)
-
-        if 'enum' in field_schema:
-            enum_values = field_schema['enum']
-            if field_type == 'string':
-                return str, Field(default, title=title, description=f"Allowed values: {enum_values}")
-            if field_type == 'integer':
-                return int, Field(default, title=title, description=f"Allowed values: {enum_values}")
-        
-        if field_type == 'array':
-            item_schema = field_schema.get('items', {})
-            item_type, item_field = map_field_type(item_schema)
-            return List[item_type], Field(default, title=title)
-
-        if field_type == 'object':
-            nested_schema = field_schema
-            nested_model = parse_json_schema_to_pydantic(nested_schema)
-            return nested_model, Field(default, title=title)
-
-        if field_type == 'integer':
-            minimum = field_schema.get('minimum', None)
-            maximum = field_schema.get('maximum', None)
-            constraints = {}
-            if minimum is not None:
-                constraints['ge'] = minimum
-            if maximum is not None:
-                constraints['le'] = maximum
-            return int, Field(default, title=title, **constraints)
-
-        if field_type == 'string':
-            min_length = field_schema.get('minLength', None)
-            max_length = field_schema.get('maxLength', None)
-            pattern = field_schema.get('pattern', None)
-            constraints = {}
-            if min_length is not None:
-                constraints['min_length'] = min_length
-            if max_length is not None:
-                constraints['max_length'] = max_length
-            if pattern is not None:
-                constraints['regex'] = pattern
-            return str, Field(default, title=title, **constraints)
-
-        if field_type == 'boolean':
-            return bool, Field(default, title=title)
-
-        return Any, Field(default, title=title)
-
-    # 필드 정의
-    fields = {}
-    for field_name, field_schema in properties.items():
-        field_type, field_info = map_field_type(field_schema)
-        if field_name in required:
-            fields[field_name] = (field_type, field_info)
-        else:
-            fields[field_name] = (Optional[field_type], field_info)
-
-
-    # Pydantic 모델 생성
-    model_name = schema.get('title', 'DynamicModel')
-    return create_model(model_name, **fields)
-
-# deprecated
-# def create_model_from_schema(schema: dict) -> BaseModel:
-#     def handle_object_type(details: dict):
-#         if 'additionalProperties' in details:
-#             additional_type = get_type_from_type_name(details['additionalProperties']['type'])
-#             return dict[str, additional_type]
-#         else:
-#             return dict[str, Any]
-        
-#     fields = {}
-#     for name, details in schema['properties'].items():
-#         if details.get('format') == 'date-time':
-#             field_type = datetime
-#         elif details.get('type') == 'object':
-#             field_type = handle_object_type(details)
-#         else:
-#             field_type = get_type_from_type_name(details.get('type', 'Any'))
-#         fields[name] = (field_type, ...)
-#     return create_model(schema['title'], **fields)  
 
 def convert_data_to_annotation(data: Any, annotation: Any) -> Any:
     if data is None:
