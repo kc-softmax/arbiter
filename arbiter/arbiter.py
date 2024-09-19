@@ -12,11 +12,7 @@ from typing import AsyncGenerator, Any, Callable, TypeVar, Optional, Type, get_a
 from arbiter.utils import is_optional_type, restore_type, to_snake_case, get_pickled_data
 from arbiter.data.models import ArbiterTaskModel, DefaultModel
 from arbiter.exceptions import ArbiterDecodeError, AribterEncodeError
-from arbiter.constants import (
-    ARBITER_SEND_TIMEOUT,
-    ARBITER_GET_TIMEOUT,
-    ASYNC_TASK_CLOSE_MESSAGE,
-)
+from arbiter.constants import ASYNC_TASK_CLOSE_MESSAGE, DEFAULT_CONFIG
 
 T = TypeVar('T', bound=DefaultModel)
 
@@ -26,18 +22,24 @@ class Arbiter:
     
     def __init__(
         self,
+        name: str,
         host: str = "localhost", 
         port: int = 6379, 
-        password: str = None
+        config: dict = {}
     ):
         # __new__에서 생성된 인스턴스의 초기화 작업을 여기서 진행
+        self.name = name
+        self.host = host
+        self.port = port
+        self.config = DEFAULT_CONFIG
+        self.config.update(config)
         self.client: aioredis.Redis = None
         self.keep_alive_task: asyncio.Task = None
         self.pubsub_map: dict[str, PubSub] = {}
 
         # Redis 클라이언트 초기화
         if not Arbiter.async_redis_connection_pool:
-            if password:
+            if password := self.config.get("aribter_password", None):
                 redis_url = f"redis://:{password}@{host}:{port}/"
             else:
                 redis_url = f"redis://{host}:{port}/"
@@ -92,7 +94,7 @@ class Arbiter:
 
     async def delete_data(self, model_data: T) -> bool:
         table_name = to_snake_case(model_data.__class__.__name__)
-        return await self.client.delete(f'{table_name}:{model_data.id}')
+        return await self.client.delete(f'{table_name}:{model_data.get_id()}')
 
     async def save_data(self, model_data: T) -> T:
         table_name = to_snake_case(model_data.__class__.__name__)
@@ -178,6 +180,7 @@ class Arbiter:
             *args,
             **kwargs
         )
+
         message_id = await self.send_message(
             target=target,
             data=data
@@ -242,8 +245,10 @@ class Arbiter:
     async def get_message(
         self,
         message_id: str,
-        timeout: float = ARBITER_SEND_TIMEOUT,
+        timeout: float = None,
     ) -> Any | None:
+        if not timeout:
+            timeout = self.config.get("arbiter_send_timeout")
         try:
             response = await self.client.blpop(message_id, timeout)
             if response:
@@ -262,8 +267,10 @@ class Arbiter:
     async def get_stream(
         self,
         message_id: str,
-        timeout: float = ARBITER_SEND_TIMEOUT
+        timeout: float = None,
     ) -> Any | None:
+        if not timeout:
+            timeout = self.config.get("arbiter_send_timeout")
         try:
             async for data in self.listen(message_id, timeout):
                 if not data:

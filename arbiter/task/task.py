@@ -14,41 +14,29 @@ from typing import  (
     Any,
     get_origin, 
     get_args, 
-    List, 
     Callable,
     Type,
     Union, 
-    Tuple
 )
 from pydantic import BaseModel
 from arbiter.constants import (
     ASYNC_TASK_CLOSE_MESSAGE
 )
-from arbiter.enums import (
-    HttpMethod,
-    StreamMethod,
-    StreamCommunicationType,
-)
+from arbiter.enums import NodeState
 from arbiter.utils import convert_data_to_annotation, get_pickled_data
+from arbiter.data.models import ArbiterTaskNode
 from arbiter.service import ArbiterService
 from arbiter import Arbiter
-
 
 class BaseTask:
 
     def __init__(
         self,
         queue: str = None,
-        cold_start: bool = False,
         num_of_tasks: int = 1,
-        retry_count: int = 0,
-        activate_duration: int = 0,
     ):
         assert num_of_tasks > 0, "num_of_tasks should be greater than 0"
         self.queue = queue
-        self.cold_start = cold_start
-        self.retry_count = retry_count
-        self.activate_duration = activate_duration
         self.num_of_tasks = num_of_tasks
         self.func = None
         self.parameters: dict[str, inspect.Parameter] = {}
@@ -58,7 +46,6 @@ class BaseTask:
         self.func = func 
         setattr(func, 'is_task_function', True)
         setattr(func, 'task_name', func.__name__)
-        setattr(func, 'task_type', self.__class__.__name__)
         
         signature = inspect.signature(func)
         for i, param in enumerate(signature.parameters.values()):
@@ -114,8 +101,9 @@ class BaseTask:
                         # return을 찾았기 때문에 Any로 설정한다.
                         # 하지만 우리는 hint를 쓰라는것을 권장한다.
                         self.return_type = Any  
-                        warnings.warn(
-                            "Return type hint is recommended for better performance")
+                        # warnings.warn(
+                        #     "Return type hint is recommended for better performance")
+                    
             except IndentationError as e:
                 print(f"IndentationError: {e}")
             except StopIteration:
@@ -197,13 +185,22 @@ class BaseTask:
         return pickle.dumps(packed_data)
     
     
-class ArbiterTask(BaseTask):
+class ArbiterAsyncTask(BaseTask):
         
     def __call__(self, func: Callable) -> Callable:
         super().__call__(func)
         @functools.wraps(func)
-        async def wrapper(arbiter: Arbiter, queue: str, instance: ArbiterService):
+        async def wrapper(
+            arbiter: Arbiter,
+            queue: str,
+            instance: ArbiterService,
+            task_node: ArbiterTaskNode
+        ):
+            task_node.state = NodeState.PENDING
+            await arbiter.save_data(task_node)
             async for message in arbiter.listen(queue):
+                task_node.state = NodeState.WORKING
+                await arbiter.save_data(task_node)
                 try:                    
                     message_id, data = get_pickled_data(message)
                     request = self.parse_requset(data)
@@ -216,123 +213,180 @@ class ArbiterTask(BaseTask):
                 finally:
                     packed_results = self.results_packing(results)
                     await arbiter.push_message(message_id, packed_results)
+                    task_node.state = NodeState.PENDING
+                    await arbiter.save_data(task_node)
         return wrapper
 
-class ArbiterAsyncTask(ArbiterTask):
-
+class ArbiterStreamTask(BaseTask):
+    
+    def __init__(
+        self,
+        **kwargs,
+    ):
+        super().__init__(
+            **kwargs
+        )
+        self.stream = True
+    
     def __call__(self, func: Callable) -> Callable:
         super().__call__(func)
         @functools.wraps(func)
-        async def wrapper(arbiter: Arbiter, queue: str, instance: ArbiterService):
+        async def wrapper(
+            arbiter: Arbiter,
+            queue: str,
+            instance: ArbiterService,
+            task_node: ArbiterTaskNode
+        ):
+            task_node.state = NodeState.PENDING
+            await arbiter.save_data(task_node)
             async for message in arbiter.listen(queue):
-                try:
+                task_node.state = NodeState.WORKING
+                await arbiter.save_data(task_node)
+                try:                    
                     message_id, data = get_pickled_data(message)
                     request = self.parse_requset(data)
                     async for results in func(instance, **request):
                         await arbiter.push_message(message_id, self.results_packing(results))
-                    await arbiter.push_message(message_id, ASYNC_TASK_CLOSE_MESSAGE)                        
                 except Exception as e:
-                    print(e)
+                    print(e, "exception in task")
+                    results = self.results_packing(e)
+                    await arbiter.push_message(message_id, results)
+                finally:
+                    await arbiter.push_message(message_id, ASYNC_TASK_CLOSE_MESSAGE)
+                    task_node.state = NodeState.PENDING
+                    await arbiter.save_data(task_node)
         return wrapper
 
-class ArbiterHttpTask(ArbiterTask):
-    def __init__(
-        self,
-        method: HttpMethod,
-        **kwargs,
-    ):
-        super().__init__(
-            **kwargs
-        )
-        self.method = method
+class ArbiterHttpTask(ArbiterAsyncTask):
     
-class ArbiterStreamTask(ArbiterTask):
     def __init__(
         self,
-        connection: StreamMethod,
-        communication_type: StreamCommunicationType,
-        num_of_channels = 1,
-        **kwargs,   
+        **kwargs,
     ):
         super().__init__(
             **kwargs
         )
-        # self.connection_info_param = None
-        self.connection = connection
-        self.communication_type = communication_type
-        self.num_of_channels = num_of_channels
+        self.http = True
 
-    def __call__(self, func: Callable) -> Callable:
-        super().__call__(func)
-        # if self.connection_info:
-        #     connection_info_param = [
-        #         param for param in self.parameters.values() if param.annotation == ConnectionInfo
-        #     ]
-        #     if not connection_info_param:
-        #         raise ValueError("ConnectionInfo paramter is required for connection_info=True")
-        #     assert len(connection_info_param) == 1, "Only one ConnectionInfo is allowed"
-        #     self.connection_info_param = self.parameters.pop(connection_info_param[0].name)
+class ArbiterHttpStreamTask(ArbiterStreamTask):
+    
+    def __init__(
+        self,
+        **kwargs,
+    ):
+        super().__init__(
+            **kwargs
+        )
+        self.http = True
+
+
+
+
+# TODO name Change
+# class ArbiterAsyncTask(ArbiterTask):
+
+#     def __call__(self, func: Callable) -> Callable:
+#         super().__call__(func)
+#         @functools.wraps(func)
+#         async def wrapper(arbiter: Arbiter, queue: str, instance: ArbiterService):
+#             async for message in arbiter.listen(queue):
+#                 try:
+#                     message_id, data = get_pickled_data(message)
+#                     request = self.parse_requset(data)
+#                     async for results in func(instance, **request):
+#                         await arbiter.push_message(message_id, self.results_packing(results))
+#                     await arbiter.push_message(message_id, ASYNC_TASK_CLOSE_MESSAGE)                        
+#                 except Exception as e:
+#                     print(e)
+#         return wrapper
+    
+# class ArbiterStreamTask(ArbiterTask):
+#     def __init__(
+#         self,
+#         connection: StreamMethod,
+#         communication_type: StreamCommunicationType,
+#         num_of_channels = 1,
+#         **kwargs,   
+#     ):
+#         super().__init__(
+#             **kwargs
+#         )
+#         # self.connection_info_param = None
+#         self.connection = connection
+#         self.communication_type = communication_type
+#         self.num_of_channels = num_of_channels
+
+#     def __call__(self, func: Callable) -> Callable:
+#         super().__call__(func)
+#         # if self.connection_info:
+#         #     connection_info_param = [
+#         #         param for param in self.parameters.values() if param.annotation == ConnectionInfo
+#         #     ]
+#         #     if not connection_info_param:
+#         #         raise ValueError("ConnectionInfo paramter is required for connection_info=True")
+#         #     assert len(connection_info_param) == 1, "Only one ConnectionInfo is allowed"
+#         #     self.connection_info_param = self.parameters.pop(connection_info_param[0].name)
             
-        @functools.wraps(func)
-        async def wrapper(arbiter: Arbiter, queue: str, instance: ArbiterService):
-            async for message in arbiter.listen(queue):
-                try:
-                    target, data = pickle.loads(message)
-                    if data:
-                        request = self.parse_requset(data)
-                    else:
-                        request = {}
-                    # task params에 따라 파싱할까..?
-                    match self.communication_type:
-                        case StreamCommunicationType.SYNC_UNICAST:
-                            results = self.results_packing(await func(instance, **request))
-                            await arbiter.push_message(target, results)
-                        case StreamCommunicationType.ASYNC_UNICAST:
-                            async for results in func(instance, **request):
-                                results = self.results_packing(results)
-                                await arbiter.push_message(target, results)
-                            await arbiter.push_message(target, ASYNC_TASK_CLOSE_MESSAGE)                        
-                            # 끝났다고 안넣어줌
-                        case StreamCommunicationType.BROADCAST:
-                            results = self.results_packing(await func(instance, **request))
-                            await arbiter.broadcast(target, results)
-                except Exception as e:
-                    print(e)
-        return wrapper
+#         @functools.wraps(func)
+#         async def wrapper(arbiter: Arbiter, queue: str, instance: ArbiterService):
+#             async for message in arbiter.listen(queue):
+#                 try:
+#                     target, data = pickle.loads(message)
+#                     if data:
+#                         request = self.parse_requset(data)
+#                     else:
+#                         request = {}
+#                     # task params에 따라 파싱할까..?
+#                     match self.communication_type:
+#                         case StreamCommunicationType.SYNC_UNICAST:
+#                             results = self.results_packing(await func(instance, **request))
+#                             await arbiter.push_message(target, results)
+#                         case StreamCommunicationType.ASYNC_UNICAST:
+#                             async for results in func(instance, **request):
+#                                 results = self.results_packing(results)
+#                                 await arbiter.push_message(target, results)
+#                             await arbiter.push_message(target, ASYNC_TASK_CLOSE_MESSAGE)                        
+#                             # 끝났다고 안넣어줌
+#                         case StreamCommunicationType.BROADCAST:
+#                             results = self.results_packing(await func(instance, **request))
+#                             await arbiter.broadcast(target, results)
+#                 except Exception as e:
+#                     print(e)
+#         return wrapper
 
-class ArbiterPeriodicTask(BaseTask):
-    def __init__(
-        self,
-        interval: float,
-        **kwargs,
-    ):
-        super().__init__(**kwargs)
-        self.interval = interval
+# class ArbiterPeriodicTask(BaseTask):
+#     def __init__(
+#         self,
+#         interval: float,
+#         **kwargs,
+#     ):
+#         super().__init__(**kwargs)
+#         self.interval = interval
 
-    def __call__(self, func: Callable) -> Callable:
-        super().__call__(func)        
-        @functools.wraps(func)
-        async def wrapper(arbiter: Arbiter, queue: str, instance: ArbiterService):
-            async for messages in arbiter.periodic_listen(queue, self.interval):
-                data = self.parse_requset(messages)
-                await func(instance, **data)
+#     def __call__(self, func: Callable) -> Callable:
+#         super().__call__(func)        
+#         @functools.wraps(func)
+#         async def wrapper(arbiter: Arbiter, queue: str, instance: ArbiterService):
+#             async for messages in arbiter.periodic_listen(queue, self.interval):
+#                 data = self.parse_requset(messages)
+#                 await func(instance, **data)
                     
-        return wrapper
+#         return wrapper
 
-class ArbiterSubscribeTask(BaseTask):
-    def __init__(
-        self,
-        channel: str,
-        **kwargs,
-    ):
-        super().__init__(**kwargs)
-        self.channel = channel
+# class ArbiterSubscribeTask(BaseTask):
+#     def __init__(
+#         self,
+#         channel: str,
+#         **kwargs,
+#     ):
+#         super().__init__(**kwargs)
+#         self.channel = channel
 
-    def __call__(self, func: Callable) -> Callable:
-        super().__call__(func)
-        @functools.wraps(func)
-        async def wrapper(arbiter: Arbiter, queue: str, instance: ArbiterService):
-            async for message in arbiter.subscribe_listen(self.channel):
-                params = [instance, message] if instance else [message]
-                await func(*params)
-        return wrapper
+#     def __call__(self, func: Callable) -> Callable:
+#         super().__call__(func)
+#         @functools.wraps(func)
+#         async def wrapper(arbiter: Arbiter, queue: str, instance: ArbiterService):
+#             async for message in arbiter.subscribe_listen(self.channel):
+#                 params = [instance, message] if instance else [message]
+#                 await func(*params)
+#         return wrapper

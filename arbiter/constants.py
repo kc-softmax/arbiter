@@ -7,30 +7,16 @@ ALLOWED_TYPES = (BaseModel, tuple, list, dict, int, str, float, bool, bytes, dat
 
 ASYNC_TASK_CLOSE_MESSAGE = b'q__end__q'
 
-
-
 PROJECT_NAME  = "arbiter"
 CONFIG_FILE = "arbiter.setting.ini"
-
-WARP_IN_TIMEOUT = 10
-
-ARBITER_APP_HELATH_MANAGE_FUNC_CLOCK = 1 / 20
-
-ARBITER_SERVICE_HEALTH_CHECK_INTERVAL = 4
-ARBITER_SERVICE_HEALTH_CHECK_TIMEOUT = 5
-ARBITER_SERVICE_HEALTH_CHECK_FUNC_CLOCK = 1 / 20
-
-ARBITER_SEND_TIMEOUT = 5
-ARBITER_GET_TIMEOUT = 5
-ARBITER_GET_STREAM_TIMEOUT = 5
-
-ARIBTER_DEFAULT_TASK_TIMEOUT = 5
-ARBITER_SERVICE_PENDING_TIMEOUT = 10
-ARBITER_SERVICE_ACTIVE_TIMEOUT = 30
-ARBITER_SERVICE_SHUTDOWN_TIMEOUT = 10
-ARBITER_SERVICE_TIMEOUT = 10
-HEALTH_CHECK_RETRY = 3
-
-ARBITER_SYSTEM_TIMEOUT = 30
-
-ARBITER_API_SHUTDOWN_TIMEOUT = 10
+DEFAULT_CONFIG = {
+    'arbiter_password': '',
+    'arbiter_send_timeout': 5,
+    'warp_in_timeout': 10,
+    'system_timeout': 30,
+    'service_timeout': 10,
+    'service_health_check_interval': 3,
+    'service_health_check_func_clock': 0.1,
+    'service_retry_count': 3,
+    'service_pending_timeout': 10,
+}

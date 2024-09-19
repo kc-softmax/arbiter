@@ -1,1 +1,1 @@
-from .service import ArbiterService
+from .service import ArbiterService, ArbiterServiceInfo
