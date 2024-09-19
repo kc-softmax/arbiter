@@ -83,7 +83,7 @@ class ArbiterApiApp(FastAPI):
             return_type = restore_type(json.loads(task_function.transformed_return_type))
         except Exception as e:
             print('Error in generate_http_function', e)
-                    
+   
         async def dynamic_post_function(
             data: Type[BaseModel] = Depends(requset_model),  # 동적으로 생성된 Pydantic 모델 사용 # type: ignore
             app: ArbiterApiApp = Depends(get_app),
@@ -119,9 +119,11 @@ class ArbiterApiApp(FastAPI):
                 results = await app.arbiter.async_task(
                     target=task_function.queue,
                     **data.model_dump())
-                                
+                
                 if isinstance(results, Exception):
                     raise results
+                if isinstance(results, BaseModel):
+                    return results.model_dump()
                 
                 return results
             except TaskBaseError as e:

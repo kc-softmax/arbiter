@@ -62,7 +62,6 @@ class TestService(ArbiterService):
     
     @http_task(num_of_tasks=1)
     async def num_of_param(self, param: NumOfParam) -> Receive | None:
-        print(param)
         return Receive(
             first=param.first,
             second='second',

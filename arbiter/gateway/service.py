@@ -17,7 +17,7 @@ class ArbiterGatewayServiceInfo(ArbiterServiceInfo):
         super().__init__(klass, *args, **kwargs)
         self.host = kwargs.get('host', 'localhost')
         self.port = kwargs.get('port', 8080)
-        self.log_level = kwargs.get('log_level', 'info')
+        self.log_level = kwargs.get('log_level', 'error')
         self.allow_origins = kwargs.get('allow_origins', '*')
         self.allow_methods = kwargs.get('allow_methods', '*')
         self.allow_headers = kwargs.get('allow_headers', '*')
