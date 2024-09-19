@@ -9,15 +9,6 @@ from arbiter.enums import (
     WarpInPhase,
     WarpInTaskResult,
 )
-from arbiter.utils import (
-    check_redis_running,
-    read_config,
-    get_arbiter_setting,
-)
-from arbiter.runner.utils import (
-    create_config,
-)
-from arbiter.constants import CONFIG_FILE
 from arbiter.runner.interface import TerminalInterface
 from arbiter.app import ArbiterApp
 
@@ -43,32 +34,18 @@ class ArbiterRunner:
             
         async def arbiter_run(
             arbiter_app: ArbiterApp,
-            config: ConfigParser,
             system_queue: asyncio.Queue[Annotated[str, "command"]],
         ):          
             """
             Get the configure parameters from config file.
             """
             
-            if not await check_redis_running(
-                host=config.get("broker", "host"),
-                port=config.getint("broker", "port"),
-                password=config.get("broker", "password"),
-            ):
-                console.print("[bold red]Failed to start, connect redis issue.[/bold red]")
-                console.print("[bold yellow]Check redis connection configuration in 'arbiter.settings.ini'[/bold yellow]")            
-                console.print("[bold yellow]or Check if the Redis server is running.  [/bold yellow]")
-                return
             try:
                 async with arbiter_app.warp_in(
                     system_queue=system_queue,
                 ) as arbiter_runner:
                     try:
                         console.print(f"[bold green]Warp In [bold yellow]Arbiter[/bold yellow] [bold green]{arbiter_runner.name}...[/bold green]")
-                        if arbiter_runner.arbiter_node.is_master:
-                            console.print(f"[bold green]{arbiter_runner.name}[/bold green] is the [bold green]Master[/bold green].")
-                        else:
-                            console.print(f"[bold green]{arbiter_runner.name}[/bold green] is the [bold blue]Replica[/bold blue].")
                         
                         async for result, message in arbiter_runner.start_phase(WarpInPhase.PREPARATION):
                             match result:
@@ -87,21 +64,7 @@ class ArbiterRunner:
                                 case WarpInTaskResult.WARNING:
                                     console.print(f"[bold yellow]{arbiter_runner.name}[/bold yellow] [bold blue]{message}[/bold blue].")
                                 case WarpInTaskResult.FAIL:
-                                    raise Exception(message)
-
-                        async for result, message in arbiter_runner.start_phase(WarpInPhase.MATERIALIZATION):
-                            match result:
-                                case WarpInTaskResult.SUCCESS:
-                                    console.print(f"[bold green]{arbiter_runner.name}[/bold green] [bold yellow]{message}[/bold yellow].")
-                                    break
-                                case WarpInTaskResult.WARNING:
-                                    console.print(f"[bold yellow]{arbiter_runner.name}[/bold yellow] [bold blue]{message}[/bold blue].")
-                                case WarpInTaskResult.FAIL:
-                                    raise Exception(message)
-                                
-                        # 함수등록의 경우 어떻게 해야할까? 내일 고민해보자
-                        
-                        ## MARK 레플리카의 경우 마스터의 명령이나 로그를 출력해준다.
+                                    raise Exception(message)                                
                         ## 공통적으로 시스템 로그를 출력해주는 queue가 필요할까?
                         async with TerminalInterface(
                             system_queue=system_queue,
@@ -154,27 +117,11 @@ class ArbiterRunner:
         """
         Read the config file.
         """
-        # It need to add when use cli command
-        # sys.path.insert(0, os.getcwd())
-
-        arbiter_setting, is_arbiter_setting = get_arbiter_setting(CONFIG_FILE)
-        if not is_arbiter_setting:
-            create_config(arbiter_setting)
-        config = read_config(arbiter_setting)
-
-        
-        """
-        Set the config to the app.
-        runner, worker, api app shared the same config.
-        # CHECK 
-        """
-        app.setup(config)
-        
         try:
             # Register signal handlers for graceful shutdown
             signal.signal(signal.SIGINT, lambda s, f: shutdown_signal_handler(system_queue))
             signal.signal(signal.SIGTERM, lambda s, f: shutdown_signal_handler(system_queue))
-            asyncio.run(arbiter_run(app, config, system_queue))
+            asyncio.run(arbiter_run(app, system_queue))
         except SystemExit as e:
             console.print(f"SystemExit caught in main: {e.code}")
         except KeyboardInterrupt:

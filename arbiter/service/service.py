@@ -2,15 +2,17 @@ from __future__ import annotations
 import inspect
 import asyncio
 import pickle
-from typing import  Any, Callable
+from typing import  Any, Callable, Type
 from arbiter.enums import NodeState
-from arbiter.constants import (
-    HEALTH_CHECK_RETRY,
-    ARBITER_SERVICE_HEALTH_CHECK_FUNC_CLOCK,
-    ARBITER_SERVICE_HEALTH_CHECK_INTERVAL,
-    ARBITER_SERVICE_TIMEOUT,
+from arbiter.data.models import (
+    ArbiterTaskModel,
+    ArbiterTaskNode,
+    ArbiterServiceNode, 
+    ArbiterGatewayNode,
+    ArbiterServiceModel,
+    ArbiterGatewayModel,
+    ArbiterNode
 )
-from arbiter.data.models import ArbiterServiceNode, ArbiterServerNode, ArbiterNode
 from arbiter.utils import get_task_queue_name
 from arbiter.exceptions import ArbiterServiceHealthCheckError
 from arbiter import Arbiter
@@ -80,6 +82,28 @@ class ServiceMeta(type):
         setattr(new_cls, 'task_functions', task_functions)
         return new_cls
 
+class ArbiterServiceInfo:
+    
+    def __init__(self, klass: Type[ArbiterService], *args, **kwargs):
+        self.klass = klass
+        self.service_model: ArbiterServiceModel | ArbiterGatewayModel = None
+        if 'name' in kwargs:
+            self.name = kwargs['name']
+        if 'gateway' in kwargs:
+            self.gateway = kwargs['gateway']
+        
+        if not hasattr(self, 'name'):
+            self.name = klass.__name__
+        
+        if not hasattr(self, 'gateway'):
+            self.gateway = ''
+    
+    def set_service_model(self, model: ArbiterServiceModel | ArbiterGatewayModel):
+        self.service_model = model
+    
+    def get_service_model(self) -> ArbiterServiceModel | ArbiterGatewayModel:
+        return self.service_model
+
 class ArbiterService(metaclass=ServiceMeta):
     
     task_functions: list[Callable] = []
@@ -88,44 +112,56 @@ class ArbiterService(metaclass=ServiceMeta):
     master_only = False
     auto_start = True
 
+    def __new__(cls, *args, **kwargs):
+        if 'service_node_id' not in kwargs:
+            # service_id가 없는 경우 ArbiterServiceInfo의 인스턴스 생성
+            return cls.get_service_info_class()(cls, *args, **kwargs)
+        else:
+            # id, host, port가 있는 경우 본래 ArbiterService의 인스턴스 생성
+            return super(ArbiterService, cls).__new__(cls)
+
+    @classmethod
+    def get_service_info_class(cls):
+        return ArbiterServiceInfo
+
     def __init__(
         self,
-        service_id: str,
-        broker_host: str,
-        broker_port: int,
-        broker_password: str,
+        arbiter_name: str,
+        service_node_id: str,
+        arbiter_host: str,
+        arbiter_port: int,
+        arbiter_config: dict,
     ):
-        self.service_id = service_id
-        self.force_stop = False
-
-        self.service_node: ArbiterServiceNode | ArbiterServerNode = None
-        self.arbiter_node: ArbiterNode = None
-        
         self.arbiter = Arbiter(
-            broker_host,
-            broker_port,
-            broker_password
+            arbiter_name,
+            arbiter_host,
+            arbiter_port,
+            arbiter_config
         )
+        self.service_node_id = service_node_id
+        self.force_stop = False
+        self.service_node: ArbiterServiceNode | ArbiterGatewayNode = None
+        self.arbiter_node: ArbiterNode = None
         self.system_subscribe_task: asyncio.Task = None
         self.health_check_task: asyncio.Task = None
-        self.tasks: list[asyncio.Task] = []
+        self.tasks: dict[ArbiterTaskNode, asyncio.Task] = {}
 
     async def run(self):
         await self.arbiter.connect()
         await self.start()
         await self.shutdown()
         await self.arbiter.disconnect()
-        
+    
+    async def _get_service_node(self) -> ArbiterServiceNode:
+        return await self.arbiter.get_data(ArbiterServiceNode, self.service_node_id)
+                    
     async def on_start(self):
         pass
 
     async def start(self):
         error = None
         try:
-            self.service_node = await self.arbiter.get_data(ArbiterServiceNode, self.service_id)
-            if not self.service_node:
-                self.service_node = await self.arbiter.get_data(ArbiterServerNode, self.service_id)
-            
+            self.service_node = await self._get_service_node()
             self.arbiter_node = await self.arbiter.get_data(ArbiterNode, self.service_node.arbiter_node_id)
             
             self.health_check_task = asyncio.create_task(
@@ -133,7 +169,6 @@ class ArbiterService(metaclass=ServiceMeta):
             
             self.system_subscribe_task = asyncio.create_task(
                 self.listen_system_func())
-
             for task_function in self.task_functions:
                 queue = getattr(task_function, 'queue', None)
                 num_of_tasks = getattr(task_function, 'num_of_tasks', 1)
@@ -141,18 +176,30 @@ class ArbiterService(metaclass=ServiceMeta):
                     queue = get_task_queue_name(
                         self.__class__.__name__, 
                         task_function.__name__)
+                task_model = await self.arbiter.get_data(
+                    ArbiterTaskModel, queue)
+                if not task_model:
+                    raise ValueError(f"Task model {queue} not found")
                 params = [self.arbiter, queue, self]
                 for _ in range(num_of_tasks):
-                    self.tasks.append(
-                        asyncio.create_task(task_function(*params)))
-
+                    task_node = ArbiterTaskNode(
+                        service_node_id=self.service_node_id,
+                        parent_model_id=task_model.id,
+                        state=NodeState.INACTIVE,
+                    )
+                    await self.arbiter.save_data(task_node)
+                    params.append(task_node)
+                    self.tasks[task_node] = asyncio.create_task(task_function(*params))
             await self.on_start()            
             self.service_node.state = NodeState.ACTIVE
             await self.arbiter.save_data(self.service_node)
             await self.health_check_task
         except Exception as e:
             error = e
+            print("Error in start", e)
         finally:
+            if not self.service_node:
+                return
             if error:
                 self.service_node.state = NodeState.ERROR
             else:
@@ -163,38 +210,48 @@ class ArbiterService(metaclass=ServiceMeta):
         pass
 
     async def shutdown(self):
-        for task in self.tasks:
-            task and task.cancel()
+        for task_node, task in self.tasks.items():
+            try:
+                task.cancel()
+                await task
+            except asyncio.CancelledError:
+                pass
+            finally:
+                task_node.state = NodeState.INACTIVE
+                await self.arbiter.save_data(task_node)
         self.system_subscribe_task and self.system_subscribe_task.cancel()
         self.health_check_task and self.health_check_task.cancel()
         await self.on_shutdown()
         await self.arbiter.disconnect()
 
     async def health_check_func(self) -> str:
+        service_timeout = self.arbiter.config.get('service_timeout')
+        service_health_check_interval = self.arbiter.config.get('service_health_check_interval')
+        service_health_check_func_clock = self.arbiter.config.get('service_health_check_func_clock')
+        service_retry_count = self.arbiter.config.get('service_retry_count')
         health_check_time = asyncio.get_event_loop().time()
         health_check_attempt = 0
         while True and not self.force_stop:
             try:
                 start_time = asyncio.get_event_loop().time()
                 
-                if start_time - health_check_time > ARBITER_SERVICE_TIMEOUT:
+                if start_time - health_check_time > service_timeout:
                     break
 
-                if start_time - health_check_time < ARBITER_SERVICE_HEALTH_CHECK_INTERVAL:
-                    await asyncio.sleep(ARBITER_SERVICE_HEALTH_CHECK_FUNC_CLOCK)
+                if start_time - health_check_time < service_health_check_interval:
+                    await asyncio.sleep(service_health_check_func_clock)
                     continue
                 
-                health_check_time = asyncio.get_event_loop().time()
                 message_id = await self.arbiter.send_message(
                     self.arbiter_node.get_health_check_channel(),
-                    self.service_id)
+                    self.service_node_id)
                 # test message_id is None
                 response = await self.arbiter.get_message(message_id)
                 if response:
                     health_check_time = asyncio.get_event_loop().time()
                     continue
                 
-                if health_check_attempt > HEALTH_CHECK_RETRY:
+                if health_check_attempt > service_retry_count:
                     raise ArbiterServiceHealthCheckError()
                 
                 health_check_attempt += 1

@@ -1,49 +1,33 @@
 from __future__ import annotations
-import os
 import asyncio
-import uuid
 import sys
 import time
 import json
 import importlib
 from collections import defaultdict
-from configparser import ConfigParser
-from asyncio.subprocess import Process
 from inspect import Parameter
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 from warnings import warn
-from types import UnionType
 from typing_extensions import Annotated
 from typing import (
     AsyncGenerator,
-    Type,
     TypeVar, 
     Generic,
-    Union, 
-    get_origin,
-    get_args,
-    List
 )
 from arbiter import Arbiter
 from arbiter.data.models import (
-    ArbiterModel,
+    ArbiterNodeModel,
     ArbiterNode,
     ArbiterServiceModel,
     ArbiterServiceNode,
+    ArbiterGatewayModel,
+    ArbiterGatewayNode,
     ArbiterTaskModel,
     ArbiterTaskNode,
-    ArbiterServerModel,
-    ArbiterServerNode,
 )
-from arbiter.service import ArbiterService
-from arbiter.constants import (
-    WARP_IN_TIMEOUT,
-    ARBITER_SERVICE_PENDING_TIMEOUT,
-    ARBITER_SERVICE_ACTIVE_TIMEOUT,
-    ARBITER_SYSTEM_TIMEOUT,
-    ARBITER_APP_HELATH_MANAGE_FUNC_CLOCK,
-)
+from arbiter.service import ArbiterServiceInfo
+from arbiter.gateway import ArbiterGatewayServiceInfo
 from arbiter.enums import (
     WarpInTaskResult,
     ArbiterDataType,
@@ -53,21 +37,14 @@ from arbiter.enums import (
 from arbiter.exceptions import (
     ArbiterServerNodeFaileToStartError,
     ArbiterTaskAlreadyExistsError,
-    ArbiterAlreadyRegistedServiceMetaError,
     ArbiterServiceNodeFaileToStartError,
     ArbiterInconsistentServiceModelError
 )
 from arbiter.utils import (
-    restore_type,
-    get_ip_address,
     fetch_data_within_timeout,
-    get_data_within_timeout,
     get_pickled_data,
     get_task_queue_name,
-    terminate_process,
     transform_type_from_annotation,
-    # find_python_files_in_path,
-    # get_all_subclasses
 )
 
 T = TypeVar('T')
@@ -81,47 +58,41 @@ class ArbiterApp:
     
     def __init__(
         self,
+        name: str = "Danimoth",
+        arbiter_host: str = "localhost",
+        arbiter_port: int = 6379,
+        config: dict = {},
     ):
-        self.config: ConfigParser = None
-        self.arbiter: Arbiter = None
+        self.name = name
+        self.arbiter = Arbiter(
+            name=name,
+            host=arbiter_host,
+            port=arbiter_port,
+            config=config 
+        )
         self.arbiter_node: ArbiterNode = None
-        self.arbiter_model: ArbiterModel = None
-
         self.service_manage_task: asyncio.Task = None
         self.health_manage_task: asyncio.Task = None
         self.health_check_task: asyncio.Task = None
         self.pending_service_queue: TypedQueue[ArbiterServiceNode] = TypedQueue()
-        self.processes: dict[str, Process] = {}
         # 동기화 한다.
-        self._services: list[Type[ArbiterService]] = []
+        self._gateway_services: list[ArbiterGatewayServiceInfo] = []
+        self._services: list[ArbiterServiceInfo] = []
         self._warp_in_queue: asyncio.Queue = asyncio.Queue()
 
-    @property
-    def name(self) -> str:
-        return self.config.get("project", "name", fallback="Danimoth")
-
-    def setup(self, config: ConfigParser):
-        self.config = config
-        self.arbiter = Arbiter(
-            host=config.get("broker", "host"),
-            port=config.getint("broker", "port"),
-            password=config.get("broker", "password"),
-        )
-
-    def add_service(self, service: ArbiterService):
-        # check if worker.__name__ is already added
-        if any(service == s for s in self._services):
-            warn(f'Service {service.__name__} is already added')
+    def add_service(self, service: ArbiterServiceInfo):
+        if isinstance(service, ArbiterGatewayServiceInfo):
+            if any(s.name == service.name for s in self._gateway_services):
+                raise ValueError('Gateway Service with the same name is already added')
+            self._gateway_services.append(service)
+            return
         
-        if any(s.__name__ == service.__name__ for s in self._services):
+        if any(s.name == service.name for s in self._services):
             raise ValueError('Service with the same name is already added')
                 
         self._services.append(service)
 
     async def clear(self):
-        if self.processes:
-            for _, process in self.processes.items():
-                await terminate_process(process)
         if self.health_manage_task:
             self.health_manage_task.cancel()
         if self.service_manage_task:
@@ -130,10 +101,72 @@ class ArbiterApp:
             self.health_check_task.cancel()
         if self.arbiter_node:
             """
-                나중에 data clean 절차가 필요하다.
+                모든것이 다 정리 되었다고 가정해야 할까?
+                data를 삭제한다.??
+                해당 노드와 관련된 모든 데이터를 삭제한다.
             """
-            self.arbiter_node.state = NodeState.INACTIVE
-            await self.arbiter.save_data(self.arbiter_node)
+            if gateway_nodes := await self.arbiter.search_data(
+                ArbiterGatewayNode,
+                arbiter_node_id=self.arbiter_node.id
+            ):
+                for gateway_node in gateway_nodes:
+                    if gateway_node.state != NodeState.INACTIVE:
+                        warn(f'Gateway Node is not shutdown:  {gateway_node.state}')
+                    await self.arbiter.delete_data(gateway_node)
+                    
+            if service_nodes := await self.arbiter.search_data(
+                ArbiterServiceNode,
+                arbiter_node_id=self.arbiter_node.id
+            ):
+                for service_node in service_nodes:
+                    if service_node.state != NodeState.INACTIVE:
+                        warn('Service Node is not shutdown')                        
+                    if task_nodes := await self.arbiter.search_data(
+                        ArbiterTaskNode,
+                        service_node_id=service_node.id
+                    ):
+                        for task_node in task_nodes:
+                            if task_node.state != NodeState.INACTIVE:
+                                warn('Task Node is not shutdown')
+                            await self.arbiter.delete_data(task_node)
+                    await self.arbiter.delete_data(service_node)
+            await self.arbiter.delete_data(self.arbiter_node)
+            
+            # model 도 체크한다.                        
+            for gateway_model in await self.arbiter.search_data(
+                ArbiterGatewayModel,
+                arbiter_node_model_id=self.arbiter_model.id
+            ):
+                if not await self.arbiter.search_data(
+                    ArbiterGatewayNode,
+                    parent_model_id=gateway_model.id
+                ):
+                    await self.arbiter.delete_data(gateway_model)
+            
+            # MARK 이 부분이 조금 햇갈린다.
+            for service_info in self._services:
+                service_model = service_info.get_service_model()
+                if task_models := await self.arbiter.search_data(
+                    ArbiterTaskModel,
+                    service_model_id=service_model.id
+                ):
+                    for task_model in task_models:
+                        if not await self.arbiter.search_data(
+                            ArbiterTaskNode,
+                            parent_model_id=task_model.id
+                        ):
+                            await self.arbiter.delete_data(task_model)
+                if not await self.arbiter.search_data(
+                    ArbiterServiceNode,
+                    parent_model_id=service_model.id
+                ):
+                    await self.arbiter.delete_data(service_model)
+            
+            if not await self.arbiter.search_data(
+                ArbiterNode,
+                parent_model_id=self.arbiter_model.id
+            ):
+                await self.arbiter.delete_data(self.arbiter_model)
 
         if self.arbiter:
             await self.arbiter.disconnect()
@@ -143,37 +176,34 @@ class ArbiterApp:
             Arbiter Service model, Task model을 생성한다.
         """
         try:
-            # deprecated
-            """
-            arbiter_service_in_root = find_python_files_in_path(
-                from_replica=self.is_replica)
-            # 프로젝트 root아래 있는 service.py 파일들을 import한다.
-            for python_file in arbiter_service_in_root:
-                importlib.import_module(python_file)
-                # import 되었으므로 AbstractService의 subclasses로 접근 가능
-            detected_workers = get_all_subclasses(ArbiterServiceWorker)
-            for detected_worker in detected_workers:
-                self.add_worker(detected_worker)
-            """ 
-            for service_node in self._services:
-                assert issubclass(service_node, ArbiterService), f"{service_node} is not a subclass of ArbiterService"
+            for gateway_service_info in self._gateway_services:             
+                gateway_model = ArbiterGatewayModel(
+                    arbiter_node_model_id=self.arbiter_model.id,
+                    name=gateway_service_info.name)
+                
+                if gateway_models := await self.arbiter.search_data(
+                    ArbiterGatewayModel,
+                    arbiter_node_model_id=self.arbiter_model.id,
+                    name=gateway_service_info.name,
+                ):
+                    if len(gateway_models) > 1:
+                        raise ValueError('Too many Gateway Models')
+                    other_gateway_model = gateway_models[0]
+                    # gateway_model 비교한다.
+                    gateway_model = other_gateway_model
+                else:
+                    await self.arbiter.save_data(gateway_model)
+                gateway_service_info.set_service_model(gateway_model)
 
+            for service_info in self._services:
                 """
-                    service model은 
-                    arbiter model에도 등록하고
-                        전체 model 파악을 위해
-                    arbiter node에도 등록한다.
-                        실행을 위해
+                    service model과 task model을 생성한다.
+                    만약 이름이 같다면, 가지고 있는 task model을 비교하여 다르다면 에러를 발생시킨다.
                 """
-                created, service_model = await self._get_or_create_service_model(service_node)
-                if created:
-                    # 전체에서 하나만 만들어지는 model에서는
-                    # 새로만든 경우에만 등록해야하므로 여기서 처리한다.
-                    self.arbiter_model.service_models.append(service_model)
-                    await self.arbiter.save_data(self.arbiter_model)
-                await self.arbiter.save_data(service_model)
-   
-            await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.PREPARATION.name}...ok"))
+                service_model = await self._get_or_create_service_model(service_info)
+                service_info.set_service_model(service_model)
+            await self._warp_in_queue.put(
+                (WarpInTaskResult.SUCCESS, f"{WarpInPhase.PREPARATION.name}...ok"))
         except Exception as e:
             await self._warp_in_queue.put(
                 (WarpInTaskResult.FAIL, f"Failed to prepare services: {e}"))
@@ -181,88 +211,63 @@ class ArbiterApp:
     async def _initialize_task(self):
         """
             WarpInPhase Arbiter initialization
-            
-            if node is Master, execute wsgi app with the number of workers
-                and wait for the response from the each gunicorn woker
-                
-            if node is Replica, send the message to the master node
-            
-            
-            check database is working
         """
-        if self.arbiter_node.is_master:
-            try:
-                # setup Server Model
-                server_model = await self._get_or_update_server_model()
-
-                arbiter_server_node = ArbiterServerNode(
-                    arbiter_server_model_id=server_model.id,
+        try:
+            for gateway_info in self._gateway_services:
+                gateway_model = gateway_info.get_service_model()
+                arbiter_gateway_node = ArbiterGatewayNode(
+                    parent_model_id=gateway_model.id,                
                     arbiter_node_id=self.arbiter_node.id,
                     state=NodeState.PENDING,
+                    host=gateway_info.host,
+                    port=gateway_info.port,
+                    log_level=gateway_info.log_level,
+                    allow_origins=gateway_info.allow_origins,
+                    allow_methods=gateway_info.allow_methods,
+                    allow_headers=gateway_info.allow_headers,
+                    allow_credentials=gateway_info.allow_credentials
                 )
-                
-                await self.arbiter.save_data(arbiter_server_node)
+                await self.arbiter.save_data(arbiter_gateway_node)
                 # launch Sever Node
-                await self._generate_server_node(arbiter_server_node)
-                
+                await self._generate_server_node(arbiter_gateway_node)
+
                 # TODO 효율적으로 바꿔야 한다.
                 fetch_data = lambda: self.arbiter.search_data(
-                    ArbiterServerNode,
-                    id=arbiter_server_node.id,
+                    ArbiterGatewayNode,
+                    id=arbiter_gateway_node.id,
                     state=NodeState.ACTIVE
                 )
                 results = await fetch_data_within_timeout(
-                    timeout=ARBITER_SERVICE_PENDING_TIMEOUT,
+                    timeout=self.arbiter.config.get('service_pending_timeout'),
                     fetch_data=fetch_data,
                     check_condition=lambda data: len(data) > 0,
                 )
                 if not results:
                     raise ArbiterServerNodeFaileToStartError()
-                # start manger fasthtml process
-                await self._warp_in_queue.put(
-                    (WarpInTaskResult.SUCCESS, f"{WarpInPhase.INITIATION.name}...ok")
-                )
-            except Exception as e:
-                await self.arbiter.delete_data(arbiter_server_node)
-                await self._warp_in_queue.put(
-                    (WarpInTaskResult.FAIL, f"Failed to start Web Service: {e}")
-                )
-        else:
-            await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.INITIATION.name}...ok"))
-            
-    async def _materialization_task(self):
-        """
-            WarpInPhase Arbiter MATERIALIZATION
-            Start all services that are set to auto_start, and wait for the response
-            
-        """
-        initial_service_models = [
-            service_model
-            for service_model in self.arbiter_model.service_models
-            if service_model.auto_start
-        ]
-        try:
-            for service_model in initial_service_models:
+                # TODO start manger fasthtml process
+            for service_info in self._services:
+                service_model = service_info.get_service_model()
+                if not service_model.auto_start:
+                    continue
                 for _ in range(service_model.num_of_services):
-                    try:    
-                        module = importlib.import_module(service_model.module_name)
-                        getattr(module, service_model.name)
-                    except (ImportError, AttributeError):
-                        continue
+                    module = importlib.import_module(service_model.module_name)
+                    getattr(module, service_model.name)
                     pending_service = await self._start_service(service_model)
                     fetch_data = lambda: self.arbiter.search_data(
                         ArbiterServiceNode,
                         state=NodeState.ACTIVE,
                         id=pending_service.id)
                     results = await fetch_data_within_timeout(
-                        timeout=ARBITER_SERVICE_PENDING_TIMEOUT,
+                        timeout=self.arbiter.config.get('service_pending_timeout'),
                         fetch_data=fetch_data,
                         check_condition=lambda data: len(data) > 0,
                     )
                     if not results:
                         raise ArbiterServiceNodeFaileToStartError
-
-            await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.MATERIALIZATION.name}...ok"))
+        except (ImportError, AttributeError) as e:
+            await self._warp_in_queue.put(
+                (WarpInTaskResult.FAIL, f"Failed to start initial services {e}")
+            )
         except TimeoutError:
             await self._warp_in_queue.put(
                 (WarpInTaskResult.FAIL, "Failed to start initial services")
@@ -271,7 +276,11 @@ class ArbiterApp:
             await self._warp_in_queue.put(
                 (WarpInTaskResult.FAIL, "Failed to start initial services")
             )
-    
+
+                    
+                
+        await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.INITIATION.name}...ok"))
+           
     async def _disappearance_task(self):
         """
             WarpInPhase Arbiter DISAPPEARANCE
@@ -288,13 +297,13 @@ class ArbiterApp:
             message=self.arbiter_node.shutdown_code)
         
         fetch_data = lambda: self.arbiter.search_data(
-            ArbiterServerNode,
+            ArbiterGatewayNode,
             arbiter_node_id=self.arbiter_node.id,
             state=NodeState.ACTIVE
         )
         
         results = await fetch_data_within_timeout(
-            timeout=ARBITER_SERVICE_PENDING_TIMEOUT,
+            timeout=self.arbiter.config.get('service_pending_timeout'),
             fetch_data=fetch_data,
             check_condition=lambda data: len(data) == 0,
         )
@@ -311,15 +320,15 @@ class ArbiterApp:
         )
         
         results = await fetch_data_within_timeout(
-            timeout=ARBITER_SERVICE_PENDING_TIMEOUT,
+            timeout=self.arbiter.config.get('service_pending_timeout'),
             fetch_data=fetch_data,
             check_condition=lambda data: len(data) == 0,
         )
         
-        if results:
-            await self._warp_in_queue.put(
-                (WarpInTaskResult.WARNING, f"{len(results)} services are not shutdown")
-            )
+        # if results:
+            # await self._warp_in_queue.put(
+            #     (WarpInTaskResult.WARNING, f"{len(results)} services are not shutdown")
+            # )
                 
         await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.DISAPPEARANCE.name}...ok"))
                 
@@ -330,6 +339,7 @@ class ArbiterApp:
             # remove all messages in the queue
             while not self._warp_in_queue.empty():
                 data = self._warp_in_queue.get_nowait()
+                print(data)
                 
         match phase:
             case WarpInPhase.PREPARATION:
@@ -343,11 +353,6 @@ class ArbiterApp:
                     node가 master인 경우 gunicorn을 실행한다.
                 """
                 asyncio.create_task(self._initialize_task())
-            case WarpInPhase.MATERIALIZATION:
-                """
-                    auto_start가 설정된 service들을 실행한다.
-                """
-                asyncio.create_task(self._materialization_task())
             case WarpInPhase.DISAPPEARANCE:
                 """
                 """
@@ -358,7 +363,7 @@ class ArbiterApp:
             try:
                 message = await asyncio.wait_for(
                     self._warp_in_queue.get(),
-                    WARP_IN_TIMEOUT
+                    self.arbiter.config.get('warp_in_timeout')
                 )
                 if message is None:
                     break
@@ -376,37 +381,24 @@ class ArbiterApp:
             Create Master Node or Replica Node
         """
         await self.arbiter.connect()
-        # Check if there is a master node with the same name (and some configuration)  
-        is_master = True      
         if arbiter_models := await self.arbiter.search_data(
-            ArbiterModel,
+            ArbiterNodeModel,
             name=self.name,
         ):
             if len(arbiter_models) > 1:
                 raise ValueError('Too many Arbiter Models')           
-            self.arbiter_model = arbiter_models[0]  
-            active_nodes = await self.arbiter.search_data(
-                ArbiterNode,
-                arbiter_model_id=self.arbiter_model.id,
-                state=NodeState.ACTIVE)
-            if active_nodes:
-                # 만약 matser node가 없으면 Master Node가 된다.
-                for node in active_nodes:
-                    if node.is_master:
-                        is_master = False
-                        break
+            self.arbiter_model = arbiter_models[0]
         else:
-            self.arbiter_model = ArbiterModel(
+            self.arbiter_model = ArbiterNodeModel(
                 name=self.name,
             )
+            await self.arbiter.save_data(self.arbiter_model)
+            
         self.arbiter_node = ArbiterNode(
             state=NodeState.ACTIVE,
-            arbiter_model_id=self.arbiter_model.id,
-            is_master=is_master,
+            parent_model_id=self.arbiter_model.id,
         )
         await self.arbiter.save_data(self.arbiter_node)
-        await self.arbiter.save_data(self.arbiter_model)
-
         """ 
             Finish the static preparation
             and prepare for the dynamic preparation
@@ -420,17 +412,13 @@ class ArbiterApp:
 
         await self.clear()
 
-    async def _start_process(self, command: str, process_name: str) -> Process:
-        if process_name in self.processes:
-            raise ValueError(f'Process {process_name} is already started.')
-
-        process = await asyncio.create_subprocess_shell(
+    async def _start_process(self, command: str):
+        await asyncio.create_subprocess_shell(
             command,
             # stdout=asyncio.subprocess.PIPE,
             # stderr=asyncio.subprocess.PIPE,
             shell=True
         )
-        return process
     
     async def _stop_service(self, service_id: int):
         # 해당 서비스 id를 가진 서비스를 찾아서 종료한다.
@@ -461,101 +449,91 @@ class ArbiterApp:
         service_node = ArbiterServiceNode(
             state=NodeState.PENDING,
             arbiter_node_id=self.arbiter_node.id,
-            arbiter_service_model_id=service_model.id,
+            parent_model_id=service_model.id,
         )
+        await self.arbiter.save_data(service_node)
         await self.pending_service_queue.put(service_node)
         return service_node
 
-    async def _generate_server_node(self, server_node: ArbiterServerNode):
-        # uvicorn_worker_node = ArbiterServerNode(        
-        broker_config = dict(self.config['broker'])
-        server_config = dict(self.config['server'])
+    async def _generate_server_node(self, gateway_node: ArbiterGatewayNode):
 
-        params = ', '.join([
-            f"'{server_node.id}'",
-            f"'{broker_config.get('host')}'",
-            f"{broker_config.get('port')}",
-            f"'{broker_config.get('password')}'",
-            f"'{server_config.get('host')}'",
-            f"{server_config.get('port')}",
-            f"'{server_config.get('log_level')}'",
-            f"'{server_config.get('allow_origins')}'",
-            f"'{server_config.get('allow_methods')}'",
-            f"'{server_config.get('allow_headers')}'",
-            f"'{server_config.get('allow_credentials')}'",                    
-        ])
-        
-        uvicorn_worker_script = '\n'.join([
-            "from arbiter.server import ArbiterServerService;",
+        params = {
+            'arbiter_name': self.arbiter_model.name,
+            'service_node_id': gateway_node.id,
+            'arbiter_host': self.arbiter.host,
+            'arbiter_port': self.arbiter.port,
+            'arbiter_config': self.arbiter.config,
+            'host': gateway_node.host,
+            'port': gateway_node.port,
+            'log_level': gateway_node.log_level,
+            'allow_origins': gateway_node.allow_origins,
+            'allow_methods': gateway_node.allow_methods,
+            'allow_headers': gateway_node.allow_headers,
+            'allow_credentials': gateway_node.allow_credentials,
+        }
+
+        gateway_script = '\n'.join([
+            "from arbiter.gateway import ArbiterGatewayService;",
             "import asyncio;",
-            f"wokrer = ArbiterServerService({params});",
-            f"asyncio.run(wokrer.run());"
+            f"worker = ArbiterGatewayService(**{params});",
+            "asyncio.run(worker.run());"
         ])
         
-        uvicorn_command = ' '.join([
-            f"{sys.executable}", '-c', f'"{uvicorn_worker_script}"'
+        gateway_command = ' '.join([
+            f"{sys.executable}", '-c', f'"{gateway_script}"'
         ])
         
-        process = await self._start_process(uvicorn_command, 'uvicorn')
-        self.processes['uvicorn'] = process
-
-    async def _get_or_update_server_model(
-        self,
-    ) -> ArbiterServerModel:
-        # 현재 aribter model에 등록된 service model의 task model과 비교한다.
-        if server_models := await self.arbiter.search_data(ArbiterServerModel, arbiter_model_id=self.arbiter_model.id):
-            assert len(server_models) == 1, 'Too many Server Models'
-            server_model = server_models[0]
-        else:
-            server_model = ArbiterServerModel(
-                name=self.arbiter_model.name,
-                arbiter_model_id=self.arbiter_model.id,
-                num_of_services=1,
-            )
-            await self.arbiter.save_data(server_model)
-
-        registed_http_task_models = server_model.http_task_models
-        registed_stream_task_models = server_model.stream_task_models  
-                  
-        for service_model in self.arbiter_model.service_models:
-            # service_model의 등록된 http_task_models, stream_task_models를 가져온다.
-            # server model의 http_task_model 및 stream_task_model을 비교하여 없다면 추가한다.
-            for task_model in service_model.task_models:
-                # task_model.connection 혹은 task_model.method가 있어야 한다.
-                if not task_model.connection and not task_model.method:
-                    continue
-                
-                if not any(task_model == http_task_model for http_task_model in registed_http_task_models):
-                    registed_http_task_models.append(task_model)                    
-                if not any(task_model == stream_task_model for stream_task_model in registed_stream_task_models):
-                    registed_stream_task_models.append(task_model)
-                    
-        await self.arbiter.save_data(server_model)
-        return server_model
+        await self._start_process(gateway_command)
     
     async def _get_or_create_service_model(
         self,
-        service: Type[ArbiterService]
-    ) -> tuple[bool, ArbiterServiceModel]:
+        service_info: ArbiterServiceInfo
+    ) -> ArbiterServiceModel:
         """
             Service Worker를 생성한다.
         """
-        service_name = service.__name__
+        service = service_info.klass
+        service_name = service_info.name
+        gateway_name = service_info.gateway
+        
+        if gateway_models := await self.arbiter.search_data(
+            ArbiterGatewayModel,
+            arbiter_node_model_id=self.arbiter_model.id,
+            name=gateway_name
+        ):
+            if len(gateway_models) > 1:
+                raise ValueError('Too many Gateway Models')
+            gateway_model_id = gateway_models[0].id
+        else:
+            gateway_model_id = ''
+            
         module_name = service.__module__
         # task function을 먼저 검사한다.
         assert len(service.task_functions) > 0, f"{service_name} has no task functions"
-        
+
+        new_service_model = ArbiterServiceModel(
+            arbiter_node_model_id=self.arbiter_model.id,
+            gateway_model_id=gateway_model_id,
+            name=service_name,
+            module_name=module_name,
+            auto_start=service.auto_start,
+            num_of_services=service.num_of_services)
+
         task_models: list[ArbiterTaskModel] = []
         
         for task_function in service.task_functions:
-            task_type = getattr(task_function, 'task_type', None)
             task_function_name = task_function.__name__
                          
             queue = getattr(task_function, 'queue', None)
+            
+            # task를 생성할때 queue를 지정하지 않으면 task function의 이름을 사용한다.
             if not queue:
-                # task를 생성할때 queue를 지정하지 않으면 task function의 이름을 사용한다.
                 queue = get_task_queue_name(service_name, task_function.__name__)
-                        
+                
+            for task_model in task_models:
+                if task_model.queue == queue:
+                    raise ArbiterTaskAlreadyExistsError()
+                 
             parameters = getattr(task_function, 'parameters', {})
             return_type = getattr(task_function, 'return_type', None)
             
@@ -571,6 +549,7 @@ class ArbiterApp:
                         transformed_parameters[name].append(parameter_type.model_json_schema())
                     else:
                         transformed_parameters[name].append(parameter_type.__name__)
+                        
             if return_type:
                 for return_type in transform_type_from_annotation(return_type):
                     if issubclass(return_type, BaseModel):
@@ -579,81 +558,63 @@ class ArbiterApp:
                         transformed_return_type.append(return_type.__name__)
                         
             task_data = dict(
+                service_model_id=new_service_model.id,
                 name=task_function_name,
                 service_name=service_name,
                 queue=queue,
                 num_of_tasks=getattr(task_function, 'num_of_tasks', 1),
+                stream=getattr(task_function, 'stream', False),
+                http=getattr(task_function, 'http', False),
                 transformed_parameters=json.dumps(dict(transformed_parameters)),
                 transformed_return_type=json.dumps(transformed_return_type),
             )
-            
-            match task_type:
-                case "ArbiterTask":
-                    pass
-                case "ArbiterAsyncTask":
-                    task_data.update(
-                        stream=True)                    
-                case "ArbiterHttpTask":
-                    task_data.update(method=getattr(task_function, 'method', 0))
-                case "ArbiterStreamTask":
-                    task_data.update(
-                        connection=getattr(task_function, 'connection', 0),
-                        communication_type=getattr(task_function, 'communication_type', 0),
-                        num_of_channels=getattr(task_function, 'num_of_channels', 1))
-                case "ArbiterPeriodicTask":
-                    task_data.update(interval=getattr(task_function, 'interval', 0))
-                case "ArbiterSubscribeTask":
-                    task_data.update(channel=getattr(task_function, 'channel', ''))
-                case _:
-                    raise ValueError(f'Invalid Task Type - {task_type}')
+
             task_model = ArbiterTaskModel(**task_data)
 
-            if task:= await self.arbiter.get_data(ArbiterTaskModel, queue):
-                if task != task_model:
-                    raise Exception("Task already exists")
-                    
-            
-
-            task_models.append(task_model)        
-            await self.arbiter.save_data(task_model)
-        # 현재 arbiter model에 등록된 service model과 비교한다.
-        get_service_models = lambda _name: [
-            sm
-            for sm in self.arbiter_model.service_models
-            if sm.name == _name]
+            task_models.append(task_model)
         
-        if already_service_models := get_service_models(service_name):
-            # TODO if 기존 서비스 모델과 더 정교하게 비교하여 다른 경우에는 에러를 발생시킨다.
-            # TODO task function이 다르면 에러를 발생시킨다.
-            # raise ArbiterInconsistentServiceMetaError()
-            service_model = already_service_models[0]
-            for task_model in task_models:
-                if same_model := next(
-                    (tm for tm in service_model.task_models if tm == task_model), None):
-                    pass
-                    # 같은 큐를 가진 task model이 있다.
-                    # 같은 parameter와 같은 return type을 가진지 검사해야 한다.
-                    if same_model.transformed_parameters != task_model.transformed_parameters:
-                        raise ArbiterTaskAlreadyExistsError()
-                    if same_model.transformed_return_type != task_model.transformed_return_type:
-                        raise ArbiterTaskAlreadyExistsError()
-                # 같은 이름을 가진 큐가 없다. -> 추가한다.
-                service_model.task_models.append(task_model)
-            return False, service_model
-        else:
-            service_model = ArbiterServiceModel(
-                name=service_name,
-                module_name=module_name,
-                auto_start=service.auto_start,
-                num_of_services=service.num_of_services,
-                task_models=task_models,
-            )
-            return True, service_model
-     
+        for service_model in await self.arbiter.search_data(
+            ArbiterServiceModel,
+            arbiter_node_model_id=self.arbiter_model.id
+        ):
+            # 같은걸 찾음
+            if service_model.name == service_name:
+                # 이름이 같다면 - 테스크 모델이 모두 같아야 한다. * 현재 조건
+                other_task_models = await self.arbiter.search_data(
+                    ArbiterTaskModel, service_model_id=service_model.id)
+                if len(task_models) != len(other_task_models):
+                    # 이름을 바꾸던가 해라
+                    raise ArbiterInconsistentServiceModelError()
+                
+                for task_model in task_models:
+                    if same_model := next(
+                        (tm for tm in other_task_models if tm == task_model), None):
+                        # 같은 큐를 가진 task model이 있다.
+                        # 같은 parameter와 같은 return type을 가진지 검사해야 한다.
+                        if same_model.transformed_parameters != task_model.transformed_parameters:
+                            raise ArbiterInconsistentServiceModelError()
+                        if same_model.transformed_return_type != task_model.transformed_return_type:
+                            raise ArbiterInconsistentServiceModelError()
+                    else:
+                        # 같은 큐를 가진 task model이 없다. 현재는 에러를 발생시킨다.
+                        raise ArbiterInconsistentServiceModelError()
+                return service_model
+        # 새롭게 저장해야 한다.
+        # 먼저 task model을 비교하여 같은게 있는지 확인한다.
+        new_service_model.task_model_ids = [
+            task_model.get_id()
+            for task_model in task_models]
+        await self.arbiter.save_data(new_service_model)
+        for task_model in task_models:
+            if await self.arbiter.get_data(ArbiterTaskModel, queue):
+                print('Task Already Exists', queue)
+                raise ArbiterTaskAlreadyExistsError()
+            task_model.service_model_id = new_service_model.id
+            await self.arbiter.save_data(task_model)
+            
+        return new_service_model
+    
     async def service_manage_func(self):
-        """
-            등록된 service를 
-        """
         while not self.health_check_task.done():
             try:
                 service_node = await self.pending_service_queue.get()
@@ -662,28 +623,23 @@ class ArbiterApp:
                     break
                 service_model = await self.arbiter.get_data(
                     ArbiterServiceModel, 
-                    service_node.arbiter_service_model_id)
-                broker_host = self.config.get("broker", "host")
-                broker_port = self.config.get("broker", "port")
-                broker_password = self.config.get("broker", "password")
-                await self.arbiter.save_data(service_node)                
-                # carefully check '' type of param annotation is str or not
-                params = ', '.join([
-                    f"'{service_node.id}'",
-                    f"'{broker_host}'",
-                    f"{broker_port}",
-                    f"'{broker_password}'",
-                ])
+                    service_node.parent_model_id)
+                params = {
+                    'arbiter_name': self.arbiter_model.name,
+                    'service_node_id': service_node.id,
+                    'arbiter_host': self.arbiter.host,
+                    'arbiter_port': self.arbiter.port,
+                    'arbiter_config': self.arbiter.config,
+                }
+
                 service_start_script = '\n'.join([
                     "import asyncio;",
                     f"from {service_model.module_name} import {service_model.name};"
-                    f"service_worker = {service_model.name}({params});",
+                    f"service_worker = {service_model.name}(**{params});",
                     f"asyncio.run(service_worker.run());"
                 ])
-                process = await self._start_process(
-                    f'{sys.executable} -c "{service_start_script}"',
-                    service_node.id)
-                self.processes[service_model.get_service_name()] = process
+                await self._start_process(
+                    f'{sys.executable} -c "{service_start_script}"')
             except Exception as e:
                 await self.arbiter.delete_data(service_node)
                 print(e, ': manager')
@@ -714,7 +670,7 @@ class ArbiterApp:
             #     if elapsed_time > timeout:
             #         removed_services.append((service, description))
 
-            await asyncio.sleep(ARBITER_APP_HELATH_MANAGE_FUNC_CLOCK)
+            await asyncio.sleep(1)
 
     async def health_check_func(
         self,
@@ -723,14 +679,14 @@ class ArbiterApp:
         try:
             async for raw_message in self.arbiter.listen(
                 self.arbiter_node.get_health_check_channel(),
-                ARBITER_SYSTEM_TIMEOUT
+                self.arbiter.config.get('system_timeout')
             ):
                 message = get_pickled_data(raw_message)
                 message_id, service_node_id = message
                 # health check의 경우 한번에 모아서 업데이트 하는 경우를 생각해봐야한다.
                 service_node = await self.arbiter.get_data(ArbiterServiceNode, service_node_id)
                 if not service_node:
-                    service_node = await self.arbiter.get_data(ArbiterServerNode, service_node_id)
+                    service_node = await self.arbiter.get_data(ArbiterGatewayNode, service_node_id)
                 if not service_node:
                     warn(f"{service_node_id}Service is not found.")
                     continue
@@ -752,11 +708,11 @@ class ArbiterApp:
             # system task function is timeout
             # 아무 메세지를 받지 못해서, timeout이 발생한다.
             # * 모든 서비스가 중단되었
+            print('Health Check Task is timeout.')
             pass
         except Exception as e:
             print("Error in system task: ", e)
         finally:
-            # is it necessary?
             system_queue and await system_queue.put(None)
 
 

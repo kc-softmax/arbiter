@@ -1,7 +1,11 @@
+import pytest
 import typer
 # from arbiter.runner.commands.build import app as build_app
+from arbiter.constants import CONFIG_FILE
 from arbiter.runner.runner import ArbiterRunner
 from arbiter.app import ArbiterApp
+from arbiter.runner.utils import create_config
+from arbiter.utils import get_arbiter_setting, read_config
 
 app = typer.Typer()
 # app.add_typer(
@@ -20,7 +24,22 @@ def run(
     log_level: str = typer.Option(
         "info", "--log-level", help="Log level for arbiter.")
 ):
+    arbiter_setting, is_arbiter_setting = get_arbiter_setting(CONFIG_FILE)
+    if not is_arbiter_setting:
+        create_config(arbiter_setting)
+    config = read_config(arbiter_setting)
+
+    """
+    Set the config to the app.
+    runner, worker, api app shared the same config.
+    # CHECK 
+    """
+    # app.setup(config)
+    # run에는 config을 이용해서 한다.
     app = ArbiterApp()
+    # service를 추가해야 하나?
+    # services 폴더에 있는 모든 service를 추가해야 하자
+    # aribter add service?
     ArbiterRunner.run(
         app=app,
         name=name,
@@ -43,47 +62,21 @@ def test():
         "pytest": False,
     }
 
-    async def run_arbiter():
+    async def run_arbiter():        
         from arbiter.enums import (
             WarpInPhase,
             WarpInTaskResult,
         )
-        from arbiter.utils import (
-            check_redis_running,
-            read_config,
-            get_arbiter_setting,
-        )
-        from arbiter.runner.utils import (
-            create_config,
-        )
-        from arbiter.constants import CONFIG_FILE
-        from tests.test_service import TestService, TestException
+        from tests.service import TestService, TestException
+        from arbiter.gateway import ArbiterGatewayService
+        
         app = ArbiterApp()
-        app.add_service(TestService)
-        app.add_service(TestException)
-        arbiter_setting, is_arbiter_setting = get_arbiter_setting(CONFIG_FILE)
-        if not is_arbiter_setting:
-            create_config(arbiter_setting)
-        config = read_config(arbiter_setting)
-
-        app.setup(config)
-
-        if not await check_redis_running(
-            host=config.get("broker", "host"),
-            port=config.getint("broker", "port"),
-            password=config.get("broker", "password"),
-        ):
-            logger.error("REDIS FAIL TO START")
-            running_state["arbiter"] = True
-            return
+        app.add_service(ArbiterGatewayService())
+        app.add_service(TestService())
+        # app.add_service(TestException())
 
         async with app.warp_in(system_queue=asyncio.Queue()) as arbiter_runner:
             try:
-                if arbiter_runner.arbiter_node.is_master:
-                    logger.info("master")
-                else:
-                    logger.info("slave")
-
                 async for result, message in arbiter_runner.start_phase(WarpInPhase.PREPARATION):
                     match result:
                         # Danimoth is the warp-in master.
@@ -100,16 +93,6 @@ def test():
                             break
                         case WarpInTaskResult.WARNING:
                             logger.warning("INITIATION warning")
-                        case WarpInTaskResult.FAIL:
-                            raise Exception(message)
-
-                async for result, message in arbiter_runner.start_phase(WarpInPhase.MATERIALIZATION):
-                    match result:
-                        case WarpInTaskResult.SUCCESS:
-                            logger.info("MATERIALIZATION success")
-                            break
-                        case WarpInTaskResult.WARNING:
-                            logger.warning("MATERIALIZATION warning")
                         case WarpInTaskResult.FAIL:
                             raise Exception(message)
 

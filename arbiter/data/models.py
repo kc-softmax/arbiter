@@ -19,10 +19,11 @@ class ArbiterBaseModel(DefaultModel):
     name: str
     
     def get_id(self) -> str:
-        return self.id
+        return self.id    
     
 class ArbiterBaseNode(DefaultModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    parent_model_id: str
     state: NodeState
     shutdown_code: str = Field(default_factory=lambda: str(uuid.uuid4()))
     created_at: datetime = Field(default_factory=datetime.now)
@@ -30,19 +31,23 @@ class ArbiterBaseNode(DefaultModel):
 
     def get_id(self) -> str:
         return self.id
+    
+    def __hash__(self) -> int:
+        return hash(self.id)
+    
+    def __eq__(self, other: ArbiterBaseNode) -> bool:
+        return self.id == other.id
+    
 
 ############################################
-class ArbiterModel(ArbiterBaseModel):
+class ArbiterNodeModel(ArbiterBaseModel):
     # master policy?
     # some configuration
-    service_models: list[ArbiterServiceModel] = Field(default_factory=list)
-    server_models: list[ArbiterServerModel] = Field(default_factory=list)
+    pass
 
 class ArbiterNode(ArbiterBaseNode):
-    arbiter_model_id: str
-    is_master: bool
-    server_nodes: list[ArbiterServerNode] = Field(default_factory=list)
-    service_nodes: list[ArbiterServiceNode] = Field(default_factory=list)
+    gateway_node_ids: list[str] = Field(default_factory=list)
+    service_node_ids: list[str] = Field(default_factory=list)
 
     def get_health_check_channel(self) -> str:
         return f"__health_check__{self.id}"
@@ -54,22 +59,27 @@ class ArbiterNode(ArbiterBaseNode):
         return f"__routing__{self.id}"
     
 ############################################
-class ArbiterServerModel(ArbiterBaseModel):
-    arbiter_model_id: str
-    num_of_services: int = Field(default=1)
-    http_task_models: list[ArbiterTaskModel] = Field(default_factory=list)
-    stream_task_models: list[ArbiterTaskModel] = Field(default_factory=list)
+class ArbiterGatewayModel(ArbiterBaseModel):
+    arbiter_node_model_id: str
 
-class ArbiterServerNode(ArbiterBaseNode):
+class ArbiterGatewayNode(ArbiterBaseNode):
     arbiter_node_id: str
-    arbiter_server_model_id: str
+    host: str
+    port: int
+    log_level: str
+    allow_origins: str
+    allow_methods: str
+    allow_headers: str
+    allow_credentials: bool
 
 ############################################
 class ArbiterServiceModel(ArbiterBaseModel):
+    arbiter_node_model_id: str
+    gateway_model_id: Optional[str] = Field(default='')
     module_name: str
-    auto_start: bool = Field(default=False)
-    num_of_services: int = Field(default=1)
-    task_models: list[ArbiterTaskModel] = Field(default_factory=list)
+    num_of_services: int
+    auto_start: bool
+    task_model_ids: list[str] = Field(default_factory=list)
     
     def get_service_name(self) -> str:
         return f"{self.name}_{self.id}"
@@ -79,30 +89,20 @@ class ArbiterServiceModel(ArbiterBaseModel):
 
 class ArbiterServiceNode(ArbiterBaseNode):
     arbiter_node_id: str
-    arbiter_service_model_id: str
+    task_node_ids: list[str] = Field(default_factory=list)
     description: Optional[str] = Field(default=None)
     
 ############################################
-class ArbiterTaskModel(DefaultModel):
-    name: str
+class ArbiterTaskModel(ArbiterBaseModel):
     queue: str
+    service_model_id: str
     service_name: str
-    num_of_tasks: int
     transformed_parameters: str = Field(default='')
     transformed_return_type: str = Field(default='')
-    activate_duration: int = Field(default=0)
-    cold_start: bool = Field(default=False)
-    raw_message: bool = Field(default=False)
-    retry_count: int = Field(default=0)
-    task_nodes: list[ArbiterTaskNode] = Field(default_factory=list)
-    
-    method: int = Field(default=0)
+    http: bool = Field(default=False)
     stream: bool = Field(default=False)
-    connection: int = Field(default=0)
-    communication_type: int = Field(default=0)
-    num_of_channels: int = Field(default=1)
-    interval: int = Field(default=0)
-    channel: str = Field(default='')
+    task_nodes: list[ArbiterTaskNode] = Field(default_factory=list)
+        
     def get_id(self) -> str:
         return self.queue
     
@@ -110,8 +110,7 @@ class ArbiterTaskModel(DefaultModel):
         return self.queue == other.queue
 
 class ArbiterTaskNode(ArbiterBaseNode):
-    model: ArbiterTaskModel
-    service_node: ArbiterServiceNode
+    service_node_id: str
 
 
 
