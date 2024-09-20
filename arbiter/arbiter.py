@@ -174,7 +174,11 @@ class Arbiter:
         return parameters, return_type
     
     async def async_task(self, target: str, *args, **kwargs):
+        # TODO refactoring -> 한번만 호출하도록, IDL 컴파일 처럼 에러체크를 할 수 있다.
         parameters, return_type = await self.get_task_return_and_parameters(target)
+        
+        # TODO request_packer raise 
+        # 사용자가 task에 정의된 파라미터 규칙에 어긋나는 걸 넘겼을때
         data = await self.request_packer(
             parameters,
             *args,
@@ -187,9 +191,15 @@ class Arbiter:
         )
         if not return_type:
             return None 
+        # TODO message 를 받을때 에러가 난다.
+        # TIMEOUT ERROR <> task 가 응답을 안한다. 결과를 안보낸다
+        # MARK TASK에서 오류를 보낼 수 있다. 
+        # TODO 에러를 어떻게 정의할것인가? Exception
         results = await self.get_message(message_id)
         if isinstance(results, Exception):
             raise results
+        # TODO return_type에 따라서 결과를 처리한다.
+        # return type이 pydantic 모델일 경우에만, 결과를 validate한다.
         return await self.results_unpacker(return_type, results)
 
 

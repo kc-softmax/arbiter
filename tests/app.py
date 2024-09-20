@@ -5,6 +5,7 @@ from tests.service import TestService, TestException
 # 서비스가 시작할때, gateway intra server에 task model을 등록 
 # 서비스가 실행되어질때, gateway에 task model을 등록 <바뀌는점>
 app = ArbiterApp(
+    name='test',
     arbiter_host='localhost',
     arbiter_port=6379,
     config={
@@ -17,10 +18,10 @@ app = ArbiterApp(
         'service_pending_timeout': 10,
     }
 )
-# app.add_service(
-#     ArbiterGatewayService())
 app.add_service(
     ArbiterGatewayService())
+# app.add_service(
+#     ArbiterGatewayService())
 app.add_service(TestException())
 app.add_service(TestService())
 
