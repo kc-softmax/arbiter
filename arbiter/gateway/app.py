@@ -119,12 +119,11 @@ class ArbiterApiApp(FastAPI):
                 results = await app.arbiter.async_task(
                     target=task_function.queue,
                     **data.model_dump())
-                
+                # TODO 어디에서 에러가 생기든, resuls로 받아온다.
                 if isinstance(results, Exception):
                     raise results
                 if isinstance(results, BaseModel):
-                    return results.model_dump()
-                
+                    return results.model_dump()                
                 return results
             except TaskBaseError as e:
                 raise e

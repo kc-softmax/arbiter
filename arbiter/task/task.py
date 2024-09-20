@@ -186,7 +186,12 @@ class BaseTask:
     
     
 class ArbiterAsyncTask(BaseTask):
-        
+    """
+        만약 task에서 에러가 발생할것 같은 경우는 모두 서비스 준비단계에서 찾아내야 한다.
+        task는 에러를 발생시키지 않는다.
+        그냥 에러를 돌려준다.
+    """
+    
     def __call__(self, func: Callable) -> Callable:
         super().__call__(func)
         @functools.wraps(func)
@@ -208,7 +213,6 @@ class ArbiterAsyncTask(BaseTask):
                     if results is None:
                         continue
                 except Exception as e:
-                    print(e, "exception in task")
                     results = self.results_packing(e)
                 finally:
                     packed_results = self.results_packing(results)
@@ -242,6 +246,7 @@ class ArbiterStreamTask(BaseTask):
             async for message in arbiter.listen(queue):
                 task_node.state = NodeState.WORKING
                 await arbiter.save_data(task_node)
+                
                 try:                    
                     message_id, data = get_pickled_data(message)
                     request = self.parse_requset(data)
@@ -251,6 +256,7 @@ class ArbiterStreamTask(BaseTask):
                     print(e, "exception in task")
                     results = self.results_packing(e)
                     await arbiter.push_message(message_id, results)
+                    
                 finally:
                     await arbiter.push_message(message_id, ASYNC_TASK_CLOSE_MESSAGE)
                     task_node.state = NodeState.PENDING
