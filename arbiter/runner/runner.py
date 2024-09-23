@@ -23,14 +23,14 @@ class ArbiterRunner:
         log_level: str = typer.Option(
             "info", "--log-level", help="Log level for arbiter.")
     ):
-        event = asyncio.Event()
-        def shutdown_signal_handler(_system_queue: asyncio.Queue[Annotated[str, "command"]], event: asyncio.Event):
-            asyncio.ensure_future(async_shutdown_signal_handler(_system_queue, event))
+        coroutine_event = asyncio.Event()
+        def shutdown_signal_handler(coroutine_event: asyncio.Event):
+            coroutine_event.set()
+            # asyncio.ensure_future(async_shutdown_signal_handler(coroutine_event))
 
-        async def async_shutdown_signal_handler(_system_queue: asyncio.Queue[Annotated[str, "command"]], event: asyncio.Event):
-            await _system_queue.put(None)
-            event.set()
-            
+        # async def async_shutdown_signal_handler(coroutine_event: asyncio.Event):
+        #     coroutine_event.set()
+
         async def arbiter_run(
             arbiter_app: ArbiterApp,
             system_queue: asyncio.Queue[Annotated[str, "command"]],
@@ -103,9 +103,9 @@ class ArbiterRunner:
         """
         try:
             # Register signal handlers for graceful shutdown
-            signal.signal(signal.SIGINT, lambda s, f: shutdown_signal_handler(system_queue, event))
-            signal.signal(signal.SIGTERM, lambda s, f: shutdown_signal_handler(system_queue, event))
-            asyncio.run(arbiter_run(app, system_queue, event))
+            signal.signal(signal.SIGINT, lambda s, f: shutdown_signal_handler(coroutine_event))
+            signal.signal(signal.SIGTERM, lambda s, f: shutdown_signal_handler(coroutine_event))
+            asyncio.run(arbiter_run(app, system_queue, coroutine_event))
         except SystemExit as e:
             console.print(f"SystemExit caught in main: {e.code}")
         except KeyboardInterrupt:
