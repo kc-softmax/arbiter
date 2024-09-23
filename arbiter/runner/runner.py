@@ -1,15 +1,12 @@
 import signal
 import typer
 import asyncio
-from configparser import ConfigParser
 from rich.console import Console
 from typing_extensions import Annotated
 from arbiter.enums import (
-    ArbiterCliCommand,
     WarpInPhase,
     WarpInTaskResult,
 )
-from arbiter.runner.interface import TerminalInterface
 from arbiter.app import ArbiterApp
 
 console = Console()
@@ -26,16 +23,19 @@ class ArbiterRunner:
         log_level: str = typer.Option(
             "info", "--log-level", help="Log level for arbiter.")
     ):
-        def shutdown_signal_handler(_system_queue: asyncio.Queue[Annotated[str, "command"]]):
-            asyncio.ensure_future(async_shutdown_signal_handler(_system_queue))
+        event = asyncio.Event()
+        def shutdown_signal_handler(_system_queue: asyncio.Queue[Annotated[str, "command"]], event: asyncio.Event):
+            asyncio.ensure_future(async_shutdown_signal_handler(_system_queue, event))
 
-        async def async_shutdown_signal_handler(_system_queue: asyncio.Queue[Annotated[str, "command"]]):
+        async def async_shutdown_signal_handler(_system_queue: asyncio.Queue[Annotated[str, "command"]], event: asyncio.Event):
             await _system_queue.put(None)
+            event.set()
             
         async def arbiter_run(
             arbiter_app: ArbiterApp,
             system_queue: asyncio.Queue[Annotated[str, "command"]],
-        ):          
+            event: asyncio.Event,
+        ):
             """
             Get the configure parameters from config file.
             """
@@ -64,30 +64,14 @@ class ArbiterRunner:
                                 case WarpInTaskResult.WARNING:
                                     console.print(f"[bold yellow]{arbiter_runner.name}[/bold yellow] [bold blue]{message}[/bold blue].")
                                 case WarpInTaskResult.FAIL:
-                                    raise Exception(message)                                
-                        ## 공통적으로 시스템 로그를 출력해주는 queue가 필요할까?
-                        async with TerminalInterface(
-                            system_queue=system_queue,
-                        ) as system_queue:
-                            system_queue.put_nowait(ArbiterCliCommand.H.name)
-                            # need intro message
-                            while True:
-                                command = await system_queue.get()
-                                if command is None:
-                                    break
-                                match command:
-                                    case ArbiterCliCommand.Q.name:
-                                        break
-                                    case ArbiterCliCommand.R.name:
-                                        await arbiter_runner._stop_service(1)
-                                        pass
-                                    case ArbiterCliCommand.H.name:
-                                        console.print("[bold cyan]Commands[/bold cyan]")
-                                        for shortcut in ArbiterCliCommand:
-                                            console.print(shortcut.get_typer_text())
-                                    case _:
-                                        console.print(
-                                            f"[bold red]Invalid command {command}[/bold red]")
+                                    raise Exception(message)
+
+                        """asyncio.Event
+                        It used to share the state of each coroutine.
+                        1. Event flag will change when occur keyboard interrupt signal
+                        2. Event wait until called event set
+                        """
+                        await event.wait()
 
                     except Exception as e:
                         # arbiter 를 소환 혹은 실행하는 도중 예외가 발생하면 처리한다.
@@ -119,9 +103,9 @@ class ArbiterRunner:
         """
         try:
             # Register signal handlers for graceful shutdown
-            signal.signal(signal.SIGINT, lambda s, f: shutdown_signal_handler(system_queue))
-            signal.signal(signal.SIGTERM, lambda s, f: shutdown_signal_handler(system_queue))
-            asyncio.run(arbiter_run(app, system_queue))
+            signal.signal(signal.SIGINT, lambda s, f: shutdown_signal_handler(system_queue, event))
+            signal.signal(signal.SIGTERM, lambda s, f: shutdown_signal_handler(system_queue, event))
+            asyncio.run(arbiter_run(app, system_queue, event))
         except SystemExit as e:
             console.print(f"SystemExit caught in main: {e.code}")
         except KeyboardInterrupt:
