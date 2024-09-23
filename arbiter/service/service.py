@@ -148,9 +148,13 @@ class ArbiterService(metaclass=ServiceMeta):
 
     async def run(self):
         await self.arbiter.connect()
-        await self.start()
-        await self.shutdown()
-        await self.arbiter.disconnect()
+        try:
+            await self.start()
+        except asyncio.CancelledError:
+            pass
+        finally:
+            await self.shutdown()
+            await self.arbiter.disconnect()
     
     async def _get_service_node(self) -> ArbiterServiceNode:
         return await self.arbiter.get_data(ArbiterServiceNode, self.service_node_id)
