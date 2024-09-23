@@ -34,7 +34,7 @@ class ArbiterRunner:
         async def arbiter_run(
             arbiter_app: ArbiterApp,
             system_queue: asyncio.Queue[Annotated[str, "command"]],
-            event: asyncio.Event,
+            coroutine_event: asyncio.Event,
         ):
             """
             Get the configure parameters from config file.
@@ -71,7 +71,7 @@ class ArbiterRunner:
                         1. Event flag will change when occur keyboard interrupt signal
                         2. Event wait until called event set
                         """
-                        await event.wait()
+                        await coroutine_event.wait()
 
                     except Exception as e:
                         # arbiter 를 소환 혹은 실행하는 도중 예외가 발생하면 처리한다.

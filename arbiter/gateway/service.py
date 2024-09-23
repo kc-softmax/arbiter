@@ -73,13 +73,16 @@ class ArbiterGatewayService(ArbiterService):
         await self.arbiter.connect()
         # each serve() and start() should be run in parallel
         # and communicate shutdown signal to each other
-        await asyncio.gather(
-            self.server.serve(),
-            self.start()
-        )        
-        await self.shutdown()
-        await self.arbiter.disconnect()
-        #
+        try:
+            await asyncio.gather(
+                self.server.serve(),
+                self.start()
+            )
+        except asyncio.CancelledError:
+            pass
+        finally:
+            await self.shutdown()
+            await self.arbiter.disconnect()
 
     async def _get_service_node(self) -> ArbiterGatewayNode:
         return await self.arbiter.get_data(ArbiterGatewayNode, self.service_node_id)
