@@ -85,6 +85,7 @@ class ArbiterApiApp(FastAPI):
             print('Error in generate_http_function', e)
    
         async def dynamic_post_function(
+            request: Request,
             data: Type[BaseModel] = Depends(requset_model),  # 동적으로 생성된 Pydantic 모델 사용 # type: ignore
             app: ArbiterApiApp = Depends(get_app),
             task_function: ArbiterTaskModel = Depends(get_task_function),
@@ -94,11 +95,11 @@ class ArbiterApiApp(FastAPI):
                 app: ArbiterApiApp,
                 task_function: ArbiterTaskModel,
             ):
-                async def stream_response_generator(data: BaseModel):
+                async def stream_response_generator(data_dict: dict[str, Any]):
                     try:
                         async for results in app.arbiter.async_stream_task(
                             target=task_function.queue,
-                            **data.model_dump()
+                            **data_dict
                         ):
                             if isinstance(results, Exception):
                                 raise results
@@ -112,13 +113,24 @@ class ArbiterApiApp(FastAPI):
                         raise HTTPException(status_code=400, detail=f"Failed to get response {e}")
                 return StreamingResponse(stream_response_generator(data), media_type="application/json")
             
+            data_dict: dict = data.model_dump()
+            if task_function.request:
+                request_data = {
+                    'client': request.client,
+                    'headers': request.headers,
+                    'cookies': request.cookies,
+                    'query_params': request.query_params,
+                    'path_params': request.path_params,
+                }
+                data_dict.update({'request': request_data})
+            
             if task_function.stream:
                 return await stream_response(data, app, task_function)
-            
+
             try:
                 results = await app.arbiter.async_task(
                     target=task_function.queue,
-                    **data.model_dump())
+                    **data_dict)
                 # TODO 어디에서 에러가 생기든, resuls로 받아온다.
                 if isinstance(results, Exception):
                     raise results

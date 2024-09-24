@@ -101,6 +101,7 @@ class ArbiterTaskModel(ArbiterBaseModel):
     transformed_return_type: str = Field(default='')
     http: bool = Field(default=False)
     stream: bool = Field(default=False)
+    request: bool = Field(default=False)
     task_nodes: list[ArbiterTaskNode] = Field(default_factory=list)
         
     def get_id(self) -> str:
