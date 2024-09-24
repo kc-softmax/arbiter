@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import io
 import uuid
 import asyncio
 import pickle
@@ -131,9 +132,24 @@ class ArbiterApiApp(FastAPI):
                 results = await app.arbiter.async_task(
                     target=task_function.queue,
                     **data_dict)
-                # TODO 어디에서 에러가 생기든, resuls로 받아온다.
+                # TODO 어디에서 에러가 생기든, results 받아온다.
                 if isinstance(results, Exception):
                     raise results
+                
+                # TODO temp, 추후 수정 필요
+                if task_function.file:
+                    if isinstance(results, tuple) or isinstance(results, list):
+                        filename, file = results
+                    else:
+                        file = results
+                        # get file extension
+                        filename = uuid.uuid4().hex
+                    # filename, file = results
+                    file_like = io.BytesIO(file)
+                    headers = {
+                        "Content-Disposition": f"attachment; filename={filename}",
+                        }
+                    return StreamingResponse(file_like, media_type="application/octet-stream", headers=headers)
                 if isinstance(results, BaseModel):
                     return results.model_dump()                
                 return results

@@ -99,10 +99,13 @@ class ArbiterTaskModel(ArbiterBaseModel):
     service_name: str
     transformed_parameters: str = Field(default='')
     transformed_return_type: str = Field(default='')
+    task_nodes: list[ArbiterTaskNode] = Field(default_factory=list)
+
+    # for http task
     http: bool = Field(default=False)
     stream: bool = Field(default=False)
+    file: bool = Field(default=False)
     request: bool = Field(default=False)
-    task_nodes: list[ArbiterTaskNode] = Field(default_factory=list)
         
     def get_id(self) -> str:
         return self.queue
@@ -112,23 +115,3 @@ class ArbiterTaskModel(ArbiterBaseModel):
 
 class ArbiterTaskNode(ArbiterBaseNode):
     service_node_id: str
-
-
-
-# class ArbiterTaskModel(DefaultModel):
-#     service_meta: ServiceMeta
-#     num_of_tasks: int
-#     cold_start: bool = Field(default=False)
-#     raw_message: bool = Field(default=False)
-#     retry_count: int = Field(default=0)
-#     activate_duration: int = Field(default=0)
-#     queue: str = Field(default='')
-#     params: str = Field(default='')
-#     response: str = Field(default='')
-#     interval: int = Field(default=0)
-#     channel: str = Field(default='')
-#     method: int = Field(default=0)
-#     connection_info: bool = Field(default=False)
-#     connection: int = Field(default=0)
-#     communication_type: int = Field(default=0)
-#     num_of_channels: int = Field(default=1)

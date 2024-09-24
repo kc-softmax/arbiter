@@ -244,7 +244,7 @@ class ArbiterApp:
                 )
                 if not results:
                     raise ArbiterServerNodeFaileToStartError()
-                message = f"'{gateway_info.name}' Gateway  running on http://{gateway_info.host}:{gateway_info.port}"
+                message = f"'{gateway_info.name}' Gateway running on http://{gateway_info.host}:{gateway_info.port}"
                 await self._warp_in_queue.put(
                     (WarpInTaskResult.INFO, message)
                 )
@@ -570,6 +570,7 @@ class ArbiterApp:
                 stream=getattr(task_function, 'stream', False),
                 http=getattr(task_function, 'http', False),
                 request=getattr(task_function, 'request', False),
+                file=getattr(task_function, 'file', False),
                 transformed_parameters=json.dumps(dict(transformed_parameters)),
                 transformed_return_type=json.dumps(transformed_return_type),
             )
