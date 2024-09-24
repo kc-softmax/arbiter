@@ -74,7 +74,7 @@ class ArbiterRunner:
                         2. Event wait until called event set
                         """
                         # (Press CTRL+C to quit)
-                        console.print(f"[bold white]Press [bold red]CTRL+C[/bold red] to quit[/bold white]")
+                        console.print(f"[bold white]Press [red]CTRL + C[/red] to quit[/bold white]")
                         await coroutine_event.wait()
 
                     except Exception as e:
