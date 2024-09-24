@@ -96,6 +96,16 @@ class TestService(ArbiterService):
         return response
 
     @http_task()
+    async def task_chain_using_dict(self, number: NumOfParam) -> NumOfParam:
+        response = await self.arbiter.async_task(
+            target="test_service_return_task",
+            data={
+                "first": number.first,
+                "second": number.second
+            })
+        return response
+
+    @http_task()
     async def stream_task_chain(self, data: IncreaseRequsetModel) -> AsyncGenerator[ResponseModel, None]:
         async for response in self.arbiter.async_stream_task(
             target="test_service_return_async_task",

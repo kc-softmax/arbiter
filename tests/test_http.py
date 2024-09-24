@@ -28,6 +28,18 @@ def test_http_task_chain():
             'second': second - first,
         }
 
+def test_http_task_chain_using_dict():
+    with httpx.Client(base_url=base_url.format(protocol="http")) as arbiter:
+        first = 10
+        second = 20
+        response = arbiter.post("/test_service/task_chain_using_dict", json={"first": first, "second": second})
+        data = response.json()
+        assert type(data) == dict, logger.error(response.text)
+        assert data == {
+            'first': first + second,
+            'second': second - first,
+        }
+
 def test_http_stream_task_chain():
     with httpx.Client(base_url=base_url.format(protocol="http")) as arbiter:
         payload = {"content": "HIHIHI", "length": 5}
