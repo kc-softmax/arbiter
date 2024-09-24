@@ -296,7 +296,7 @@ class ArbiterApp:
             check database            
         """                
         # send shutdown message to service belong to this node
-        await self.arbiter.broadcast(
+        await self.arbiter.raw_broadcast(
             topic=self.arbiter_node.get_system_channel(),
             message=self.arbiter_node.shutdown_code)
         

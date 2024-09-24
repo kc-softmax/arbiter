@@ -173,6 +173,18 @@ class Arbiter:
         return_type = restore_type(json.loads(task_model.transformed_return_type))
         return parameters, return_type
     
+    async def broadcast(self, target: str, *args, **kwargs):
+        # TODO refactoring -> 한번만 호출하도록, IDL 컴파일 처럼 에러체크를 할 수 있다.
+        parameters, _ = await self.get_task_return_and_parameters(target)
+        data = await self.request_packer(
+            parameters,
+            *args,
+            **kwargs
+        )
+        # message_id, encoded_message = await self.encode_message(data)
+        # pickle.dumps((message_id, data))
+        await self.client.publish(target, pickle.dumps((None, data)))
+        
     async def async_task(self, target: str, *args, **kwargs):
         # TODO refactoring -> 한번만 호출하도록, IDL 컴파일 처럼 에러체크를 할 수 있다.
         parameters, return_type = await self.get_task_return_and_parameters(target)
@@ -315,6 +327,14 @@ class Arbiter:
                 # TODO Change return Exception
                 raise TimeoutError(f"Timeout in getting message from {channel}")
 
+    async def raw_broadcast(
+        self,
+        topic: str, 
+        message: str | bytes,
+    ):
+        # TODO deprecated
+        await self.client.publish(topic, message)
+
     async def subscribe_listen(
         self,
         channel: str,
@@ -335,13 +355,6 @@ class Arbiter:
             await self.pubsub_map[pusbusb_id].punsubscribe("*")
             await self.pubsub_map[pusbusb_id].aclose()
             self.pubsub_map.pop(pusbusb_id)
-
-    async def broadcast(
-        self,
-        topic: str, 
-        message: str | bytes,
-    ):
-        await self.client.publish(topic, message)
 
     async def periodic_listen(
         self,

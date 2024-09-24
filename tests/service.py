@@ -7,6 +7,8 @@ from arbiter.service import ArbiterService
 from arbiter.task import (
     http_task, 
     async_task,
+    subscribe_task,
+    periodic_task
 )
 from arbiter.exceptions import (
     TaskConnectionExceed,
@@ -129,7 +131,16 @@ class TestService(ArbiterService):
     @http_task()
     async def integer_parameter(self, x: int, y: int) -> int:
         return x + y
-
+    
+    @periodic_task(interval=1)
+    async def periodic_task(self, x: list[NumOfParam] = []):
+        await self.arbiter.broadcast("test_channel", "from periodic task", {"first": 1, "second": 2})
+        
+    @subscribe_task(queue="test_channel")
+    async def subscribe_task(self, text: str, data: NumOfParam):
+        assert text == "from periodic task"
+        assert data == NumOfParam(first=1, second=2)
+        
 ### exception test worker ###
 class TestException(ArbiterService):
 

@@ -47,80 +47,6 @@ class ArbiterAsyncTask:
         self.return_type: Type = None
         self.message_queue = asyncio.Queue()
 
-    def _get_message_func(
-        self,
-        arbiter: Arbiter,
-        queue: str
-    ) -> AsyncGenerator[Any, None]:
-        """
-        Protected method that returns an asynchronous iterable from arbiter.listen.
-
-        :param arbiter: The arbiter instance to listen with.
-        :param queue: The name of the queue to listen to.
-        :return: An asynchronous generator yielding messages.
-        """
-        return arbiter.listen(queue)
-   
-    def _parse_requset(self, request: Any) -> dict[str, Any] | Any:
-        """
-            사용자로부터 들어오는 데이터와 함수에 선언된 파라미터를 비교한다.
-            현재 json 
-        """
-        if not self.parameters:
-            if isinstance(request, dict) and len(request) > 0:
-                warnings.warn(
-                    f"function has no parameters, but data is not empty: {request}"
-                )
-            return {}
-        """
-            args, kwargs로 들어온 경우만 처리한다.
-        """
-        
-        if isinstance(request, list):
-            # args type으로 들어온 경우
-            without_default_params = {k: v for k, v in self.parameters.items() if v.default == inspect.Parameter.empty}
-            if len(without_default_params) != len(request):
-                raise ValueError("Invalid data length")
-            # 순서대로 매핑하여 request_body를 만든다.
-            request = {k: v for k, v in zip(without_default_params.keys(), request)}
-        elif not isinstance(request, dict):
-            request: dict[str, Any] = json.loads(request)
-        
-        assert isinstance(request, dict), "Invalid request data"
-        
-        """
-            사용자로 부터 받은 데이터를 request_params에 맞게 파싱한다.
-        """
-        parsed_request = {}
-        for name, parameter in self.parameters.items():
-            annotation = parameter.annotation
-            if name not in request:
-                # 사용자로 부터 받은 request에 함수의 이름이 param_name이 없다면
-                if parameter.default != inspect.Parameter.empty:
-                    # 기본값이 있는 경우 기본값으로 넣는다.
-                    parsed_request[name] = parameter.default
-                elif (
-                    get_origin(annotation) is Union or
-                    isinstance(annotation, UnionType)
-                ):
-                    # parameter 가 optional type인지 확인한다.
-                    # Union type 이지만 None이 없는 경우
-                    if type(None) not in get_args(annotation):
-                        raise ValueError(
-                            f"Invalid parameter: {name}, {name} is required")
-                    # Optional type이기 때문에 None을 넣어줘보자
-                    parsed_request[name] = None
-                else:
-                    raise ValueError(
-                        f"Invalid parameter: {name}, {name} is required")
-            else:
-                #사용자로 부터 받은 request에 param_name이 있다.
-                parsed_request[name] = convert_data_to_annotation(
-                    request.pop(name, None), annotation)
-        if request:
-            warnings.warn(f"Unexpected parameters: {request.keys()}")
-        return parsed_request
-        
     def __results_packing(self, data: Any) -> Any:
         # MARK TODO Change
         if isinstance(data, BaseModel):
@@ -222,7 +148,90 @@ class ArbiterAsyncTask:
                 self.return_type = Any
         else:
             self.return_type = return_annotation
+
+    def _get_message_func(
+        self,
+        arbiter: Arbiter,
+        queue: str
+    ) -> AsyncGenerator[Any, None]:
+        """
+        Protected method that returns an asynchronous iterable from arbiter.listen.
+
+        :param arbiter: The arbiter instance to listen with.
+        :param queue: The name of the queue to listen to.
+        :return: An asynchronous generator yielding messages.
+        """
+        return arbiter.listen(queue)
+   
+    def _parse_requset(self, request: Any) -> dict[str, Any] | Any:
+        """
+            사용자로부터 들어오는 데이터와 함수에 선언된 파라미터를 비교한다.
+            현재 json 
+        """
+        if not self.parameters:
+            if isinstance(request, dict) and len(request) > 0:
+                warnings.warn(
+                    f"function has no parameters, but data is not empty: {request}"
+                )
+            return {}
+        """
+            args, kwargs로 들어온 경우만 처리한다.
+        """
+        if request is None:
+            # default value로 return
+            for param in self.parameters.values():
+                if param.default == inspect.Parameter.empty:
+                    warnings.warn(f"Missing parameter: {param.name}")                    
+            return {k: v.default for k, v in self.parameters.items()}
         
+        if isinstance(request, list):
+            # args type으로 들어온 경우
+            without_default_params = {k: v for k, v in self.parameters.items() if v.default == inspect.Parameter.empty}
+            if len(without_default_params) != len(request):
+                raise ValueError("Invalid data length")
+            # 순서대로 매핑하여 request_body를 만든다.
+            request = {k: v for k, v in zip(without_default_params.keys(), request)}
+        elif not isinstance(request, dict):
+            request: dict[str, Any] = json.loads(request)
+        
+        assert isinstance(request, dict), "Invalid request data"
+        
+        """
+            사용자로 부터 받은 데이터를 request_params에 맞게 파싱한다.
+        """
+        parsed_request = {}
+        for name, parameter in self.parameters.items():
+            annotation = parameter.annotation
+            if name not in request:
+                # 사용자로 부터 받은 request에 함수의 이름이 param_name이 없다면
+                if parameter.default != inspect.Parameter.empty:
+                    # 기본값이 있는 경우 기본값으로 넣는다.
+                    parsed_request[name] = parameter.default
+                elif (
+                    get_origin(annotation) is Union or
+                    isinstance(annotation, UnionType)
+                ):
+                    # parameter 가 optional type인지 확인한다.
+                    # Union type 이지만 None이 없는 경우
+                    if type(None) not in get_args(annotation):
+                        raise ValueError(
+                            f"Invalid parameter: {name}, {name} is required")
+                    # Optional type이기 때문에 None을 넣어줘보자
+                    parsed_request[name] = None
+                else:
+                    raise ValueError(
+                        f"Invalid parameter: {name}, {name} is required")
+            else:
+                #사용자로 부터 받은 request에 param_name이 있다.
+                parsed_request[name] = convert_data_to_annotation(
+                    request.pop(name, None), annotation)
+        if request:
+            warnings.warn(f"Unexpected parameters: {request.keys()}")
+        return parsed_request
+    
+    def _parse_message(self, message: Any) -> tuple[str, Any]:
+        return get_pickled_data(message)
+    
     def __call__(self, func: Callable) -> dict[str, inspect.Parameter]:
         setattr(func, 'is_task_function', True)
         setattr(func, 'task_name', func.__name__)
@@ -252,28 +261,30 @@ class ArbiterAsyncTask:
                 task_node.state = NodeState.WORKING
                 await arbiter.save_data(task_node)
                 is_async_gen = False
-                try:                    
-                    message_id, data = get_pickled_data(message)
+                try:
+                    message_id, data = self._parse_message(message)
                     request = self._parse_requset(data)
-                    
                     func_result = func(instance, **request)
                     # Determine if func_result is an async generator
                     is_async_gen = inspect.isasyncgen(func_result)
-
                     if is_async_gen:
                         async_iterator = func_result
                     else:
                         # Wrap single awaitable result into an async generator
                         async_iterator = self.__single_result_async_gen(func_result)
-                    
                     async for results in async_iterator:
+                        if message_id is None:
+                            continue
                         packed_results = self.__results_packing(results)
                         await arbiter.push_message(message_id, packed_results)
                                                                 
                 except Exception as e:
-                    await arbiter.push_message(message_id, self.__results_packing(e))
+                    if message_id is None:
+                        print(func.__name__, message, e)
+                    else:
+                        await arbiter.push_message(message_id, self.__results_packing(e))
                 finally:
-                    if is_async_gen:
+                    if is_async_gen and message_id is not None:
                         await arbiter.push_message(message_id, ASYNC_TASK_CLOSE_MESSAGE)
                     task_node.state = NodeState.PENDING
                     await arbiter.save_data(task_node)
@@ -311,112 +322,70 @@ class ArbiterHttpTask(ArbiterAsyncTask):
             super()._parse_requset(request))
         return requset_data
 
+class ArbiterPeriodicTask(ArbiterAsyncTask):
+    """
+        periodc task는 주기적으로 실행되는 task이다.
+        따라서 return type이 없다.
+        또한 paramter는 무조건 list type이며, 1개이다,
+        또한 기본값은 [] 이다.
+    """
+    def __init__(
+        self,
+        interval: float,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.interval = interval
 
-# TODO name Change
-# class ArbiterAsyncTask(ArbiterTask):
+    def _set_return_type(self, signature: inspect.Signature, func: Callable[..., Any]):
+        super()._set_return_type(signature, func)
+        assert self.return_type == None, "Periodic task should not have return type"
 
-#     def __call__(self, func: Callable) -> Callable:
-#         super().__call__(func)
-#         @functools.wraps(func)
-#         async def wrapper(arbiter: Arbiter, queue: str, instance: ArbiterService):
-#             async for message in arbiter.listen(queue):
-#                 try:
-#                     message_id, data = get_pickled_data(message)
-#                     request = self.parse_requset(data)
-#                     async for results in func(instance, **request):
-#                         await arbiter.push_message(message_id, self.results_packing(results))
-#                     await arbiter.push_message(message_id, ASYNC_TASK_CLOSE_MESSAGE)                        
-#                 except Exception as e:
-#                     print(e)
-#         return wrapper
-    
-# class ArbiterStreamTask(ArbiterTask):
-#     def __init__(
-#         self,
-#         connection: StreamMethod,
-#         communication_type: StreamCommunicationType,
-#         num_of_channels = 1,
-#         **kwargs,   
-#     ):
-#         super().__init__(
-#             **kwargs
-#         )
-#         # self.connection_info_param = None
-#         self.connection = connection
-#         self.communication_type = communication_type
-#         self.num_of_channels = num_of_channels
+    def _set_parameters(self, signature: inspect.Signature):
+        super()._set_parameters(signature)
+        assert len(self.parameters) == 1, "Periodic task should have only one parameter"        
+        for param in self.parameters.values():
+            assert get_origin(param.annotation) is list, "Periodic task parameter should be list type"
+            assert param.default == [], "Periodic task parameter should have default value []"
 
-#     def __call__(self, func: Callable) -> Callable:
-#         super().__call__(func)
-#         # if self.connection_info:
-#         #     connection_info_param = [
-#         #         param for param in self.parameters.values() if param.annotation == ConnectionInfo
-#         #     ]
-#         #     if not connection_info_param:
-#         #         raise ValueError("ConnectionInfo paramter is required for connection_info=True")
-#         #     assert len(connection_info_param) == 1, "Only one ConnectionInfo is allowed"
-#         #     self.connection_info_param = self.parameters.pop(connection_info_param[0].name)
-            
-#         @functools.wraps(func)
-#         async def wrapper(arbiter: Arbiter, queue: str, instance: ArbiterService):
-#             async for message in arbiter.listen(queue):
-#                 try:
-#                     target, data = pickle.loads(message)
-#                     if data:
-#                         request = self.parse_requset(data)
-#                     else:
-#                         request = {}
-#                     # task params에 따라 파싱할까..?
-#                     match self.communication_type:
-#                         case StreamCommunicationType.SYNC_UNICAST:
-#                             results = self.results_packing(await func(instance, **request))
-#                             await arbiter.push_message(target, results)
-#                         case StreamCommunicationType.ASYNC_UNICAST:
-#                             async for results in func(instance, **request):
-#                                 results = self.results_packing(results)
-#                                 await arbiter.push_message(target, results)
-#                             await arbiter.push_message(target, ASYNC_TASK_CLOSE_MESSAGE)                        
-#                             # 끝났다고 안넣어줌
-#                         case StreamCommunicationType.BROADCAST:
-#                             results = self.results_packing(await func(instance, **request))
-#                             await arbiter.broadcast(target, results)
-#                 except Exception as e:
-#                     print(e)
-#         return wrapper
+    def _parse_message(self, message: Any) -> tuple[str, Any]:
+        parsed_message = get_pickled_data(message)        
+        return None, parsed_message
 
-# class ArbiterPeriodicTask(BaseTask):
-#     def __init__(
-#         self,
-#         interval: float,
-#         **kwargs,
-#     ):
-#         super().__init__(**kwargs)
-#         self.interval = interval
+    def _get_message_func(
+        self,
+        arbiter: Arbiter,
+        queue: str
+    ) -> AsyncGenerator[Any, None]:
+        """
+        Protected method that returns an asynchronous iterable from arbiter.listen.
 
-#     def __call__(self, func: Callable) -> Callable:
-#         super().__call__(func)        
-#         @functools.wraps(func)
-#         async def wrapper(arbiter: Arbiter, queue: str, instance: ArbiterService):
-#             async for messages in arbiter.periodic_listen(queue, self.interval):
-#                 data = self.parse_requset(messages)
-#                 await func(instance, **data)
-                    
-#         return wrapper
+        :param arbiter: The arbiter instance to listen with.
+        :param queue: The name of the queue to listen to.
+        :return: An asynchronous generator yielding messages.
+        """
+        return arbiter.periodic_listen(queue, self.interval)
 
-# class ArbiterSubscribeTask(BaseTask):
-#     def __init__(
-#         self,
-#         channel: str,
-#         **kwargs,
-#     ):
-#         super().__init__(**kwargs)
-#         self.channel = channel
+class ArbiterSubscribeTask(ArbiterAsyncTask):
+    """
+        Subscribe task는 특정 채널에 대한 메세지를 구독하는 task이다.
+        따라서 return type이 없다.
+    """
 
-#     def __call__(self, func: Callable) -> Callable:
-#         super().__call__(func)
-#         @functools.wraps(func)
-#         async def wrapper(arbiter: Arbiter, queue: str, instance: ArbiterService):
-#             async for message in arbiter.subscribe_listen(self.channel):
-#                 params = [instance, message] if instance else [message]
-#                 await func(*params)
-#         return wrapper
+    def _set_return_type(self, signature: inspect.Signature, func: Callable[..., Any]):
+        super()._set_return_type(signature, func)
+        assert self.return_type == None, "Subscribe task should not have return type"
+
+    def _get_message_func(
+        self,
+        arbiter: Arbiter,
+        queue: str
+    ) -> AsyncGenerator[Any, None]:
+        """
+        Protected method that returns an asynchronous iterable from arbiter.listen.
+
+        :param arbiter: The arbiter instance to listen with.
+        :param queue: The name of the queue to listen to.
+        :return: An asynchronous generator yielding messages.
+        """
+        return arbiter.subscribe_listen(queue)
