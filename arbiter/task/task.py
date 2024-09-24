@@ -183,40 +183,43 @@ class ArbiterAsyncTask:
     def _set_return_type(self, signature: inspect.Signature, func: Callable):
         # 반환 유형 힌트 가져온다. 있으면 저장한다.
         return_annotation = signature.return_annotation
+        in_function_return = False
+        # 없다면 코드에서 찾고 있으면 Any로 저장한다.
+        raw_source = inspect.getsource(func)
+        # 함수의 소스를 적절하게 들여쓰기합니다.
+        # 예: 함수의 첫 번째 줄 들여쓰기 길이를 기준으로 나머지 줄을 조정합니다.
+        lines = raw_source.split('\n')
+        indent = len(lines[0]) - len(lines[0].lstrip())
+        stripped_source = '\n'.join(line[indent:] for line in lines)
+        # 소스 코드를 AST로 파싱
+        decorator_pattern = re.compile(r'^\s*@\w+\(.*?\)\s*\n', re.MULTILINE)
+        source = decorator_pattern.sub('', stripped_source)
+        # source = decorator_pattern.sub(lambda match: f'# {match.group(0)}', source)
+        try:
+            tree = ast.parse(source)
+            # 함수 정의 노드를 찾습니다.
+            func_node = next(
+                node for node in tree.body if isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef)))                # print("Function Node Found:\n", ast.dump(func_node, indent=4))
+            for node in ast.walk(func_node):
+                if isinstance(node, (ast.Yield, ast.YieldFrom)):
+                    self.stream = True
+                if isinstance(node, ast.Return):
+                    # return을 찾았기 때문에 Any로 설정한다.
+                    # 하지만 우리는 hint를 쓰라는것을 권장한다.
+                    in_function_return = True
+                    # warnings.warn(
+                    #     "Return type hint is recommended for better performance")
+                
+        except IndentationError as e:
+            print(f"IndentationError: {e}")
+        except StopIteration:
+            print("StopIteration: No function definition found in the parsed AST.")
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+        
         if return_annotation == inspect.Signature.empty:
-            # 없다면 코드에서 찾고 있으면 Any로 저장한다.
-            raw_source = inspect.getsource(func)
-            # 함수의 소스를 적절하게 들여쓰기합니다.
-            # 예: 함수의 첫 번째 줄 들여쓰기 길이를 기준으로 나머지 줄을 조정합니다.
-            lines = raw_source.split('\n')
-            indent = len(lines[0]) - len(lines[0].lstrip())
-            stripped_source = '\n'.join(line[indent:] for line in lines)
-            # 소스 코드를 AST로 파싱
-            decorator_pattern = re.compile(r'^\s*@\w+\(.*?\)\s*\n', re.MULTILINE)
-            source = decorator_pattern.sub('', stripped_source)
-            # source = decorator_pattern.sub(lambda match: f'# {match.group(0)}', source)
-            try:
-                tree = ast.parse(source)
-                # print("AST Dump:\n", ast.dump(tree, indent=4))
-                # 함수 정의 노드를 찾습니다.
-                func_node = next(node for node in tree.body if isinstance(node, ast.AsyncFunctionDef))
-                # print("Function Node Found:\n", ast.dump(func_node, indent=4))
-                for node in ast.walk(func_node):
-                    if isinstance(node, ast.Yield):
-                        self.stream = True
-                    if isinstance(node, ast.Return):
-                        # return을 찾았기 때문에 Any로 설정한다.
-                        # 하지만 우리는 hint를 쓰라는것을 권장한다.
-                        self.return_type = Any  
-                        # warnings.warn(
-                        #     "Return type hint is recommended for better performance")
-                    
-            except IndentationError as e:
-                print(f"IndentationError: {e}")
-            except StopIteration:
-                print("StopIteration: No function definition found in the parsed AST.")
-            except Exception as e:
-                print(f"Unexpected error: {e}")
+            if in_function_return:
+                self.return_type = Any
         else:
             self.return_type = return_annotation
         

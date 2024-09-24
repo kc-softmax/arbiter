@@ -53,6 +53,7 @@ def test_http_stream_task_chain():
                         'content': f"{payload['content']}-{start}"
                         }
                     start += 1
+            assert start == payload["length"], logger.error(response.text)
 
 def test_simple_http_stream_task_chain():
     with httpx.Client(base_url=base_url.format(protocol="http")) as arbiter:

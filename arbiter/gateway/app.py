@@ -3,26 +3,19 @@ import json
 import io
 import uuid
 import asyncio
-import pickle
-from pydantic import create_model, BaseModel, ValidationError
-from typing import Union, Type, Any, Optional, get_args
-from fastapi import FastAPI, Query, WebSocket, Depends, WebSocketDisconnect, HTTPException, Request
+from pydantic import create_model, BaseModel
+from typing import Type, Any
+from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
-from fastapi.websockets import WebSocketState
 from arbiter.gateway.exceptions import BadRequest
 from arbiter import Arbiter
 from arbiter.utils import (
     to_snake_case,
     restore_type,
 )
-from arbiter.data.models import (
-    ArbiterTaskModel,
-    ArbiterGatewayModel
-)
-from arbiter.data.messages import ArbiterStreamMessage
-from arbiter.gateway.constants import SubscribeChannel
+from arbiter.data.models import ArbiterTaskModel
 from arbiter.exceptions import TaskBaseError
 
 class ArbiterApiApp(FastAPI):
@@ -38,7 +31,6 @@ class ArbiterApiApp(FastAPI):
     ) -> None:
         super().__init__(lifespan=lifespan)
         self.arbiter = arbiter
-        # self.arbiter_server_model: ArbiterGatewayModel = None
         self.add_exception_handler(
             RequestValidationError,
             lambda request, exc: JSONResponse(
@@ -126,7 +118,7 @@ class ArbiterApiApp(FastAPI):
                 data_dict.update({'request': request_data})
             
             if task_function.stream:
-                return await stream_response(data, app, task_function)
+                return await stream_response(data_dict, app, task_function)
 
             try:
                 results = await app.arbiter.async_task(
