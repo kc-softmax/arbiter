@@ -343,7 +343,7 @@ class ArbiterPeriodicTask(ArbiterAsyncTask):
 
     def _set_parameters(self, signature: inspect.Signature):
         super()._set_parameters(signature)
-        assert len(self.parameters) == 1, "Periodic task should have only one parameter"        
+        assert len(self.parameters) < 2, "Periodic task should have less than one parameter"        
         for param in self.parameters.values():
             assert get_origin(param.annotation) is list, "Periodic task parameter should be list type"
             assert param.default == [], "Periodic task parameter should have default value []"
@@ -371,6 +371,13 @@ class ArbiterSubscribeTask(ArbiterAsyncTask):
         Subscribe task는 특정 채널에 대한 메세지를 구독하는 task이다.
         따라서 return type이 없다.
     """
+    def __init__(
+        self,
+        channel: str,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.channel = channel
 
     def _set_return_type(self, signature: inspect.Signature, func: Callable[..., Any]):
         super()._set_return_type(signature, func)
@@ -388,4 +395,4 @@ class ArbiterSubscribeTask(ArbiterAsyncTask):
         :param queue: The name of the queue to listen to.
         :return: An asynchronous generator yielding messages.
         """
-        return arbiter.subscribe_listen(queue)
+        return arbiter.subscribe_listen(self.channel)

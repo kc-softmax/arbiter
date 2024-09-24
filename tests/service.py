@@ -133,10 +133,10 @@ class TestService(ArbiterService):
         return x + y
     
     @periodic_task(interval=1)
-    async def periodic_task(self, x: list[NumOfParam] = []):
+    async def periodic_task(self):
         await self.arbiter.broadcast("test_channel", "from periodic task", {"first": 1, "second": 2})
         
-    @subscribe_task(queue="test_channel")
+    @subscribe_task(channel="test_channel")
     async def subscribe_task(self, text: str, data: NumOfParam):
         assert text == "from periodic task"
         assert data == NumOfParam(first=1, second=2)

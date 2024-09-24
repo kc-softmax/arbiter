@@ -175,9 +175,9 @@ class Arbiter:
     
     async def broadcast(self, target: str, *args, **kwargs):
         # TODO refactoring -> 한번만 호출하도록, IDL 컴파일 처럼 에러체크를 할 수 있다.
-        parameters, _ = await self.get_task_return_and_parameters(target)
+        # parameters, _ = await self.get_task_return_and_parameters(target)
         data = await self.request_packer(
-            parameters,
+            {},
             *args,
             **kwargs
         )
