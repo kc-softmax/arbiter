@@ -61,6 +61,8 @@ class ArbiterRunner:
                                 case WarpInTaskResult.SUCCESS:
                                     console.print(f"[bold green]{arbiter_runner.name}[/bold green] [bold yellow]{message}[/bold yellow].")
                                     break
+                                case WarpInTaskResult.INFO:
+                                    console.print(f"[bold green]{arbiter_runner.name}[/bold green] [white]{message}[/white]")
                                 case WarpInTaskResult.WARNING:
                                     console.print(f"[bold yellow]{arbiter_runner.name}[/bold yellow] [bold blue]{message}[/bold blue].")
                                 case WarpInTaskResult.FAIL:
@@ -71,6 +73,8 @@ class ArbiterRunner:
                         1. Event flag will change when occur keyboard interrupt signal
                         2. Event wait until called event set
                         """
+                        # (Press CTRL+C to quit)
+                        console.print(f"[bold white]Press [bold red]CTRL+C[/bold red] to quit[/bold white]")
                         await coroutine_event.wait()
 
                     except Exception as e:
@@ -81,8 +85,7 @@ class ArbiterRunner:
                         async for result, message in arbiter_runner.start_phase(WarpInPhase.DISAPPEARANCE):                        
                             match result:
                                 case WarpInTaskResult.SUCCESS:
-                                    # Danimoth's warp-out completed.
-                                    console.print(f"[bold green]{arbiter_runner.name}[/bold green]'s warp-out [bold green]Completed[bold green].")
+                                    # console.print(f"[bold green]{arbiter_runner.name}[/bold green]'s warp-out [bold green]Completed[bold green].")
                                     break
                                 case WarpInTaskResult.WARNING:
                                     console.log(f"[bold yellow]{arbiter_runner.name}[/bold yellow]'s warp-out catch warning {message}")

@@ -6,8 +6,6 @@ from arbiter.service import ArbiterService
 
 from arbiter.task import (
     http_task, 
-    http_stream_task,
-    stream_task,
     async_task,
 )
 from arbiter.exceptions import (
@@ -52,7 +50,7 @@ class TestService(ArbiterService):
             second=data.second - data.first
         )
     
-    @stream_task(queue="test_service_return_async_task")
+    @async_task(queue="test_service_return_async_task")
     async def return_stream_task(self, text: str, length: int) -> AsyncGenerator[ResponseModel, None]:
         for i in range(length):
             yield ResponseModel(
@@ -60,8 +58,12 @@ class TestService(ArbiterService):
             )
             await asyncio.sleep(0.1)
     
-    @http_task(num_of_tasks=1)
-    async def num_of_param(self, param: NumOfParam) -> Receive | None:
+    @http_task(request=True)
+    async def num_of_param(
+        self, 
+        param: NumOfParam,
+        request: dict[str, Any]
+    ) -> Receive | None:
         return Receive(
             first=param.first,
             second='second',
@@ -75,7 +77,7 @@ class TestService(ArbiterService):
             data=number)
         return response
 
-    @http_stream_task()
+    @http_task()
     async def stream_task_chain(self, data: IncreaseRequsetModel) -> AsyncGenerator[ResponseModel, None]:
         async for response in self.arbiter.async_stream_task(
             target="test_service_return_async_task",
@@ -84,7 +86,7 @@ class TestService(ArbiterService):
         ):
             yield response
 
-    @http_stream_task()
+    @http_task()
     async def simple_http_stream_task(self, data: IncreaseRequsetModel) -> AsyncGenerator[ResponseModel, None]:
         for i in range(data.length):
             yield ResponseModel(

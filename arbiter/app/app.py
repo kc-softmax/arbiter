@@ -244,6 +244,10 @@ class ArbiterApp:
                 )
                 if not results:
                     raise ArbiterServerNodeFaileToStartError()
+                message = f"'{gateway_info.name}' Gateway  running on http://{gateway_info.host}:{gateway_info.port}"
+                await self._warp_in_queue.put(
+                    (WarpInTaskResult.INFO, message)
+                )
                 # TODO start manger fasthtml process
             for service_info in self._services:
                 service_model = service_info.get_service_model()
@@ -565,6 +569,7 @@ class ArbiterApp:
                 num_of_tasks=getattr(task_function, 'num_of_tasks', 1),
                 stream=getattr(task_function, 'stream', False),
                 http=getattr(task_function, 'http', False),
+                request=getattr(task_function, 'request', False),
                 transformed_parameters=json.dumps(dict(transformed_parameters)),
                 transformed_return_type=json.dumps(transformed_return_type),
             )

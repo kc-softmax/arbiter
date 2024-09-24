@@ -22,6 +22,8 @@ class ArbiterGatewayServiceInfo(ArbiterServiceInfo):
         self.allow_methods = kwargs.get('allow_methods', '*')
         self.allow_headers = kwargs.get('allow_headers', '*')
         self.allow_credentials = kwargs.get('allow_credentials', True)
+        if self.name == 'ArbiterGatewayService':
+            self.name = 'Default'
         
 class ArbiterGatewayService(ArbiterService):
 
