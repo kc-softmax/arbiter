@@ -180,14 +180,7 @@ class ArbiterAsyncTask:
             #     # param.annotation = get_type_hints(func).get(param.name, None)
             self.parameters[param.name] = param
     
-    def __call__(self, func: Callable) -> dict[str, inspect.Parameter]:
-        setattr(func, 'is_task_function', True)
-        setattr(func, 'task_name', func.__name__)
-        self.func = func
-        
-        signature = inspect.signature(func)
-
-        self._set_parameters(signature)
+    def _set_return_type(self, signature: inspect.Signature, func: Callable):
         # 반환 유형 힌트 가져온다. 있으면 저장한다.
         return_annotation = signature.return_annotation
         if return_annotation == inspect.Signature.empty:
@@ -227,6 +220,17 @@ class ArbiterAsyncTask:
         else:
             self.return_type = return_annotation
         
+    def __call__(self, func: Callable) -> dict[str, inspect.Parameter]:
+        setattr(func, 'is_task_function', True)
+        setattr(func, 'task_name', func.__name__)
+        self.func = func
+        
+        signature = inspect.signature(func)
+
+        self._set_parameters(signature)
+        
+        self._set_return_type(signature, func)
+        
         for attribute, value in self.__dict__.items():
             setattr(func, attribute, value)
 
@@ -264,7 +268,6 @@ class ArbiterAsyncTask:
                         await arbiter.push_message(message_id, packed_results)
                                                                 
                 except Exception as e:
-                    print(e)
                     await arbiter.push_message(message_id, self.__results_packing(e))
                 finally:
                     if is_async_gen:
@@ -278,13 +281,21 @@ class ArbiterHttpTask(ArbiterAsyncTask):
     def __init__(
         self,
         request: bool = False,
+        file: bool = False,
         **kwargs,
     ):
         self.http = True
+        self.file = file
         self.request = request
         super().__init__(
             **kwargs
         )
+    
+    # def _set_return_type(self, signature: inspect.Signature, func: Callable[..., Any]):
+    #     super()._set_return_type(signature, func)
+    #     if self.file and self.return_type != bytes:
+    #         # byte or None or Optional[bytes]
+    #         raise ValueError("return type should be bytes for file=True")
     
     def _parse_requset(self, request: dict | Any) -> dict[str, Any] | Any:
         requset_data = {}

@@ -1,9 +1,9 @@
+import os
 import asyncio
 from datetime import datetime
 from pydantic import BaseModel
 from typing import AsyncGenerator, Optional, Any
 from arbiter.service import ArbiterService
-
 from arbiter.task import (
     http_task, 
     async_task,
@@ -69,6 +69,24 @@ class TestService(ArbiterService):
             second='second',
             third=True,
         )
+        
+    @http_task(file=True)
+    async def test_file(
+        self, 
+    ):
+        file_name = 'hello.txt'
+        file_path = file_name
+
+        if not os.path.isfile(file_path):
+            raise Exception("File not found")
+        
+        try:
+            with open(file_path, "rb") as f:
+                file_data = f.read()            
+        except Exception as e:
+            raise Exception(f"Failed to read file {e}")
+
+        return file_name, file_data
     
     @http_task()
     async def task_chain(self, number: NumOfParam) -> NumOfParam:
