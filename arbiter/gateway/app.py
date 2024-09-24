@@ -66,18 +66,22 @@ class ArbiterApiApp(FastAPI):
         service_name = task_function.service_name
         path = f'/{to_snake_case(service_name)}/{task_function.name}'
 
-        try:
-            parameters: dict = json.loads(task_function.transformed_parameters)
-            parameters = {
-                k: (restore_type(v), ...)
-                for k, v in parameters.items()
-            }
-            requset_model = create_model(task_function.name, **parameters)
-            return_type = restore_type(json.loads(task_function.transformed_return_type))
-        except Exception as e:
-            print('Error in generate_http_function', e)
-   
-        async def dynamic_post_function(
+
+        parameters: dict = json.loads(task_function.transformed_parameters)
+        parameters = {
+            k: (restore_type(v), ...)
+            for k, v in parameters.items()
+        }
+        requset_model = create_model(task_function.name, **parameters)
+        return_type = restore_type(json.loads(task_function.transformed_return_type))
+
+        # find base model in parameters
+        is_post = True
+        for _, v in parameters.items():
+            if not issubclass(v[0], BaseModel):
+                is_post = False
+
+        async def dynamic_function(
             request: Request,
             data: Type[BaseModel] = Depends(requset_model),  # 동적으로 생성된 Pydantic 모델 사용 # type: ignore
             app: ArbiterApiApp = Depends(get_app),
@@ -151,8 +155,15 @@ class ArbiterApiApp(FastAPI):
                 raise HTTPException(status_code=400, detail=f"Failed to get response {e}")
 
         # TODO MARK : GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD, TRACE, CONNECT
-        self.router.post(
-            path,
-            tags=[service_name],
-            response_model=return_type
-        )(dynamic_post_function)
+        if is_post:
+            self.router.post(
+                path,
+                tags=[service_name],
+                response_model=return_type
+            )(dynamic_function)
+        else:
+            self.router.get(
+                path,
+                tags=[service_name],
+                response_model=return_type
+            )(dynamic_function)

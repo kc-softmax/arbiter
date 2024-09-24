@@ -125,6 +125,10 @@ class TestService(ArbiterService):
     @http_task()
     async def return_constant(self, x: NumOfParam) -> int:
         return x.first + x.second + 5
+    
+    @http_task()
+    async def integer_parameter(self, x: int, y: int) -> int:
+        return x + y
 
 ### exception test worker ###
 class TestException(ArbiterService):
