@@ -132,6 +132,20 @@ class TestService(ArbiterService):
     async def integer_parameter(self, x: int, y: int) -> int:
         return x + y
     
+    @http_task()
+    async def test_default_parameter(self, x: int) -> int:
+        value = await self.arbiter.async_task("test_service_default_params", x)
+        return value
+
+    @http_task()
+    async def test_default_parameter_with_value(self, x: int, y: int) -> int:
+        value = await self.arbiter.async_task("test_service_default_params", x, y)
+        return value
+    
+    @async_task()
+    async def default_params(self, x: int, y: int = 5) -> int:
+        return x + y
+    
     @periodic_task(interval=1)
     async def periodic_task(self):
         await self.arbiter.broadcast("test_channel", "from periodic task", {"first": 1, "second": 2})

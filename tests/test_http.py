@@ -16,6 +16,23 @@ allowed types: (<class 'pydantic.main.BaseModel'>, <class 'list'>,
 <class 'datetime.datetime'>) 리턴 타입 참고
 """
 
+def test_http_default_param():
+    with httpx.Client(base_url=base_url.format(protocol="http")) as arbiter:
+        x = 10
+        response = arbiter.get("/test_service/test_default_parameter", params={"x": x})
+        data = response.json()
+        assert type(data) != dict, logger.error(response.text)
+        assert data == x + 5
+        
+def test_http_test_default_param_with_value():
+    with httpx.Client(base_url=base_url.format(protocol="http")) as arbiter:
+        x = 10
+        y = 20
+        response = arbiter.get("/test_service/test_default_parameter_with_value", params={"x": x, "y": y})
+        data = response.json()
+        assert type(data) != dict, logger.error(response.text)
+        assert data == x + y
+
 def test_http_integer_parameter():
     with httpx.Client(base_url=base_url.format(protocol="http")) as arbiter:
         x = 10

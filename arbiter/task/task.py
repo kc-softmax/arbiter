@@ -187,10 +187,10 @@ class ArbiterAsyncTask:
         if isinstance(request, list):
             # args type으로 들어온 경우
             without_default_params = {k: v for k, v in self.parameters.items() if v.default == inspect.Parameter.empty}
-            if len(without_default_params) != len(request):
+            if len(without_default_params) > len(request):
                 raise ValueError("Invalid data length")
             # 순서대로 매핑하여 request_body를 만든다.
-            request = {k: v for k, v in zip(without_default_params.keys(), request)}
+            request = {k: v for k, v in zip( self.parameters.keys(), request)}
         elif not isinstance(request, dict):
             request: dict[str, Any] = json.loads(request)
         
