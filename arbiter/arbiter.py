@@ -165,6 +165,9 @@ class Arbiter:
     ################ task management ################
     async def get_task_return_and_parameters(self, task_queue: str):
         task_model = await self.get_data(ArbiterTaskModel, task_queue)
+        if not task_model:
+            raise Exception(f"Task {task_queue} is not found")
+
         parameter_dict: dict = json.loads(task_model.transformed_parameters)
         parameters = {
             k: (restore_type(v), ...)
@@ -187,7 +190,10 @@ class Arbiter:
         
     async def async_task(self, target: str, *args, **kwargs):
         # TODO refactoring -> 한번만 호출하도록, IDL 컴파일 처럼 에러체크를 할 수 있다.
-        parameters, return_type = await self.get_task_return_and_parameters(target)
+        try:
+            parameters, return_type = await self.get_task_return_and_parameters(target)
+        except Exception as e:
+            raise e
         
         # TODO request_packer raise 
         # 사용자가 task에 정의된 파라미터 규칙에 어긋나는 걸 넘겼을때
@@ -216,7 +222,11 @@ class Arbiter:
 
 
     async def async_stream_task(self, target: str, *args, **kwargs):
-        parameters, return_type = await self.get_task_return_and_parameters(target)
+        try:
+            parameters, return_type = await self.get_task_return_and_parameters(target)
+        except Exception as e:
+            raise e
+        
         data = await self.request_packer(
             parameters,
             *args,
