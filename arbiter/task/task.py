@@ -379,9 +379,9 @@ class ArbiterSubscribeTask(ArbiterAsyncTask):
         super().__init__(**kwargs)
         self.channel = channel
 
-    def _set_return_type(self, signature: inspect.Signature, func: Callable[..., Any]):
-        super()._set_return_type(signature, func)
-        assert self.return_type == None, "Subscribe task should not have return type"
+    # def _set_return_type(self, signature: inspect.Signature, func: Callable[..., Any]):
+    #     super()._set_return_type(signature, func)
+    #     assert self.return_type == None, "Subscribe task should not have return type"
 
     def _get_message_func(
         self,
