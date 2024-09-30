@@ -17,6 +17,7 @@ from arbiter.constants import ASYNC_TASK_CLOSE_MESSAGE, DEFAULT_CONFIG
 T = TypeVar('T', bound=DefaultModel)
 
 class Arbiter:
+
     
     async_redis_connection_pool = None
     
@@ -35,6 +36,7 @@ class Arbiter:
         self.config.update(config)
         self.client: aioredis.Redis = None
         self.keep_alive_task: asyncio.Task = None
+
         self.pubsub_map: dict[str, PubSub] = {}
 
         # Redis 클라이언트 초기화
@@ -84,43 +86,44 @@ class Arbiter:
     async def clear_database(self):
         await self.client.flushdb()
 
+    # deprecated method <KMT-625>
     ################ generic management ################    
-    async def get_data(self, model_class: Type[T], id: str) -> Optional[T]:
-        table_name = to_snake_case(model_class.__name__)
-        data = await self.client.get(f'{table_name}:{id}')
-        if data:
-            return model_class.model_validate_json(data)
-        return None
+    # async def get_data(self, model_class: Type[T], id: str) -> Optional[T]:
+    #     table_name = to_snake_case(model_class.__name__)
+    #     data = await self.client.get(f'{table_name}:{id}')
+    #     if data:
+    #         return model_class.model_validate_json(data)
+    #     return None
 
-    async def delete_data(self, model_data: T) -> bool:
-        table_name = to_snake_case(model_data.__class__.__name__)
-        return await self.client.delete(f'{table_name}:{model_data.get_id()}')
+    # async def delete_data(self, model_data: T) -> bool:
+    #     table_name = to_snake_case(model_data.__class__.__name__)
+    #     return await self.client.delete(f'{table_name}:{model_data.get_id()}')
 
-    async def save_data(self, model_data: T) -> T:
-        table_name = to_snake_case(model_data.__class__.__name__)
-        if hasattr(model_data, 'updated_at'):
-            setattr(model_data, 'updated_at', datetime.now(timezone.utc))
-        await self.client.set(
-            f'{table_name}:{model_data.get_id()}', model_data.model_dump_json()
-        )
-        return model_data
+    # async def save_data(self, model_data: T) -> T:
+    #     table_name = to_snake_case(model_data.__class__.__name__)
+    #     if hasattr(model_data, 'updated_at'):
+    #         setattr(model_data, 'updated_at', datetime.now(timezone.utc))
+    #     await self.client.set(
+    #         f'{table_name}:{model_data.get_id()}', model_data.model_dump_json()
+    #     )
+    #     return model_data
 
-    async def search_data(self, model_class: Type[T], **kwargs) -> list[T]:
-        table_name = to_snake_case(model_class.__name__)
-        results = []
-        for key in await self.client.keys(f"{table_name}:*"):
-            data = await self.client.get(key)
-            if data:
-                model_data = model_class.model_validate_json(data)
-                conditions: list[bool] = []
-                for index_field, value in kwargs.items():
-                    conditions.append(
-                        hasattr(model_data, index_field) and getattr(model_data, index_field) == value
-                    )
-                # if all conditions is true then append to results
-                if all(conditions):
-                    results.append(model_data)
-        return results
+    # async def search_data(self, model_class: Type[T], **kwargs) -> list[T]:
+    #     table_name = to_snake_case(model_class.__name__)
+    #     results = []
+    #     for key in await self.client.keys(f"{table_name}:*"):
+    #         data = await self.client.get(key)
+    #         if data:
+    #             model_data = model_class.model_validate_json(data)
+    #             conditions: list[bool] = []
+    #             for index_field, value in kwargs.items():
+    #                 conditions.append(
+    #                     hasattr(model_data, index_field) and getattr(model_data, index_field) == value
+    #                 )
+    #             # if all conditions is true then append to results
+    #             if all(conditions):
+    #                 results.append(model_data)
+    #     return results
     ################################################    
     async def request_packer(
         self,

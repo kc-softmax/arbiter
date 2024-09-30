@@ -8,22 +8,10 @@ from arbiter.enums import (
 )
 
 ############################################
-class DefaultModel(BaseModel):
-    #abstarct
     
-    def get_id(self) -> str:
-        raise NotImplementedError()
-
-class ArbiterBaseModel(DefaultModel):
+class ArbiterBaseNode(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
-    
-    def get_id(self) -> str:
-        return self.id    
-    
-class ArbiterBaseNode(DefaultModel):
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    parent_model_id: str
     state: NodeState
     shutdown_code: str = Field(default_factory=lambda: str(uuid.uuid4()))
     created_at: datetime = Field(default_factory=datetime.now)
@@ -40,14 +28,7 @@ class ArbiterBaseNode(DefaultModel):
     
 
 ############################################
-class ArbiterNodeModel(ArbiterBaseModel):
-    # master policy?
-    # some configuration
-    pass
-
 class ArbiterNode(ArbiterBaseNode):
-    gateway_node_ids: list[str] = Field(default_factory=list)
-    service_node_ids: list[str] = Field(default_factory=list)
 
     def get_health_check_channel(self) -> str:
         return f"__health_check__{self.id}"
@@ -59,9 +40,6 @@ class ArbiterNode(ArbiterBaseNode):
         return f"__routing__{self.id}"
     
 ############################################
-class ArbiterGatewayModel(ArbiterBaseModel):
-    arbiter_node_model_id: str
-
 class ArbiterGatewayNode(ArbiterBaseNode):
     arbiter_node_id: str
     host: str
@@ -73,29 +51,17 @@ class ArbiterGatewayNode(ArbiterBaseNode):
     allow_credentials: bool
 
 ############################################
-class ArbiterServiceModel(ArbiterBaseModel):
-    arbiter_node_model_id: str
-    gateway_model_id: Optional[str] = Field(default='')
-    module_name: str
-    num_of_services: int
-    auto_start: bool
-    task_model_ids: list[str] = Field(default_factory=list)
-    
-    def get_service_name(self) -> str:
-        return f"{self.name}_{self.id}"
-    
-    def get_service_channel(self) -> str:
-        return f"__service__{self.get_service_name()}"
-
 class ArbiterServiceNode(ArbiterBaseNode):
     arbiter_node_id: str
+    # 만약 지정된 gateway가 없다면, 모든 gateway에 등록
+    gateway_node_id: Optional[str] = Field(default='')
     task_node_ids: list[str] = Field(default_factory=list)
-    description: Optional[str] = Field(default=None)
+    description: Optional[str] = Field(default='')
     
 ############################################
-class ArbiterTaskModel(ArbiterBaseModel):
+class ArbiterTaskNode(ArbiterBaseNode):
+    service_node_id: str
     queue: str
-    service_model_id: str
     service_name: str
     transformed_parameters: str = Field(default='')
     transformed_return_type: str = Field(default='')
@@ -110,8 +76,6 @@ class ArbiterTaskModel(ArbiterBaseModel):
     def get_id(self) -> str:
         return self.queue
     
-    def __eq__(self, other: ArbiterTaskModel) -> bool:
+    def __eq__(self, other: ArbiterTaskNode) -> bool:
         return self.queue == other.queue
 
-class ArbiterTaskNode(ArbiterBaseNode):
-    service_node_id: str
