@@ -15,7 +15,6 @@ from arbiter.utils import (
     to_snake_case,
     restore_type,
 )
-from arbiter.data.models import ArbiterTaskModel
 from arbiter.exceptions import TaskBaseError
 
 class ArbiterApiApp(FastAPI):
@@ -24,10 +23,7 @@ class ArbiterApiApp(FastAPI):
         self,
         arbiter: Arbiter,
         lifespan: Any,
-        allow_origins: str = "*",
-        allow_methods: str = "*",
-        allow_headers: str = "*",
-        allow_credentials: bool = True,
+        options: dict[str, Any] = {},
     ) -> None:
         super().__init__(lifespan=lifespan)
         self.arbiter = arbiter
@@ -47,10 +43,7 @@ class ArbiterApiApp(FastAPI):
         )
         self.add_middleware(
             CORSMiddleware,
-            allow_origins=allow_origins,
-            allow_methods=allow_methods,
-            allow_headers=allow_headers,
-            allow_credentials=allow_credentials,
+            **options,
         )
         self.stream_routes: dict[str, dict[str, ArbiterTaskModel]] = {} 
 

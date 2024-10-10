@@ -7,7 +7,10 @@ from arbiter.enums import (
     WarpInPhase,
     WarpInTaskResult,
 )
-from arbiter.app import ArbiterApp
+from arbiter.configs import ArbiterConfig,BrokerConfig
+# from arbiter.gateway.service import ArbiterGatewayService
+from arbiter.node import ArbiterNode
+from arbiter import Arbiter
 
 console = Console()
 
@@ -15,34 +18,33 @@ class ArbiterRunner:
         
     @staticmethod
     def run(
-        app: ArbiterApp,
-        name: str = typer.Option(
-            "Danimoth", "--name", help="Name of the arbiter to run."),
-        reload: bool = typer.Option(
-            False, "--reload", help="Enable auto-reload for code changes."),
-        log_level: str = typer.Option(
-            "info", "--log-level", help="Log level for arbiter.")
-    ):
-        coroutine_event = asyncio.Event()
-        def shutdown_signal_handler(coroutine_event: asyncio.Event):
-            coroutine_event.set()
-            # asyncio.ensure_future(async_shutdown_signal_handler(coroutine_event))
-
-        # async def async_shutdown_signal_handler(coroutine_event: asyncio.Event):
-        #     coroutine_event.set()
+        app: ArbiterNode,
+        arbiter_config: ArbiterConfig,
+        broker_config: BrokerConfig,
+    ):        
+        # some validation?        
+        arbiter = Arbiter(
+            arbiter_config,
+            broker_config,
+        )        
+        # gateway validation with system?        
+        app.setup(arbiter)
+        
+        shutdown_event = asyncio.Event()
+        def shutdown_signal_handler(shutdown_event: asyncio.Event):
+            shutdown_event.set()
 
         async def arbiter_run(
-            arbiter_app: ArbiterApp,
-            system_queue: asyncio.Queue[Annotated[str, "command"]],
-            coroutine_event: asyncio.Event,
+            arbiter_app: ArbiterNode,
+            shutdown_event: asyncio.Event,
         ):
             """
             Get the configure parameters from config file.
             """
-            
+
             try:
                 async with arbiter_app.warp_in(
-                    system_queue=system_queue,
+                    shutdown_event=shutdown_event,
                 ) as arbiter_runner:
                     try:
                         console.print(f"[bold green]Warp In [bold yellow]Arbiter[/bold yellow] [bold green]{arbiter_runner.name}...[/bold green]")
@@ -75,7 +77,7 @@ class ArbiterRunner:
                         """
                         # (Press CTRL+C to quit)
                         console.print(f"[bold white]Press [red]CTRL + C[/red] to quit[/bold white]")
-                        await coroutine_event.wait()
+                        await shutdown_event.wait()
 
                     except Exception as e:
                         # arbiter 를 소환 혹은 실행하는 도중 예외가 발생하면 처리한다.
@@ -99,16 +101,14 @@ class ArbiterRunner:
         
         
         ################## RUN #####################
-        system_queue: asyncio.Queue[Annotated[str, "command"]] = asyncio.Queue()
-         
         """
         Read the config file.
         """
         try:
             # Register signal handlers for graceful shutdown
-            signal.signal(signal.SIGINT, lambda s, f: shutdown_signal_handler(coroutine_event))
-            signal.signal(signal.SIGTERM, lambda s, f: shutdown_signal_handler(coroutine_event))
-            asyncio.run(arbiter_run(app, system_queue, coroutine_event))
+            signal.signal(signal.SIGINT, lambda s, f: shutdown_signal_handler(shutdown_event))
+            signal.signal(signal.SIGTERM, lambda s, f: shutdown_signal_handler(shutdown_event))
+            asyncio.run(arbiter_run(app, shutdown_event))
         except SystemExit as e:
             console.print(f"SystemExit caught in main: {e.code}")
         except KeyboardInterrupt:

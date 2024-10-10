@@ -95,3 +95,10 @@ class TaskAlreadyRegistered(TaskBaseError):
         self.message = kwargs.get("message", "task already registered")
         self.task_name = kwargs.get("task_name")
         super().__init__(f"{self.message} {self.task_name}")
+
+class TaskNotRegisteredError(TaskBaseError):
+
+    def __init__(self, *args, **kwargs) -> None:
+        self.message = kwargs.get("message", "task not registered")
+        self.task_name = kwargs.get("task_name")
+        super().__init__(f"{self.message} {self.task_name}")

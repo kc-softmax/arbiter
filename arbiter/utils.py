@@ -19,6 +19,7 @@ from inspect import Parameter
 from pathlib import Path
 from types import NoneType, UnionType
 from typing import (
+    AsyncIterator,
     AsyncGenerator,
     Tuple,
     Union, 
@@ -33,6 +34,15 @@ from typing import (
 )
 from arbiter.constants import ALLOWED_TYPES
 from arbiter.parser import pydantic_from_schema
+
+def single_result_async_gen(func_result: Any) -> AsyncIterator:
+    """
+    Wrap a single awaitable result into an asynchronous generator.
+    """
+    async def generator():
+        result = await func_result
+        yield result
+    return generator()
 
 async def check_redis_running(
     host: str = "localhost",
