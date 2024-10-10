@@ -3,18 +3,17 @@ import inspect
 import asyncio
 import pickle
 from typing import  Any, Callable, Type
+from typing_extensions import Annotated
 from arbiter.enums import NodeState
 from arbiter.data.models import (
-    ArbiterTaskModel,
     ArbiterTaskNode,
     ArbiterServiceNode, 
     ArbiterGatewayNode,
-    ArbiterServiceModel,
-    ArbiterGatewayModel,
     ArbiterNode
 )
 from arbiter.utils import get_task_queue_name
 from arbiter.exceptions import ArbiterServiceHealthCheckError
+from arbiter.task.tasks import ArbiterAsyncTask
 from arbiter import Arbiter
 
 class ServiceMeta(type):
@@ -81,64 +80,40 @@ class ServiceMeta(type):
                     pass
         setattr(new_cls, 'task_functions', task_functions)
         return new_cls
-
-class ArbiterServiceInfo:
-    
-    def __init__(self, klass: Type[ArbiterService], *args, **kwargs):
-        self.klass = klass
-        self.service_model: ArbiterServiceModel | ArbiterGatewayModel = None
-        if 'name' in kwargs:
-            self.name = kwargs['name']
-        if 'gateway' in kwargs:
-            self.gateway = kwargs['gateway']
-        
-        if not hasattr(self, 'name'):
-            self.name = klass.__name__
-        
-        if not hasattr(self, 'gateway'):
-            self.gateway = ''
-    
-    def set_service_model(self, model: ArbiterServiceModel | ArbiterGatewayModel):
-        self.service_model = model
-    
-    def get_service_model(self) -> ArbiterServiceModel | ArbiterGatewayModel:
-        return self.service_model
-
+      
 class ArbiterService(metaclass=ServiceMeta):
+    """
+    Base class for Arbiter service.
+    
+    **Parameters**
+    - `name` (str): The name of the service.
+    - `gateway` (str): The gateway of the service, default is 'default', if not specified, the service will be registered to all gateways.
+    - `load_timeout` (int): The timeout of loading service, default is 10.
+    - `log_level` (str): The log level of the service, default is 'info'.
+    - `log_format` (str): The log format of the service, default is "[service_name] - %(level)s - %(message)s - %(datetime)s".
+    - `auto_start` (bool): The auto start of the service, when the service is created, default is False.
+    """
     
     task_functions: list[Callable] = []
-
     num_of_services = 1
-    master_only = False
-    auto_start = True
-
-    def __new__(cls, *args, **kwargs):
-        if 'service_node_id' not in kwargs:
-            # service_id가 없는 경우 ArbiterServiceInfo의 인스턴스 생성
-            return cls.get_service_info_class()(cls, *args, **kwargs)
-        else:
-            # id, host, port가 있는 경우 본래 ArbiterService의 인스턴스 생성
-            return super(ArbiterService, cls).__new__(cls)
-
-    @classmethod
-    def get_service_info_class(cls):
-        return ArbiterServiceInfo
-
+    
     def __init__(
         self,
-        arbiter_name: str,
-        service_node_id: str,
-        arbiter_host: str,
-        arbiter_port: int,
-        arbiter_config: dict,
+        *,
+        name: str,
+        load_timeout: int = 10,
+        auto_start: bool = False,
+        log_level: str | None = None,
+        log_format: str | None = None
     ):
-        self.arbiter = Arbiter(
-            arbiter_name,
-            arbiter_host,
-            arbiter_port,
-            arbiter_config
-        )
-        self.service_node_id = service_node_id
+        self.name = name
+        self.load_timeout = load_timeout
+        self.log_level = log_level
+        self.log_format = log_format
+        self.auto_start = auto_start
+        
+        self.arbiter: Arbiter = None
+        self.service_node_id: str = None
         self.force_stop = False
         self.service_node: ArbiterServiceNode | ArbiterGatewayNode = None
         self.arbiter_node: ArbiterNode = None
@@ -146,6 +121,25 @@ class ArbiterService(metaclass=ServiceMeta):
         self.health_check_task: asyncio.Task = None
         self.tasks: dict[ArbiterTaskNode, asyncio.Task] = {}
 
+    async def setup(
+        self,
+        arbiter_name: str,
+        service_node_id: str,
+        arbiter_host: str,
+        arbiter_port: int,
+        arbiter_config: dict,
+    ):
+        self.service_node_id = service_node_id
+        self.arbiter = Arbiter(
+            arbiter_name,
+            arbiter_host,
+            arbiter_port,
+            arbiter_config
+        )
+    
+    def handle_task(self, task: ArbiterAsyncTask):
+        self.task_functions.append(task)
+    
     async def run(self):
         await self.arbiter.connect()
         try:
@@ -156,9 +150,6 @@ class ArbiterService(metaclass=ServiceMeta):
             await self.shutdown()
             await self.arbiter.disconnect()
     
-    async def _get_service_node(self) -> ArbiterServiceNode:
-        return await self.arbiter.get_data(ArbiterServiceNode, self.service_node_id)
-                    
     async def on_start(self):
         pass
 

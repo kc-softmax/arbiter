@@ -1,66 +1,72 @@
 from contextlib import asynccontextmanager
 import asyncio
+from typing import Any
 from uvicorn.server import Server
 from uvicorn.config import Config
 from arbiter.gateway.app import ArbiterApiApp
-from arbiter.service import ArbiterService, ArbiterServiceInfo
+from arbiter.service import ArbiterService
+from typing_extensions import Annotated, Doc, deprecated
+from arbiter.enums import NodeState
 from arbiter.data.models import (
-    ArbiterGatewayModel,
     ArbiterGatewayNode,
-    ArbiterServiceModel,
-    ArbiterTaskModel
+    ArbiterTaskNode
 )
+from arbiter import Arbiter
 
-class ArbiterGatewayServiceInfo(ArbiterServiceInfo):
-    
-    def __init__(self, klass: type, *args, **kwargs):
-        super().__init__(klass, *args, **kwargs)
-        self.host = kwargs.get('host', 'localhost')
-        self.port = kwargs.get('port', 8080)
-        self.log_level = kwargs.get('log_level', 'error')
-        self.allow_origins = kwargs.get('allow_origins', '*')
-        self.allow_methods = kwargs.get('allow_methods', '*')
-        self.allow_headers = kwargs.get('allow_headers', '*')
-        self.allow_credentials = kwargs.get('allow_credentials', True)
-        if self.name == 'ArbiterGatewayService':
-            self.name = 'Default'
-        
 class ArbiterGatewayService(ArbiterService):
-
-    @classmethod
-    def get_service_info_class(cls):
-        return ArbiterGatewayServiceInfo
-
+    """
+    Gateway service for Arbiter.
+    
+    **Parameters**
+    - `name` (str): The name of the gateway, default is node name.
+    - `host` (str): The host of the gateway, default is 'localhost'.
+    - `port` (int): The port of the gateway, default is 8080.
+    - `load_timeout` (int): The timeout of loading service, default is 10.
+    - `log_level` (str): The log level of the service, default is 'info'.
+    - `log_format` (str): The log format of the service, default is "[gateway] - %(level)s - %(message)s - %(datetime)s".
+    - `allow_origins` (str): The allow origins of the service, default is '*'.
+    - `allow_methods` (str): The allow methods of the service, default is '*'.
+    - `allow_headers` (str): The allow headers of the service, default is '*'.
+    - `allow_credentials` (bool): The allow credentials of the service, default is True.
+    
+    ## Example
+    ```python
+    from arbiter import ArbiterRunner, ArbiterNode
+    ```
+    """
+    
     def __init__(
         self,
-        arbiter_name: str,
-        service_node_id: str,
-        arbiter_host: str,
-        arbiter_port: int,
-        arbiter_config: dict,
-        host: str,
-        port: int,
-        log_level: str,
-        allow_origins: str,
-        allow_methods: str,
-        allow_headers: str,
-        allow_credentials: bool,
+        *,
+        name: str,
+        host: str = 'localhost',
+        port: int = 8080,
+        load_timeout: int = 10,
+        options: dict[str, Any] = {
+            "allow_origins": '*',
+            "allow_methods": '*',
+            "allow_headers": '*',
+            "allow_credentials": True,
+            "log_level": None,
+            "log_format": None,
+        },
+        log_level: str | None = None,
+        log_format: str | None = None,
     ):
         super().__init__(
-            arbiter_name,
-            service_node_id,
-            arbiter_host,
-            int(arbiter_port),
-            arbiter_config
+            name=name,
+            load_timeout=load_timeout,
+            auto_start=True,
+            log_level=log_level,
+            log_format=log_format,
         )
         self.router_task: asyncio.Task = None
+        self.app: ArbiterApiApp = None
+        self.server: Server = None
         self.app = ArbiterApiApp(
             self.arbiter,
             self.lifespan,
-            allow_origins=allow_origins,
-            allow_methods=allow_methods,
-            allow_headers=allow_headers,
-            allow_credentials=allow_credentials
+            **options
         )
         config = Config(
             app=self.app,
@@ -69,6 +75,29 @@ class ArbiterGatewayService(ArbiterService):
             log_level=log_level,
         )
         self.server = Server(config)
+        self.node: ArbiterGatewayNode = ArbiterGatewayNode(
+            name=name,
+            state=NodeState.PENDING,
+            host=host,
+            port=port,
+            options=options
+        )
+
+    async def setup(
+        self,
+        arbiter_name: str,
+        service_node_id: str,
+        arbiter_host: str,
+        arbiter_port: int,
+        arbiter_config: dict,
+    ):
+        self.service_node_id = service_node_id
+        self.arbiter = Arbiter(
+            arbiter_name,
+            arbiter_host,
+            arbiter_port,
+            arbiter_config
+        )
 
     # override witout super
     async def run(self):
@@ -86,8 +115,8 @@ class ArbiterGatewayService(ArbiterService):
             await self.shutdown()
             await self.arbiter.disconnect()
 
-    async def _get_service_node(self) -> ArbiterGatewayNode:
-        return await self.arbiter.get_data(ArbiterGatewayNode, self.service_node_id)
+    # async def _get_service_node(self) -> ArbiterGatewayNode:
+    #     return await self.arbiter.get_data(ArbiterGatewayNode, self.service_node_id)
 
     # override
     async def on_start(self):
@@ -102,39 +131,33 @@ class ArbiterGatewayService(ArbiterService):
         self.force_stop = True
 
     async def refresh_tasks(self):
-        gateway_model = await self.arbiter.get_data(
-            ArbiterGatewayModel, self.service_node.parent_model_id)
+        # gateway_model = await self.arbiter.get_data(
+        #     ArbiterGatewayModel, self.service_node.parent_model_id)
         
-        # find all service models
-        # gateway 가 없는 경우 다 등록한다.
-        # gateway 가 있는 경우 gateway 가 일치하는 경우 등록한다.
-        public_service_models = await self.arbiter.search_data(
-            ArbiterServiceModel,
-            gateway_model_id='')
-        matched_service_models = await self.arbiter.search_data(
-            ArbiterServiceModel,
-            gateway_model_id=gateway_model.id)
-        target_service_models = public_service_models + matched_service_models
-        for service_model in target_service_models:
-            for task_model_id in service_model.task_model_ids:
-                if task_model := await self.arbiter.get_data(
-                    ArbiterTaskModel,
-                    task_model_id
-                ):
-                    if task_model.http:
-                        self.app.generate_http_function(task_model)
-                    # elif task_model.connection:
-                    #     self.app.generate_stream_function(task_model)
-                # self.app.generate_http_function(http_task_model)
+        # # find all service models
+        # # gateway 가 없는 경우 다 등록한다.
+        # # gateway 가 있는 경우 gateway 가 일치하는 경우 등록한다.
+        # public_service_models = await self.arbiter.search_data(
+        #     ArbiterServiceModel,
+        #     gateway_model_id='')
+        # matched_service_models = await self.arbiter.search_data(
+        #     ArbiterServiceModel,
+        #     gateway_model_id=gateway_model.id)
+        # target_service_models = public_service_models + matched_service_models
+        # for service_model in target_service_models:
+        #     for task_model_id in service_model.task_model_ids:
+        #         if task_model := await self.arbiter.get_data(
+        #             ArbiterTaskModel,
+        #             task_model_id
+        #         ):
+        #             if task_model.http:
+        #                 self.app.generate_http_function(task_model)
+        #             # elif task_model.connection:
+        #             #     self.app.generate_stream_function(task_model)
+        #         # self.app.generate_http_function(http_task_model)
         
         
-        # assert server_model
-        # assert isinstance(server_model, ArbiterServerModel)
-        # for http_task_model in server_model.http_task_models:
-        #     self.app.generate_http_function(http_task_model)
-        # for stream_task_model in server_model.stream_task_models:
-        #     self.app.generate_stream_function(stream_task_model)
-        # self.server.re
+        pass
         
     # override
     async def health_check_func(self) -> str:

@@ -3,7 +3,7 @@ import typer
 # from arbiter.runner.commands.build import app as build_app
 from arbiter.constants import CONFIG_FILE
 from arbiter.runner.runner import ArbiterRunner
-from arbiter.app import ArbiterApp
+from arbiter.node import ArbiterNode
 from arbiter.runner.utils import create_config
 from arbiter.utils import get_arbiter_setting, read_config
 
@@ -36,7 +36,7 @@ def run(
     """
     # app.setup(config)
     # run에는 config을 이용해서 한다.
-    app = ArbiterApp()
+    app = ArbiterNode()
     # service를 추가해야 하나?
     # services 폴더에 있는 모든 service를 추가해야 하자
     # aribter add service?
@@ -70,7 +70,7 @@ def test():
         from tests.service import TestService, TestException
         from arbiter.gateway import ArbiterGatewayService
         
-        app = ArbiterApp()
+        app = ArbiterNode()
         app.add_service(ArbiterGatewayService())
         app.add_service(TestService())
         # app.add_service(TestException())
