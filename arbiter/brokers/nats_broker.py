@@ -28,7 +28,8 @@ class ArbiterNatsBroker(ArbiterBrokerInterface):
 
     async def connect(self) -> None:
         async def disconnected_cb():
-            print('Got disconnected!')
+            # print('Got disconnected!')
+            pass
 
         async def reconnected_cb():
             print(f'Got reconnected to {self.nats.connected_url.netloc}')
@@ -37,7 +38,8 @@ class ArbiterNatsBroker(ArbiterBrokerInterface):
             print(f'There was an error: {e}')
 
         async def closed_cb():
-            print('Connection is closed')
+            # print('Connection is closed')
+            pass
             
         connection_url = f"nats://{self.config.host}:{self.config.port}"
         self.nats = await nats.connect(
@@ -128,15 +130,16 @@ class ArbiterNatsBroker(ArbiterBrokerInterface):
                     message = await asyncio.wait_for(message_queue.get(), timeout=timeout)
                 else:
                     message = await message_queue.get()
-                     
                 yield message    
         except asyncio.TimeoutError:
-            # know time error?
-            print("Timeout in listening")
+            pass
         except Exception as e:
             print(f"Error in listen: {e}")
         finally:
-            await sub.unsubscribe()
+            try:
+                await sub.unsubscribe()
+            except Exception as e:
+                pass
 
     async def subscribe_listen(
         self,

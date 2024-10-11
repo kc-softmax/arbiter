@@ -1,18 +1,21 @@
 from arbiter import ArbiterRunner, ArbiterNode
-from arbiter.configs import NatsBrokerConfig
-from arbiter.gateway import ArbiterGatewayService
-from tests.service import TestService, TestException, ArbiterService
+from arbiter.configs import NatsBrokerConfig, ArbiterNodeConfig
+# from tests.service import TestService, TestException, ArbiterService
 
 
 
 
 # ############################################################################################################
-app = ArbiterNode()
-app.add_service(TestException())
-app.add_service(TestService())
+app = ArbiterNode(
+    config=ArbiterNodeConfig(system_timeout=10))
+# app.add_service(TestException())
+# app.add_service(TestService())
 
 if __name__ == '__main__':
-    ArbiterRunner.run(app)
+    ArbiterRunner.run(
+        app,
+        broker_config=NatsBrokerConfig(),
+    )
 
 # ############################################################################################################
 # service = ArbiterService()
@@ -31,7 +34,7 @@ if __name__ == '__main__':
     
 ############################################################################################################
 # app = ArbiterNode(
-#     gateway=[]
+#     gateway=ArbiterFastAPI
 # )
 
 # @app.async_task(queue='test_service_return_task')

@@ -19,8 +19,8 @@ class ArbiterRunner:
     @staticmethod
     def run(
         app: ArbiterNode,
-        arbiter_config: ArbiterConfig,
         broker_config: BrokerConfig,
+        arbiter_config: ArbiterConfig = ArbiterConfig(),
     ):        
         # some validation?        
         arbiter = Arbiter(
@@ -30,22 +30,24 @@ class ArbiterRunner:
         # gateway validation with system?        
         app.setup(arbiter)
         
-        shutdown_event = asyncio.Event()
-        def shutdown_signal_handler(shutdown_event: asyncio.Event):
-            shutdown_event.set()
 
         async def arbiter_run(
             arbiter_app: ArbiterNode,
-            shutdown_event: asyncio.Event,
         ):
             """
             Get the configure parameters from config file.
             """
+            shutdown_event = asyncio.Event()
+            
+            def shutdown_signal_handler():
+                shutdown_event.set()
+
+            loop = asyncio.get_running_loop()
+            for sig in (signal.SIGINT, signal.SIGTERM):
+                loop.add_signal_handler(sig, shutdown_signal_handler)
 
             try:
-                async with arbiter_app.warp_in(
-                    shutdown_event=shutdown_event,
-                ) as arbiter_runner:
+                async with arbiter_app.warp_in() as arbiter_runner:
                     try:
                         console.print(f"[bold green]Warp In [bold yellow]Arbiter[/bold yellow] [bold green]{arbiter_runner.name}...[/bold green]")
                         
@@ -76,8 +78,22 @@ class ArbiterRunner:
                         2. Event wait until called event set
                         """
                         # (Press CTRL+C to quit)
-                        console.print(f"[bold white]Press [red]CTRL + C[/red] to quit[/bold white]")
-                        await shutdown_event.wait()
+                        serve_task = asyncio.create_task(arbiter_runner.gateway_server.serve())
+                        shutdown_task = asyncio.create_task(shutdown_event.wait())
+                        if arbiter_runner.gateway_server is None:
+                            console.print(f"[bold white]Press [red]CTRL + C[/red] to quit[/bold white]")
+                        # Wait until either task is done
+                        _, pending = await asyncio.wait(
+                            [serve_task, shutdown_task],
+                            return_when=asyncio.FIRST_COMPLETED,
+                        )
+                        shutdown_event.set()
+                        # Cancel the remaining tasks
+                        for task in pending:                            
+                            try:
+                                await task
+                            except asyncio.CancelledError:
+                                pass
 
                     except Exception as e:
                         # arbiter 를 소환 혹은 실행하는 도중 예외가 발생하면 처리한다.
@@ -106,9 +122,7 @@ class ArbiterRunner:
         """
         try:
             # Register signal handlers for graceful shutdown
-            signal.signal(signal.SIGINT, lambda s, f: shutdown_signal_handler(shutdown_event))
-            signal.signal(signal.SIGTERM, lambda s, f: shutdown_signal_handler(shutdown_event))
-            asyncio.run(arbiter_run(app, shutdown_event))
+            asyncio.run(arbiter_run(app))
         except SystemExit as e:
             console.print(f"SystemExit caught in main: {e.code}")
         except KeyboardInterrupt:

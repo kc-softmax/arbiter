@@ -17,7 +17,7 @@ from arbiter.utils import (
 )
 from arbiter.exceptions import TaskBaseError
 
-class ArbiterApiApp(FastAPI):
+class ArbiterGateway(FastAPI):
 
     def __init__(
         self,

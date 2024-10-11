@@ -10,12 +10,11 @@ class ArbiterConfig:
     log_format: str = "%(name)% - %(level)s - %(message)s - %(datetime)s",
 
 @dataclass
-class ArbiterNodeCondig:
+class ArbiterNodeConfig:
     system_timeout: int = 60
     preparation_timeout: int = 5
     initialization_timeout: int = 30
     disappearance_timeout: int = 10
-
 
 @dataclass
 class BrokerConfig:
