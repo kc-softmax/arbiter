@@ -55,18 +55,19 @@ class ArbiterNode():
         self,
         *,
         config: ArbiterNodeConfig = ArbiterNodeConfig(),
-        gateway_config: uvicorn.Config | None = uvicorn.Config(app=FastAPI()),
+        gateway: FastAPI | None = FastAPI(),
+        gateway_config: uvicorn.Config | None = uvicorn.Config(app=None),
         log_level: str | None = None,
         log_format: str | None = None
     ):
         self.config = config
+        self.gateway = gateway
         self.gateway_config: uvicorn.Config = gateway_config
-        if self.gateway_config:
+        if self.gateway:
+            self.gateway_config.app = self.gateway
             self.gateway_server: uvicorn.Server = uvicorn.Server(self.gateway_config)
-            self.gateway = self.gateway_config.app
         else:
             self.gateway_server = None
-            self.gateway = None
         
         self.log_level = log_level
         self.log_format = log_format

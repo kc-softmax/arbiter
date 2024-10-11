@@ -8,7 +8,8 @@ from arbiter.configs import NatsBrokerConfig, ArbiterNodeConfig
 # ############################################################################################################
 app = ArbiterNode(
     config=ArbiterNodeConfig(system_timeout=10),
-    # gateway_config=None
+    # gateway=FasiAPI(),
+    # gateway_config=Uvico
 )
 # app.add_service(TestException())
 # app.add_service(TestService())
