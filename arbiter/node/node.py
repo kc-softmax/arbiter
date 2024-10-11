@@ -63,11 +63,13 @@ class ArbiterNode():
         self.config = config
         self.gateway = gateway
         self.gateway_config: uvicorn.Config = gateway_config
+        
         if self.gateway:
             self.gateway_config.app = self.gateway
             self.gateway_server: uvicorn.Server = uvicorn.Server(self.gateway_config)
         else:
             self.gateway_server = None
+            self.gateway_config = None
             
         
         self.log_level = log_level
@@ -314,10 +316,12 @@ class ArbiterNode():
             self.health_check_task.cancel()        
             await self.clear()
     
-    async def handle_gateway(self):
-        
-        await self.gateway_server.serve()
-        pass
+    async def handle_gateway(self, shutdown_event: asyncio.Event):
+        while not shutdown_event.is_set():
+            self.gateway_server.should_exit = False
+            await self.gateway_server.serve()
+            # TODO 1초면 종료 다 할 수 있나? 다른 
+            await asyncio.sleep(1)
     
     async def health_check_func(
         self,
