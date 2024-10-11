@@ -7,7 +7,9 @@ from arbiter.configs import NatsBrokerConfig, ArbiterNodeConfig
 
 # ############################################################################################################
 app = ArbiterNode(
-    config=ArbiterNodeConfig(system_timeout=10))
+    config=ArbiterNodeConfig(system_timeout=10),
+    # gateway_config=None
+)
 # app.add_service(TestException())
 # app.add_service(TestService())
 
