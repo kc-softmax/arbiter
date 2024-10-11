@@ -84,7 +84,7 @@ class ArbiterRunner:
                             console.print(f"[bold white]Press [red]CTRL + C[/red] to quit[/bold white]")
                             await shutdown_event.wait()
                         else:
-                            await arbiter_runner.handle_gateway()
+                            await arbiter_runner.handle_gateway(shutdown_event)
 
                     except Exception as e:
                         # arbiter 를 소환 혹은 실행하는 도중 예외가 발생하면 처리한다.
