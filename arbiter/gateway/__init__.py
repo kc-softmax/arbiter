@@ -1,1 +1,1 @@
-from .service import ArbiterGatewayService
+from .app import ArbiterGateway

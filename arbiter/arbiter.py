@@ -25,9 +25,8 @@ class Arbiter:
     
     def __init__(
         self,
-        *,
+        arbiter_config: ArbiterConfig,
         broker_config: BrokerConfig,
-        arbiter_config: ArbiterConfig = ArbiterConfig(),
     ):        
         self.arbiter_config = arbiter_config
         self.broker_config = broker_config
