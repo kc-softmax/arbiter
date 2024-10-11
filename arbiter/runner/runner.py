@@ -84,20 +84,7 @@ class ArbiterRunner:
                             console.print(f"[bold white]Press [red]CTRL + C[/red] to quit[/bold white]")
                             await shutdown_event.wait()
                         else:
-                            serve_task = asyncio.create_task(arbiter_runner.gateway_server.serve())
-                            shutdown_task = asyncio.create_task(shutdown_event.wait())
-                            # Wait until either task is done
-                            _, pending = await asyncio.wait(
-                                [serve_task, shutdown_task],
-                                return_when=asyncio.FIRST_COMPLETED,
-                            )
-                            shutdown_event.set()
-                            # Cancel the remaining tasks
-                            for task in pending:                            
-                                try:
-                                    await task
-                                except asyncio.CancelledError:
-                                    pass
+                            await arbiter_runner.handle_gateway()
 
                     except Exception as e:
                         # arbiter 를 소환 혹은 실행하는 도중 예외가 발생하면 처리한다.

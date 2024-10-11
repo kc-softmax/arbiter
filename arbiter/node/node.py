@@ -68,6 +68,7 @@ class ArbiterNode():
             self.gateway_server: uvicorn.Server = uvicorn.Server(self.gateway_config)
         else:
             self.gateway_server = None
+            
         
         self.log_level = log_level
         self.log_format = log_format
@@ -312,6 +313,11 @@ class ArbiterNode():
         finally:
             self.health_check_task.cancel()        
             await self.clear()
+    
+    async def handle_gateway(self):
+        
+        await self.gateway_server.serve()
+        pass
     
     async def health_check_func(
         self,
