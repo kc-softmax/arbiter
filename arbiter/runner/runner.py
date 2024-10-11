@@ -47,7 +47,9 @@ class ArbiterRunner:
                 loop.add_signal_handler(sig, shutdown_signal_handler)
 
             try:
-                async with arbiter_app.warp_in() as arbiter_runner:
+                async with arbiter_app.warp_in(
+                    shutdown_event
+                ) as arbiter_runner:
                     try:
                         console.print(f"[bold green]Warp In [bold yellow]Arbiter[/bold yellow] [bold green]{arbiter_runner.name}...[/bold green]")
                         
@@ -78,22 +80,24 @@ class ArbiterRunner:
                         2. Event wait until called event set
                         """
                         # (Press CTRL+C to quit)
-                        serve_task = asyncio.create_task(arbiter_runner.gateway_server.serve())
-                        shutdown_task = asyncio.create_task(shutdown_event.wait())
                         if arbiter_runner.gateway_server is None:
                             console.print(f"[bold white]Press [red]CTRL + C[/red] to quit[/bold white]")
-                        # Wait until either task is done
-                        _, pending = await asyncio.wait(
-                            [serve_task, shutdown_task],
-                            return_when=asyncio.FIRST_COMPLETED,
-                        )
-                        shutdown_event.set()
-                        # Cancel the remaining tasks
-                        for task in pending:                            
-                            try:
-                                await task
-                            except asyncio.CancelledError:
-                                pass
+                            await shutdown_event.wait()
+                        else:
+                            serve_task = asyncio.create_task(arbiter_runner.gateway_server.serve())
+                            shutdown_task = asyncio.create_task(shutdown_event.wait())
+                            # Wait until either task is done
+                            _, pending = await asyncio.wait(
+                                [serve_task, shutdown_task],
+                                return_when=asyncio.FIRST_COMPLETED,
+                            )
+                            shutdown_event.set()
+                            # Cancel the remaining tasks
+                            for task in pending:                            
+                                try:
+                                    await task
+                                except asyncio.CancelledError:
+                                    pass
 
                     except Exception as e:
                         # arbiter 를 소환 혹은 실행하는 도중 예외가 발생하면 처리한다.

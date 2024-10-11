@@ -293,6 +293,7 @@ class ArbiterNode():
     @asynccontextmanager
     async def warp_in(
         self,
+        shutdown_event: asyncio.Event,
     ) -> AsyncGenerator[ArbiterNode, Exception]:
         """
             Connect to Arbiter
@@ -304,7 +305,7 @@ class ArbiterNode():
             and prepare for the dynamic preparation
             we called it "WarpIn"
         """
-        self.health_check_task = asyncio.create_task(self.health_check_func())
+        self.health_check_task = asyncio.create_task(self.health_check_func(shutdown_event))
         try:
             yield self
         finally:
@@ -313,6 +314,7 @@ class ArbiterNode():
     
     async def health_check_func(
         self,
+        shutdown_event: asyncio.Event,
     ):
         try:
             async for raw_message in self.arbiter.broker.listen(
@@ -332,6 +334,7 @@ class ArbiterNode():
             pass
             print("Error in system task: ", e)
         finally:
+            shutdown_event.set()
             if self.gateway_server:
                 self.gateway_server.should_exit = True
 
