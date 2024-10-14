@@ -24,7 +24,7 @@ from typing import (
 from arbiter import Arbiter
 # from arbiter.service import ArbiterService
 from arbiter._service import ArbiterService
-from arbiter.registry.registry import Registry
+from arbiter.registry import Registry
 from arbiter.gateway import ArbiterGateway
 from fastapi import FastAPI
 from arbiter.data.models import (
@@ -398,6 +398,9 @@ class ArbiterNode():
                 receive = await asyncio.to_thread(self._internal_mp_queue.get, timeout=_timeout)
         except (Exception, TimeoutError) as err:
             print("failed internal health check")
+        finally:
+            if self.gateway_server:
+                self.gateway_server.should_exit = True
             shutdown_event.set()
 
     async def external_node_event(self, shutdown_event: asyncio.Event):
@@ -420,6 +423,9 @@ class ArbiterNode():
                 
         except Exception as err:
             print("failed external node event", err)
+        finally:
+            if self.gateway_server:
+                self.gateway_server.should_exit = True
             shutdown_event.set()
 
     async def external_health_check(self, shutdown_event: asyncio.Event):
@@ -435,6 +441,9 @@ class ArbiterNode():
                 await asyncio.sleep(_timeout_interval)
         except Exception as err:
             print('failed external health checok', err)
+        finally:
+            if self.gateway_server:
+                self.gateway_server.should_exit = True
             shutdown_event.set()
 
 
