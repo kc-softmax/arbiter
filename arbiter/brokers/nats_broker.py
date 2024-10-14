@@ -107,10 +107,11 @@ class ArbiterNatsBroker(ArbiterBrokerInterface):
     async def broadcast(
         self,
         target: str,
-        message: bytes
+        message: bytes,
+        reply: str = '',
     ) -> None:
         # TODO Consider, get response from all subscribers
-        await self.nats.publish(target, pickle.dumps(message))
+        await self.nats.publish(target, pickle.dumps(message), reply)
     
     async def listen(
         self,
