@@ -2,6 +2,8 @@ import pytest
 import typer
 # from arbiter.runner.commands.build import app as build_app
 from arbiter.constants import CONFIG_FILE
+from arbiter import ArbiterRunner, ArbiterNode
+from arbiter.configs import NatsBrokerConfig, ArbiterNodeConfig
 from arbiter.runner.runner import ArbiterRunner
 from arbiter.node import ArbiterNode
 from arbiter.runner.utils import create_config
@@ -14,6 +16,22 @@ app = typer.Typer()
 #     rich_help_panel="build environment",
 #     help="Configure build environment for deploying service")
 
+@app.command(help="run arbiter rel")
+def repl(
+    name: str = typer.Option(
+        "Danimoth", "--name", help="Name of the arbiter to run."),
+):
+    # main:app 과 같은 느낌으로 가져오는거니까 config이 필요 없다.
+    # 하지만 repl이기 때문에 app 변수를 가져와야 한다.
+
+    ArbiterRunner.run(
+        ArbiterNode(
+            config=ArbiterNodeConfig(system_timeout=0),
+            gateway=None,
+            ),
+        broker_config=NatsBrokerConfig(),
+        repl=True)
+    
 
 @app.command(help="run arbiter service")
 def run(
@@ -24,19 +42,20 @@ def run(
     log_level: str = typer.Option(
         "info", "--log-level", help="Log level for arbiter.")
 ):
-    arbiter_setting, is_arbiter_setting = get_arbiter_setting(CONFIG_FILE)
-    if not is_arbiter_setting:
-        create_config(arbiter_setting)
-    config = read_config(arbiter_setting)
-
+    # main:app 과 같은 느낌으로 가져오는거니까 config이 필요 없지
     """
     Set the config to the app.
     runner, worker, api app shared the same config.
     # CHECK 
     """
+    # 서비스를 내가 찾아서 추가해야 한다.
     # app.setup(config)
     # run에는 config을 이용해서 한다.
     app = ArbiterNode()
+    # find services in ./services folder
+    """
+        현재 폴더에 있는 모든 서비스를 추가한다.
+    """
     # service를 추가해야 하나?
     # services 폴더에 있는 모든 service를 추가해야 하자
     # aribter add service?

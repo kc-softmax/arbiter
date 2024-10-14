@@ -19,6 +19,8 @@ class ArbiterConsole(code.InteractiveConsole):
         self.shutdown_event = shutdown_event
         self.session = PromptSession()
         super().__init__()
+        print("Welcome to ArbiterConsole! Custom Interactive Python Console.")
+        
 
 
     async def check_shutdown_event(self):
@@ -31,7 +33,9 @@ class ArbiterConsole(code.InteractiveConsole):
         # 프롬프트를 빈 문자열로 설정
         sys.ps1 = 'arbiter $ '
         sys.ps2 = ''
-        super().interact(banner)
+        if banner is None:
+            banner = "ArbiterConsole Interactive Mode (Custom Banner)"
+        super().interact(banner=banner)
 
     def raw_input(self, prompt=""):
         with patch_stdout():

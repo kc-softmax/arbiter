@@ -88,7 +88,6 @@ class ArbiterRunner:
                             if not await wait_until(lambda: arbiter_runner.gateway_server.started, timeout=5.0):
                                 raise Exception("Gateway server is not started.")
                         else:
-                            console.print(f"[bold white]Press [red]CTRL + C[/red] to quit[/bold white]")
                             gateway_task = None
                         
                         if repl:
@@ -104,6 +103,7 @@ class ArbiterRunner:
                             if arbiter_runner.gateway_server:
                                 await asyncio.gather(gateway_task, shutdown_event.wait())
                             else:
+                                console.print(f"[bold white]Press [red]CTRL + C[/red] to quit[/bold white]")
                                 await asyncio.gather(shutdown_event.wait())
 
                     except Exception as e:
