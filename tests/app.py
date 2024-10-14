@@ -8,6 +8,7 @@ from arbiter.configs import NatsBrokerConfig, ArbiterNodeConfig
 # ############################################################################################################
 app = ArbiterNode(
     config=ArbiterNodeConfig(system_timeout=5),
+    # gateway=None,
     # gateway=FasiAPI(),
     # gateway_config=Uvico
 )
@@ -18,6 +19,7 @@ if __name__ == '__main__':
     ArbiterRunner.run(
         app,
         broker_config=NatsBrokerConfig(),
+        repl=True
     )
 
 # ############################################################################################################

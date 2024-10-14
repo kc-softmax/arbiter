@@ -35,6 +35,17 @@ from typing import (
 from arbiter.constants import ALLOWED_TYPES
 from arbiter.parser import pydantic_from_schema
 
+async def wait_until(condition: Callable, timeout=None, check_interval=0.1):
+    start_time = asyncio.get_event_loop().time()
+    while True:
+        if condition():
+            return True
+        if timeout is not None:
+            elapsed = asyncio.get_event_loop().time() - start_time
+            if elapsed >= timeout:
+                raise asyncio.TimeoutError()
+        await asyncio.sleep(check_interval)
+
 def single_result_async_gen(func_result: Any) -> AsyncIterator:
     """
     Wrap a single awaitable result into an asynchronous generator.
