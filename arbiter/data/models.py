@@ -45,6 +45,7 @@ class ArbiterNode(ArbiterBaseNode):
 class ArbiterServiceNode(ArbiterBaseNode):
     task_node_ids: list[str] = Field(default_factory=list)
     description: Optional[str] = Field(default='')
+    task_nodes: list[str] = Field(default_factory=list)
 
 class ArbiterGatewayNode(ArbiterServiceNode):
     host: str
