@@ -99,6 +99,15 @@ class ArbiterNode():
         if self.arbiter:
             await self.arbiter.disconnect()
 
+    def start_gateway(self, shutdown_event: asyncio.Event) -> asyncio.Task:
+        async def _gateway_loop():
+            while not shutdown_event.is_set():
+                self.gateway_server.should_exit = False
+                await self.gateway_server.serve()
+                # TODO 1초면 종료 다 할 수 있나? 다른 
+                await asyncio.sleep(1)
+        return asyncio.create_task(_gateway_loop())
+
     async def _preparation_task(self):
         """
             만들기 전에 검사하는 단계라고 생각하면 될까?
@@ -316,13 +325,6 @@ class ArbiterNode():
             self.health_check_task.cancel()        
             await self.clear()
     
-    async def handle_gateway(self, shutdown_event: asyncio.Event):
-        while not shutdown_event.is_set():
-            self.gateway_server.should_exit = False
-            await self.gateway_server.serve()
-            # TODO 1초면 종료 다 할 수 있나? 다른 
-            await asyncio.sleep(1)
-    
     async def health_check_func(
         self,
         shutdown_event: asyncio.Event,
@@ -345,9 +347,9 @@ class ArbiterNode():
             pass
             print("Error in system task: ", e)
         finally:
-            shutdown_event.set()
             if self.gateway_server:
                 self.gateway_server.should_exit = True
+            shutdown_event.set()
 
 
 # atexit.register(arbiter.clear)

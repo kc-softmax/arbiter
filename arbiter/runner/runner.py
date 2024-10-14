@@ -1,15 +1,14 @@
 import signal
-import typer
 import asyncio
 from rich.console import Console
-from typing_extensions import Annotated
 from arbiter.enums import (
     WarpInPhase,
     WarpInTaskResult,
 )
+from arbiter.runner.console import arbiter_console_context
 from arbiter.configs import ArbiterConfig,BrokerConfig
-# from arbiter.gateway.service import ArbiterGatewayService
 from arbiter.node import ArbiterNode
+from arbiter.utils import wait_until
 from arbiter import Arbiter
 
 console = Console()
@@ -21,6 +20,7 @@ class ArbiterRunner:
         app: ArbiterNode,
         broker_config: BrokerConfig,
         arbiter_config: ArbiterConfig = ArbiterConfig(),
+        repl: bool = False,
     ):        
         # some validation?        
         arbiter = Arbiter(
@@ -37,11 +37,11 @@ class ArbiterRunner:
             """
             Get the configure parameters from config file.
             """
-            shutdown_event = asyncio.Event()
-            
             def shutdown_signal_handler():
                 shutdown_event.set()
 
+            shutdown_event = asyncio.Event()
+            
             loop = asyncio.get_running_loop()
             for sig in (signal.SIGINT, signal.SIGTERM):
                 loop.add_signal_handler(sig, shutdown_signal_handler)
@@ -79,12 +79,32 @@ class ArbiterRunner:
                         1. Event flag will change when occur keyboard interrupt signal
                         2. Event wait until called event set
                         """
-                        # (Press CTRL+C to quit)
-                        if arbiter_runner.gateway_server is None:
-                            console.print(f"[bold white]Press [red]CTRL + C[/red] to quit[/bold white]")
-                            await shutdown_event.wait()
+                        """
+                            # (Press CTRL+C to quit)                            
+                        """
+                        # launch gateway first
+                        if arbiter_runner.gateway_server:
+                            gateway_task = arbiter_runner.start_gateway(shutdown_event)
+                            if not await wait_until(lambda: arbiter_runner.gateway_server.started, timeout=5.0):
+                                raise Exception("Gateway server is not started.")
                         else:
-                            await arbiter_runner.handle_gateway(shutdown_event)
+                            console.print(f"[bold white]Press [red]CTRL + C[/red] to quit[/bold white]")
+                            gateway_task = None
+                        
+                        if repl:
+                            async with arbiter_console_context(arbiter_runner, shutdown_event) as interact_task:
+                                # print("Waiting for interact to complete...")
+                                await interact_task
+                                if arbiter_runner.gateway_server:
+                                    arbiter_runner.gateway_server.should_exit = True
+                                    await asyncio.gather(gateway_task, shutdown_event.wait())
+                                else:
+                                    await asyncio.gather(shutdown_event.wait())
+                        else:
+                            if arbiter_runner.gateway_server:
+                                await asyncio.gather(gateway_task, shutdown_event.wait())
+                            else:
+                                await asyncio.gather(shutdown_event.wait())
 
                     except Exception as e:
                         # arbiter 를 소환 혹은 실행하는 도중 예외가 발생하면 처리한다.
