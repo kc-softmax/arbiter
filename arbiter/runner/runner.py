@@ -110,12 +110,9 @@ class ArbiterRunner:
                                     console.log(f"[bold red]{arbiter_runner.name}[/bold red]'s warp-out catch fail {message}")
                                     break
                                     # check aribter runner is clean up
-                    print(f"[bold red]{arbiter_runner.name}[/bold red] is closed.")
             except Exception as e:
                 # start_phase에서 발생한 예외를 처리한다.
                 console.print(f"[bold red]An error occurred when loading arbiter[/bold red] {e}")
-            print(f"[bold red]Arbiter is closed.[/bold red]")
-            print(asyncio.all_tasks())
         
         ################## RUN #####################
         """
@@ -124,7 +121,6 @@ class ArbiterRunner:
         try:
             # Register signal handlers for graceful shutdown
             asyncio.run(arbiter_run(app))
-            print("Arbiter is closed.")
         except SystemExit as e:
             console.print(f"SystemExit caught in main: {e.code}")
         except KeyboardInterrupt:

@@ -16,8 +16,6 @@ app = ArbiterNode(
     # gateway=uvicorn.Config(app=FastAPI(), port=8000)
 )
 # app.add_service(service)
-# app.add_service(TestException())
-# app.add_service(TestService())
 
 if __name__ == '__main__':
     ArbiterRunner.run(
