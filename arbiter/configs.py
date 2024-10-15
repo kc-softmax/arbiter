@@ -1,7 +1,9 @@
+from __future__ import annotations
 from dataclasses import dataclass
 
 @dataclass
 class ArbiterConfig:
+    broker_config: BrokerConfig
     name: str = "Danimoth"
     default_send_timeout: int = 5
     retry_attempts: int = 3

@@ -18,19 +18,9 @@ class ArbiterRunner:
     @staticmethod
     def run(
         app: ArbiterNode,
-        broker_config: BrokerConfig,
-        arbiter_config: ArbiterConfig = ArbiterConfig(),
         repl: bool = False,
     ):        
-        # some validation?        
-        arbiter = Arbiter(
-            arbiter_config,
-            broker_config,
-        )        
-        # gateway validation with system?        
-        app.setup(arbiter)
         
-
         async def arbiter_run(
             arbiter_app: ArbiterNode,
         ):
@@ -39,9 +29,7 @@ class ArbiterRunner:
             """
             def shutdown_signal_handler():
                 shutdown_event.set()
-
             shutdown_event = asyncio.Event()
-            
             loop = asyncio.get_running_loop()
             for sig in (signal.SIGINT, signal.SIGTERM):
                 loop.add_signal_handler(sig, shutdown_signal_handler)
@@ -122,10 +110,12 @@ class ArbiterRunner:
                                     console.log(f"[bold red]{arbiter_runner.name}[/bold red]'s warp-out catch fail {message}")
                                     break
                                     # check aribter runner is clean up
+                    print(f"[bold red]{arbiter_runner.name}[/bold red] is closed.")
             except Exception as e:
                 # start_phase에서 발생한 예외를 처리한다.
                 console.print(f"[bold red]An error occurred when loading arbiter[/bold red] {e}")
-        
+            print(f"[bold red]Arbiter is closed.[/bold red]")
+            print(asyncio.all_tasks())
         
         ################## RUN #####################
         """
@@ -134,6 +124,7 @@ class ArbiterRunner:
         try:
             # Register signal handlers for graceful shutdown
             asyncio.run(arbiter_run(app))
+            print("Arbiter is closed.")
         except SystemExit as e:
             console.print(f"SystemExit caught in main: {e.code}")
         except KeyboardInterrupt:
