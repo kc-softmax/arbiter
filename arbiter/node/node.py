@@ -78,15 +78,10 @@ class ArbiterNode():
         self.node_health: dict[str, int] = {}
         self.local_registry: dict[str, ArbiterNodeModel | list[ArbiterServiceNode, ArbiterTaskNode]] = None
 
-        self.health_check_task: asyncio.Task = None
-
         self._services: list[ArbiterService] = []
         self._warp_in_queue: asyncio.Queue = asyncio.Queue()
         self._arbiter_processes: list[Process] = []
         self._internal_mp_queue: MPQueue = MPQueue()
-        self._internal_health_check_task: asyncio.Task = None
-        self._external_node_event_task: asyncio.Task = None
-        self._external_health_check_task: asyncio.Task = None
         
     @property
     def name(self) -> str:
@@ -99,8 +94,7 @@ class ArbiterNode():
         self._services.append(service)
 
     async def clear(self):
-        if self.arbiter:
-            await self.arbiter.disconnect()
+        self.arbiter and await self.arbiter.disconnect()
 
     def start_gateway(self, shutdown_event: asyncio.Event) -> asyncio.Task:
         async def _gateway_loop():
@@ -110,6 +104,10 @@ class ArbiterNode():
                 # TODO 1초면 종료 다 할 수 있나? 다른 
                 await asyncio.sleep(1)
         return asyncio.create_task(_gateway_loop())
+
+    def stop_gateway(self):
+        if self.gateway_server:
+            self.gateway_server.should_exit = True
 
     def create_local_registry(self):
         # 자신의 registry는 node에서 다른 객체로 관리한다
@@ -340,60 +338,47 @@ class ArbiterNode():
             and prepare for the dynamic preparation
             we called it "WarpIn"
         """
-        # self.health_check_task = asyncio.create_task(self.health_check_func(shutdown_event))
-        self._internal_health_check_task = asyncio.create_task(self.internal_health_check(shutdown_event))
-        self._external_node_event_task = asyncio.create_task(self.external_node_event(shutdown_event))
-        self._external_health_check_task = asyncio.create_task(self.external_health_check(shutdown_event))
+        internal_health_check = asyncio.create_task(self.internal_health_check(shutdown_event))
+        external_node_event = asyncio.create_task(self.external_node_event(shutdown_event))
+        external_health_check = asyncio.create_task(self.external_health_check(shutdown_event))
         try:
             yield self
         finally:
-            # self.health_check_task.cancel()
-            try:
-                self._internal_health_check_task and self._internal_health_check_task.cancel()
-                self._external_node_event_task and self._external_node_event_task.cancel()
-                self._external_health_check_task and self._external_health_check_task.cancel()
-            except Exception as e:
-                print('failed to cancel health check task', e)
-                
+            await asyncio.to_thread(self._internal_mp_queue.put, obj="exit")
+            internal_health_check.cancel()
+            external_node_event.cancel()
+            external_health_check.cancel()
+            # TODO task health            
             await self.clear()
     
-    async def health_check_func(
-        self,
-        shutdown_event: asyncio.Event,
-    ):
+    async def external_health_check(self, shutdown_event: asyncio.Event):
         try:
-            async for raw_message in self.arbiter.broker.listen(
-                'test', self.node_config.system_timeout
-            ):
-                pass
-        
-        except TimeoutError as e:
-            # system task function is timeout
-            # 아무 메세지를 받지 못해서, timeout이 발생한다.
-            # * 모든 서비스가 중단되었
-            print('Health Check Task is timeout.')
-            pass
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            pass
-            print("Error in system task: ", e)
+            while not shutdown_event.is_set():
+                await self.arbiter.broker.broadcast(
+                    "ARBITER.NODE", 
+                    self.arbiter_node.node_id,
+                    "NODE_HEALTH")
+                now = time.time()
+                for node_id, received_time in self.node_health.items():
+                    if received_time + self.node_config.external_health_check_timeout < now:
+                        print("failed external health check", node_id)
+                await asyncio.sleep(self.node_config.external_health_check_interval)
+        except Exception as err:
+            print('failed external health checok', err)
         finally:
-            if self.gateway_server:
-                self.gateway_server.should_exit = True
+            self.stop_gateway()
             shutdown_event.set()
 
     async def internal_health_check(self, shutdown_event: asyncio.Event):
-        _timeout = 20
         try:
             while not shutdown_event.is_set():
-                # pass
-                receive = await asyncio.to_thread(self._internal_mp_queue.get, timeout=_timeout)
+                receive = await asyncio.to_thread(
+                    self._internal_mp_queue.get, 
+                    timeout=self.node_config.internal_health_check_timeout)
         except (Exception, TimeoutError) as err:
             print("failed internal health check")
         finally:
-            if self.gateway_server:
-                self.gateway_server.should_exit = True
+            self.stop_gateway()
             shutdown_event.set()
 
     async def external_node_event(self, shutdown_event: asyncio.Event):
@@ -417,30 +402,9 @@ class ArbiterNode():
         except Exception as err:
             print("failed external node event", err)
         finally:
-            if self.gateway_server:
-                self.gateway_server.should_exit = True
+            self.stop_gateway()
             shutdown_event.set()
-            
-
-    async def external_health_check(self, shutdown_event: asyncio.Event):
-        _timeout_interval = 3
-        _timeout = 10
-        try:
-            while True:
-                await self.arbiter.broker.broadcast("ARBITER.NODE", self.arbiter_node.node_id, "NODE_HEALTH")
-                now = time.time()
-                for node_id, received_time in self.node_health.items():
-                    if received_time + _timeout < now:
-                        print("failed external health check", node_id)
-                await asyncio.sleep(_timeout_interval)
-        except Exception as err:
-            print('failed external health checok', err)
-        finally:
-            if self.gateway_server:
-                self.gateway_server.should_exit = True
-            shutdown_event.set()
-
-
+        
 # atexit.register(arbiter.clear)
 # signal.signal(signal.SIGINT, lambda sig,
 #               frame: asyncio.create_task(arbiter.shutdown()))

@@ -17,6 +17,9 @@ class ArbiterNodeConfig:
     preparation_timeout: int = 5
     initialization_timeout: int = 30
     disappearance_timeout: int = 10
+    external_health_check_interval: int = 3
+    external_health_check_timeout: int = 10
+    internal_health_check_timeout: int = 10
 
 @dataclass
 class BrokerConfig:
