@@ -1,5 +1,6 @@
 import pytest
 import typer
+from uvicorn.importer import import_from_string
 # from arbiter.runner.commands.build import app as build_app
 from arbiter.constants import CONFIG_FILE
 from arbiter import ArbiterRunner, ArbiterNode
@@ -34,9 +35,11 @@ def repl(
     
 
 @app.command(help="run arbiter service")
-def run(
-    name: str = typer.Option(
-        "Danimoth", "--name", help="Name of the arbiter to run."),
+def dev(
+    # not optional
+    module: str = typer.Argument(
+        ...,
+        help="The module path to the arbiter service."),
     reload: bool = typer.Option(
         False, "--reload", help="Enable auto-reload for code changes."),
     log_level: str = typer.Option(
@@ -48,23 +51,26 @@ def run(
     runner, worker, api app shared the same config.
     # CHECK 
     """
+    instance = import_from_string(module)
+    
+    print(instance)
     # 서비스를 내가 찾아서 추가해야 한다.
     # app.setup(config)
     # run에는 config을 이용해서 한다.
-    app = ArbiterNode()
-    # find services in ./services folder
-    """
-        현재 폴더에 있는 모든 서비스를 추가한다.
-    """
-    # service를 추가해야 하나?
-    # services 폴더에 있는 모든 service를 추가해야 하자
-    # aribter add service?
-    ArbiterRunner.run(
-        app=app,
-        name=name,
-        reload=reload,
-        log_level=log_level
-    )
+    # app = ArbiterNode()
+    # # find services in ./services folder
+    # """
+    #     현재 폴더에 있는 모든 서비스를 추가한다.
+    # """
+    # # service를 추가해야 하나?
+    # # services 폴더에 있는 모든 service를 추가해야 하자
+    # # aribter add service?
+    # ArbiterRunner.run(
+    #     app=app,
+    #     name=name,
+    #     reload=reload,
+    #     log_level=log_level
+    # )
 
 
 @app.command(help="run arbiter testcase")

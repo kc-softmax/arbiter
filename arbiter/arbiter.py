@@ -26,21 +26,20 @@ class Arbiter:
     def __init__(
         self,
         arbiter_config: ArbiterConfig,
-        broker_config: BrokerConfig,
     ):        
         self.arbiter_config = arbiter_config
-        self.broker_config = broker_config
+        self.broker_config = arbiter_config.broker_config
         
-        if isinstance(broker_config, NatsBrokerConfig):
+        if isinstance(self.broker_config, NatsBrokerConfig):
             self.broker: ArbiterNatsBroker = ArbiterNatsBroker(
-                config=broker_config,
+                config=self.broker_config,
                 name=self.arbiter_config.name,
                 log_level=self.arbiter_config.log_level,
                 log_format=self.arbiter_config.log_format
             )
-        elif isinstance(broker_config, RedisBrokerConfig):
+        elif isinstance(self.broker_config, RedisBrokerConfig):
             self.broker: ArbiterRedisBroker = ArbiterRedisBroker(
-                config=broker_config,
+                config=self.broker_config,
                 name=self.arbiter_config.name,
                 log_level=self.arbiter_config.log_level,
                 log_format=self.arbiter_config.log_format

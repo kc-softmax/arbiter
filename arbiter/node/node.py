@@ -21,12 +21,13 @@ from typing import (
     TypeVar, 
     Generic,
 )
+from fastapi import FastAPI
 from arbiter import Arbiter
 # from arbiter.service import ArbiterService
 from arbiter._service import ArbiterService
 from arbiter.registry import Registry
 from arbiter.gateway import ArbiterGateway
-from fastapi import FastAPI
+
 from arbiter.data.models import (
     ArbiterNode as ArbiterNodeModel,
     ArbiterServiceNode,
@@ -39,19 +40,7 @@ from arbiter.enums import (
     WarpInPhase,
     NodeState,
 )
-from arbiter.exceptions import (
-    ArbiterServerNodeFaileToStartError,
-    ArbiterTaskAlreadyExistsError,
-    ArbiterServiceNodeFaileToStartError,
-    ArbiterInconsistentServiceModelError
-)
-from arbiter.utils import (
-    fetch_data_within_timeout,
-    get_pickled_data,
-    get_task_queue_name,
-    transform_type_from_annotation,
-)
-from arbiter.configs import ArbiterNodeConfig
+from arbiter.configs import ArbiterNodeConfig, ArbiterConfig
 from arbiter.task import ArbiterAsyncTask
 
 class ArbiterNode():
@@ -59,29 +48,32 @@ class ArbiterNode():
     def __init__(
         self,
         *,
-        config: ArbiterNodeConfig = ArbiterNodeConfig(),
-        gateway: FastAPI | None = FastAPI(),
-        gateway_config: uvicorn.Config | None = uvicorn.Config(app=None),
+        arbiter_config: ArbiterConfig,
+        node_config: ArbiterNodeConfig = ArbiterNodeConfig(),
+        gateway: FastAPI | uvicorn.Config | None = FastAPI(),
         log_level: str | None = None,
         log_format: str | None = None
     ):
-        self.config = config
-        self.gateway = gateway
-        self.gateway_config: uvicorn.Config = gateway_config
-        
-        if self.gateway:
-            self.gateway_config.app = self.gateway
-            self.gateway_server: uvicorn.Server = uvicorn.Server(self.gateway_config)
+        self.arbiter_config = arbiter_config
+        self.node_config = node_config
+        if isinstance(gateway, FastAPI):
+            self.gateway_config = uvicorn.Config(app=gateway)
+            self.gateway_server = uvicorn.Server(self.gateway_config)
+            self.gateway = gateway
+        elif isinstance(gateway, uvicorn.Config):
+            self.gateway_config = gateway
+            self.gateway_server = uvicorn.Server(self.gateway_config)
+            self.gateway = gateway.app
         else:
-            self.gateway_server = None
             self.gateway_config = None
-            
+            self.gateway_server = None
+            self.gateway = None
         
         self.log_level = log_level
         self.log_format = log_format
 
-        self.arbiter: Arbiter = None
-        self.arbiter_node: ArbiterNodeModel = None
+        self.arbiter = Arbiter(arbiter_config)        
+        self.arbiter_node = ArbiterNodeModel(name=self.name, state=1)
         self.registry: Registry = Registry()
         self.node_health: dict[str, int] = {}
         self.local_registry: dict[str, ArbiterNodeModel | list[ArbiterServiceNode, ArbiterTaskNode]] = None
@@ -100,10 +92,6 @@ class ArbiterNode():
     def name(self) -> str:
         return self.arbiter.arbiter_config.name
     
-    def setup(self, arbiter: Arbiter):
-        self.arbiter = arbiter
-        self.arbiter_node = ArbiterNodeModel(name=self.name, state=1)
-        
     def add_service(self, service: ArbiterService):
         # change to service node
         if any(s.name == service.name for s in self._services):
@@ -316,12 +304,12 @@ class ArbiterNode():
         match phase:
             case WarpInPhase.PREPARATION:
                 asyncio.create_task(self._preparation_task())
-                timeout = self.config.preparation_timeout
+                timeout = self.node_config.preparation_timeout
             case WarpInPhase.INITIATION:
-                timeout = self.config.initialization_timeout
+                timeout = self.node_config.initialization_timeout
                 asyncio.create_task(self._initialize_task())
             case WarpInPhase.DISAPPEARANCE:
-                timeout = self.config.disappearance_timeout
+                timeout = self.node_config.disappearance_timeout
                 asyncio.create_task(self._disappearance_task())
             case _:
                 raise ValueError('Invalid WarpInPhase')
@@ -360,9 +348,13 @@ class ArbiterNode():
             yield self
         finally:
             # self.health_check_task.cancel()
-            self._internal_health_check_task.cancel()
-            self._external_node_event_task.cancel()
-            self._external_health_check_task.cancel()
+            try:
+                self._internal_health_check_task and self._internal_health_check_task.cancel()
+                self._external_node_event_task and self._external_node_event_task.cancel()
+                self._external_health_check_task and self._external_health_check_task.cancel()
+            except Exception as e:
+                print('failed to cancel health check task', e)
+                
             await self.clear()
     
     async def health_check_func(
@@ -371,7 +363,7 @@ class ArbiterNode():
     ):
         try:
             async for raw_message in self.arbiter.broker.listen(
-                'test', self.config.system_timeout
+                'test', self.node_config.system_timeout
             ):
                 pass
         
@@ -392,9 +384,10 @@ class ArbiterNode():
             shutdown_event.set()
 
     async def internal_health_check(self, shutdown_event: asyncio.Event):
-        _timeout = 10
+        _timeout = 20
         try:
-            while True:
+            while not shutdown_event.is_set():
+                # pass
                 receive = await asyncio.to_thread(self._internal_mp_queue.get, timeout=_timeout)
         except (Exception, TimeoutError) as err:
             print("failed internal health check")
@@ -427,6 +420,7 @@ class ArbiterNode():
             if self.gateway_server:
                 self.gateway_server.should_exit = True
             shutdown_event.set()
+            
 
     async def external_health_check(self, shutdown_event: asyncio.Event):
         _timeout_interval = 3
