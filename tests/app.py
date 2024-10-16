@@ -11,11 +11,11 @@ import uvicorn
 app = ArbiterNode(
     arbiter_config=ArbiterConfig(broker_config=NatsBrokerConfig()),
     node_config=ArbiterNodeConfig(system_timeout=5),
-    # gateway=FastAPI(),
-    gateway=None
+    gateway=uvicorn.Config(app=None, port=8001),
+    # gateway=None
     # gateway=uvicorn.Config(app=FastAPI(), port=8000)
 )
-# app.add_service(service)
+app.add_service(service)
 
 if __name__ == '__main__':
     ArbiterRunner.run(

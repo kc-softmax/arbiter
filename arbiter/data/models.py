@@ -30,7 +30,6 @@ class ArbiterBaseNode(BaseModel):
 ############################################
 class ArbiterNode(ArbiterBaseNode):
     gateway_nodes: list[ArbiterGatewayNode] = Field(default_factory=list)
-    service_nodes: list[ArbiterServiceNode] = Field(default_factory=list)
 
     def get_health_check_channel(self) -> str:
         return f"__health_check__{self.node_id}"
@@ -45,7 +44,6 @@ class ArbiterNode(ArbiterBaseNode):
 class ArbiterServiceNode(ArbiterBaseNode):
     task_node_ids: list[str] = Field(default_factory=list)
     description: Optional[str] = Field(default='')
-    task_nodes: list[str] = Field(default_factory=list)
 
 class ArbiterGatewayNode(ArbiterServiceNode):
     host: str
@@ -59,7 +57,6 @@ class ArbiterTaskNode(ArbiterBaseNode):
     service_name: str
     transformed_parameters: str = Field(default='')
     transformed_return_type: str = Field(default='')
-    task_nodes: list[ArbiterTaskNode] = Field(default_factory=list)
 
     # for http task
     http: bool = Field(default=False)
