@@ -1,30 +1,21 @@
 from __future__ import annotations
 import asyncio
-import sys
 import time
-import json
 import uvicorn
-import importlib
 import pickle
 from multiprocessing import Queue as MPQueue
+from multiprocessing import Event
+from multiprocessing.synchronize import Event as EventType
 from aiomultiprocess import Process
-from collections import defaultdict
-from inspect import Parameter
-from pydantic import BaseModel
 from contextlib import asynccontextmanager
 from warnings import warn
-from typing_extensions import Annotated
 from typing import (
-    Any,
     AsyncGenerator,
-    Callable,
-    TypeVar, 
-    Generic,
 )
 from fastapi import FastAPI
 from arbiter import Arbiter
-# from arbiter.service import ArbiterService
-from arbiter._service import ArbiterService
+from arbiter.service import ArbiterService
+# from arbiter._service import ArbiterService
 from arbiter.registry import Registry
 from arbiter.gateway import ArbiterGateway
 
@@ -40,10 +31,13 @@ from arbiter.enums import (
     WarpInPhase,
     NodeState,
 )
+from arbiter.abc.task_register import TaskRegister
 from arbiter.configs import ArbiterNodeConfig, ArbiterConfig
 from arbiter.task import ArbiterAsyncTask
 
-class ArbiterNode():
+ArbiterProcess = tuple[Process, EventType]
+
+class ArbiterNode:
     
     def __init__(
         self,
@@ -56,11 +50,13 @@ class ArbiterNode():
     ):
         self.arbiter_config = arbiter_config
         self.node_config = node_config
+        
         if isinstance(gateway, FastAPI):
             self.gateway_config = uvicorn.Config(app=gateway)
             self.gateway_server = uvicorn.Server(self.gateway_config)
             self.gateway = gateway
         elif isinstance(gateway, uvicorn.Config):
+            assert gateway.app is not None, "Config's app must be provided"
             self.gateway_config = gateway
             self.gateway_server = uvicorn.Server(self.gateway_config)
             self.gateway = gateway.app
@@ -78,13 +74,15 @@ class ArbiterNode():
 
         self._services: list[ArbiterService] = []
         self._warp_in_queue: asyncio.Queue = asyncio.Queue()
-        self._arbiter_processes: list[Process] = []
+        self._arbiter_processes: dict[str, ArbiterProcess] = {}
+        
         self._internal_mp_queue: MPQueue = MPQueue()
+        self._deafult_tasks: list[ArbiterAsyncTask] = []
         
     @property
     def name(self) -> str:
         return self.arbiter.arbiter_config.name
-    
+                
     def add_service(self, service: ArbiterService):
         # change to service node
         if any(s.name == service.name for s in self._services):
@@ -93,9 +91,6 @@ class ArbiterNode():
     
     def clear_services(self):
         self._services.clear()
-
-    async def clear(self):
-        self.arbiter and await self.arbiter.disconnect()
 
     def start_gateway(self, shutdown_event: asyncio.Event) -> asyncio.Task:
         async def _gateway_loop():
@@ -117,65 +112,43 @@ class ArbiterNode():
             state=NodeState.ACTIVE
         )
         for service in self._services:
+            service.setup(
+                arbiter_node_id=arbiter_node.node_id,
+            )
             self.registry.create_local_serivce_node(service.service_node)
-            for task in service.tasks:
-                self.registry.create_local_task_node(task.task_node)
+            # for task in service.tasks:
+            #     self.registry.create_local_task_node(task.task_node)
         self.registry.create_local_node(arbiter_node)
 
     async def _preparation_task(self):
         """
             만들기 전에 검사하는 단계라고 생각하면 될까?
+            Process를 만든다?
             1차 유효성 검증 후 registry 채널에 등록 요청 한다.
         """
         try:
+            # default task가 있다면 서비스를 하나 만들어야 한다..?
             # ArbiterNode에 등록된 하위 노드의 process 객체를 생성한다
-            for service_node in self._services:
+            for service in self._services:
+                event = Event()
                 process = Process(
-                    name=service_node.name,
-                    target=service_node.run,
-                    args=(self._internal_mp_queue,)
+                    name=service.name,
+                    target=service.run,
+                    args=(self._internal_mp_queue, event, self.arbiter_config, 5)
                 )
-                self._arbiter_processes.append(process)
-                for task in service_node.tasks:
-                    process = Process(
-                        name=task.name,
-                        target=task.run,
-                        args=(self._internal_mp_queue,)
-                    )
-                    self._arbiter_processes.append(process)
+                process.start()
+                self._arbiter_processes[service.service_node.node_id] = (process, event)
         except Exception as e:
+            print(e, '2342')
             pass
         await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.PREPARATION.name}...ok"))
         return
 
-        # try:
-        #     if self._gateway:
-        #         # gateway의 유효성을 체크한다.
-        #         # routing 문제 때문에, 동일 이름이 있는지만 체크한다.
-        #         # NODE_CHANNEL에 물어본다.
-        #         # 여기서는 무조건 통과
-        #         pass
-        #     for service_info in self._services:
-        #         """
-        #             service model과 task model을 생성한다.
-        #             만약 이름이 같다면, 가지고 있는 task model을 비교하여 다르다면 에러를 발생시킨다.
-        #         """
-        #         pass
-        #         # service_model = await self._get_or_create_service_model(service_info)
-        #         # service_info.set_service_model(service_model)
-        #     await self._warp_in_queue.put(
-        #         (WarpInTaskResult.SUCCESS, f"{WarpInPhase.PREPARATION.name}...ok"))
-        # except Exception as e:
-        #     await self._warp_in_queue.put(
-        #         (WarpInTaskResult.FAIL, f"Failed to prepare services: {e}"))
-     
     async def _initialize_task(self):
         """
             WarpInPhase Arbiter initialization
         """
-        # process 객체를 실행시킨다
-        for process in self._arbiter_processes:
-            process.start()
+    
         await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.INITIATION.name}...ok"))
         return
         # try:
@@ -259,9 +232,17 @@ class ArbiterNode():
             broadcast shutdown message to all services in node
             check database            
         """
-        for process in self._arbiter_processes:
+        
+        for service_node_id, (process, event) in self._arbiter_processes.items():
             if process.is_alive():
-                process.close()
+                event.set()
+            # wait for process to finish
+            try:
+                await process.join(timeout=5)
+            except Exception as e:
+                warn(f"Failed to stop service {service_node_id} with {e}")
+                process.terminate()
+            
         await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.DISAPPEARANCE.name}...ok"))
         return
         # send shutdown message to service belong to this node
@@ -353,9 +334,11 @@ class ArbiterNode():
             we called it "WarpIn"
         """
         self.create_local_registry()
-        internal_health_check = asyncio.create_task(self.internal_health_check(shutdown_event))
         external_node_event = asyncio.create_task(self.external_node_event(shutdown_event))
         external_health_check = asyncio.create_task(self.external_health_check(shutdown_event))
+
+        loop = asyncio.get_running_loop()
+        internal_health_check = loop.run_in_executor(None, self.internal_health_check, shutdown_event)
         try:
             yield self
         finally:
@@ -365,7 +348,8 @@ class ArbiterNode():
             external_node_event.cancel()
             external_health_check.cancel()
             # TODO task health            
-            await self.clear()
+            
+            self.arbiter and await self.arbiter.disconnect()            
 
     def failed_nodes(self, node_ids: list[str]) -> None:
         # external health check에서 확인하여 제거하는 것이 정확 할 것 같다
@@ -374,6 +358,20 @@ class ArbiterNode():
             self.registry.unregister_service_node(node_id)
             self.registry.unregister_task_node(node_id)
             self.registry.failed_health_signal(node_id)
+            
+    def internal_health_check(self, shutdown_event: asyncio.Event):
+        try:
+            while not shutdown_event.is_set():
+                receive = self._internal_mp_queue.get(
+                    timeout=self.node_config.internal_health_check_timeout
+                )
+                
+        except (Exception, TimeoutError) as err:
+            print("failed internal health check")
+            self.internal_shutdown_event.set()
+        finally:
+            self.stop_gateway()
+            shutdown_event.set()
     
     async def external_health_check(self, shutdown_event: asyncio.Event):
         try:
@@ -392,19 +390,6 @@ class ArbiterNode():
                 await asyncio.sleep(self.node_config.external_health_check_interval)
         except Exception as err:
             print('failed external health checok', err)
-            self.internal_shutdown_event.set()
-        finally:
-            self.stop_gateway()
-            shutdown_event.set()
-
-    async def internal_health_check(self, shutdown_event: asyncio.Event):
-        try:
-            while not shutdown_event.is_set():
-                receive = await asyncio.to_thread(
-                    self._internal_mp_queue.get, 
-                    timeout=self.node_config.internal_health_check_timeout)
-        except (Exception, TimeoutError) as err:
-            print("failed internal health check")
             self.internal_shutdown_event.set()
         finally:
             self.stop_gateway()
@@ -456,7 +441,3 @@ class ArbiterNode():
         finally:
             self.stop_gateway()
             shutdown_event.set()
-
-# atexit.register(arbiter.clear)
-# signal.signal(signal.SIGINT, lambda sig,
-#               frame: asyncio.create_task(arbiter.shutdown()))

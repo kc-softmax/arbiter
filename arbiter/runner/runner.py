@@ -80,7 +80,7 @@ class ArbiterRunner:
                                     break
                                 case WarpInTaskResult.FAIL:
                                     raise Exception(message)
-
+                        
                         async for result, message in arbiter_runner.start_phase(WarpInPhase.INITIATION):
                             match result:
                                 case WarpInTaskResult.SUCCESS:

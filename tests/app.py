@@ -1,6 +1,7 @@
 from arbiter import ArbiterRunner, ArbiterNode
 from arbiter.configs import NatsBrokerConfig, ArbiterNodeConfig, ArbiterConfig
 # from tests.service import TestService, TestException, ArbiterService
+from arbiter.service import ArbiterService
 from tests._service import service
 from fastapi import FastAPI
 
@@ -11,11 +12,11 @@ import uvicorn
 app = ArbiterNode(
     arbiter_config=ArbiterConfig(broker_config=NatsBrokerConfig()),
     node_config=ArbiterNodeConfig(system_timeout=5),
-    gateway=uvicorn.Config(app=None, port=8001),
+    # gateway=uvicorn.Config(app=None, port=8001),
     # gateway=None
     # gateway=uvicorn.Config(app=FastAPI(), port=8000)
 )
-app.add_service(service)
+app.add_service(ArbiterService(name='test_service'))
 
 if __name__ == '__main__':
     ArbiterRunner.run(
