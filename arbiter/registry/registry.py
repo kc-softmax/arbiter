@@ -14,34 +14,71 @@ class Registry:
         self.arbiter_nodes: NodeCatalog = NodeCatalog()
         self.service_nodes: ServiceCatalog = ServiceCatalog()
         self.task_nodes: TaskCatalog = TaskCatalog()
+        self.node_health: dict[str, int] = {}
+
+    @property
+    def local_node(self) -> ArbiterNode:
+        return self.arbiter_nodes.local_node
+
+    @property
+    def local_service_node(self) -> ArbiterServiceNode:
+        return self.service_nodes.local_node
+
+    @property
+    def local_task_node(self) -> ArbiterTaskNode:
+        return self.task_nodes.local_node
+
+    @property
+    def raw_node_info(self) -> dict[
+        str, ArbiterNode | ArbiterServiceNode | ArbiterTaskNode
+    ]:
+        node_info: dict[
+            str, ArbiterNode | ArbiterServiceNode | ArbiterTaskNode
+        ] = {
+            'node': self.local_node,
+            'service': self.local_service_node,
+            'task': self.local_task_node,
+        }
+        return node_info
+
+    def get_health_signal(self, node_id: str, received_time: float) -> None:
+        self.node_health[node_id] = received_time
+
+    def failed_health_signal(self, node_id: str) -> None:
+        self.node_health.pop(node_id, None)
+
+    def create_local_node(self, node: ArbiterNode) -> None:
+        self.arbiter_nodes.create_local_node(node)
+
+    def create_local_serivce_node(self, node: ArbiterServiceNode) -> None:
+        self.service_nodes.create_local_node(node)
+
+    def create_local_task_node(self, node: ArbiterTaskNode) -> None:
+        self.task_nodes.create_local_node(node)
 
     def register_node(self, node: ArbiterNode) -> None:
-        self.arbiter_nodes.set_node(node.node_id, node)
-        self._register_service(node.node_id, node.service_nodes)
+        self.arbiter_nodes.add(node)
 
-    def _register_service(self, node_id: str, node: list[ArbiterServiceNode]) -> None:
-        self.service_nodes.set_node(node_id, node)
-        for service_node in node:
-            self._register_task(node_id, service_node.task_nodes)
+    def register_service_node(self, node_id: str, node: list[ArbiterServiceNode]) -> None:
+        self.service_nodes.add(node_id, node)
 
-    def _register_task(self, node_id: str, node: list[ArbiterTaskNode]) -> None:
-        self.task_nodes.set_node(node_id, node)
+    def register_task_node(self, node_id: str, node: list[ArbiterTaskNode]) -> None:
+        self.task_nodes.add(node_id, node)
 
     def get_node(self, node_id: str) -> ArbiterNode:
-        return self.arbiter_nodes.get_node(node_id)
+        return self.arbiter_nodes.get(node_id)
 
-    def _get_service(self, node_id: str) -> list[ArbiterServiceNode]:
-        return self.service_nodes.get_node(node_id)
+    def get_service_node(self, node_id: str) -> list[ArbiterServiceNode]:
+        return self.service_nodes.get(node_id)
 
-    def _get_task(self, node_id: str) -> list[ArbiterTaskNode]:
-        return self.task_nodes.get_node(node_id)
+    def get_task_node(self, node_id: str) -> list[ArbiterTaskNode]:
+        return self.task_nodes.get(node_id)
 
-    def disconnect(self, node_id: str):
-        self.arbiter_nodes.remove_node(node_id)
-        self.service_nodes.remove_node(node_id)
-        self.task_nodes.remove_node(node_id)
+    def unregister_node(self, node_id: str) -> None:
+        self.arbiter_nodes.remove(node_id)
 
-    def clear(self):
-        self.arbiter_nodes.clear()
-        self.service_nodes.clear()
-        self.task_nodes.clear()
+    def unregister_service_node(self, node_id: str) -> None:
+        self.service_nodes.remove(node_id)
+
+    def unregister_task_node(self, node_id: str) -> None:
+        self.task_nodes.remove(node_id)

@@ -30,7 +30,6 @@ class ArbiterService:
 
     def add_task(self, task: ArbiterTask):
         self.tasks.append(task)
-        self.service_node.task_nodes.append(task.task_node)
 
     async def local_health_check(self, queue: multiprocessing.Queue):
         while True:
