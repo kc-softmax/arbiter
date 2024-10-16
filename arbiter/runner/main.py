@@ -1,77 +1,39 @@
-import pytest
 import typer
 from uvicorn.importer import import_from_string
-# from arbiter.runner.commands.build import app as build_app
-from arbiter.constants import CONFIG_FILE
 from arbiter import ArbiterRunner, ArbiterNode
-from arbiter.configs import NatsBrokerConfig, ArbiterNodeConfig
 from arbiter.runner.runner import ArbiterRunner
 from arbiter.node import ArbiterNode
-from arbiter.runner.utils import create_config
-from arbiter.utils import get_arbiter_setting, read_config
 
 app = typer.Typer()
-# app.add_typer(
-#     build_app,
-#     name="build",
-#     rich_help_panel="build environment",
-#     help="Configure build environment for deploying service")
 
 @app.command(help="run arbiter rel")
 def repl(
-    name: str = typer.Option(
-        "Danimoth", "--name", help="Name of the arbiter to run."),
+    module: str = typer.Argument(
+        ...,
+        help="The module path to the arbiter service."),
 ):
     # main:app 과 같은 느낌으로 가져오는거니까 config이 필요 없다.
     # 하지만 repl이기 때문에 app 변수를 가져와야 한다.
-
+    instance = import_from_string(module)
+    assert isinstance(instance, ArbiterNode), f"instance must be ArbiterNode, but {module} is {type(instance)}"
+    # repl이기 때문에 서비스를 추가할 필요가 없다.
+    instance.clear_services()
+    # 하지만 config를 가져와야 한다.
+    # repl console 이기 때문에 특정 timeout을 설정할 필요가 없다.
     ArbiterRunner.run(
-        ArbiterNode(
-            config=ArbiterNodeConfig(system_timeout=0),
-            gateway=None,
-            ),
-        broker_config=NatsBrokerConfig(),
-        repl=True)
-    
+        instance, repl=True
+    )    
 
-@app.command(help="run arbiter service")
+@app.command()
 def dev(
     # not optional
     module: str = typer.Argument(
         ...,
         help="The module path to the arbiter service."),
     reload: bool = typer.Option(
-        False, "--reload", help="Enable auto-reload for code changes."),
-    log_level: str = typer.Option(
-        "info", "--log-level", help="Log level for arbiter.")
+        True, "--reload", help="Enable auto-reload for service node code changes."),
 ):
-    # main:app 과 같은 느낌으로 가져오는거니까 config이 필요 없지
-    """
-    Set the config to the app.
-    runner, worker, api app shared the same config.
-    # CHECK 
-    """
-    instance = import_from_string(module)
-    
-    print(instance)
-    # 서비스를 내가 찾아서 추가해야 한다.
-    # app.setup(config)
-    # run에는 config을 이용해서 한다.
-    # app = ArbiterNode()
-    # # find services in ./services folder
-    # """
-    #     현재 폴더에 있는 모든 서비스를 추가한다.
-    # """
-    # # service를 추가해야 하나?
-    # # services 폴더에 있는 모든 service를 추가해야 하자
-    # # aribter add service?
-    # ArbiterRunner.run(
-    #     app=app,
-    #     name=name,
-    #     reload=reload,
-    #     log_level=log_level
-    # )
-
+    ArbiterRunner.run(module, reload=reload)    
 
 @app.command(help="run arbiter testcase")
 def test():

@@ -72,6 +72,7 @@ class ArbiterNode():
         self.log_level = log_level
         self.log_format = log_format
 
+        self.internal_shutdown_event = asyncio.Event()        
         self.arbiter = Arbiter(arbiter_config)        
         self.arbiter_node = ArbiterNodeModel(name=self.name, state=1)
         self.registry: Registry = Registry()
@@ -92,6 +93,9 @@ class ArbiterNode():
         if any(s.name == service.name for s in self._services):
             raise ValueError('Service with the same name is already added')
         self._services.append(service)
+    
+    def clear_services(self):
+        self._services.clear()
 
     async def clear(self):
         self.arbiter and await self.arbiter.disconnect()
@@ -365,6 +369,7 @@ class ArbiterNode():
                 await asyncio.sleep(self.node_config.external_health_check_interval)
         except Exception as err:
             print('failed external health checok', err)
+            self.internal_shutdown_event.set()
         finally:
             self.stop_gateway()
             shutdown_event.set()
@@ -377,6 +382,7 @@ class ArbiterNode():
                     timeout=self.node_config.internal_health_check_timeout)
         except (Exception, TimeoutError) as err:
             print("failed internal health check")
+            self.internal_shutdown_event.set()
         finally:
             self.stop_gateway()
             shutdown_event.set()
@@ -401,6 +407,7 @@ class ArbiterNode():
                 
         except Exception as err:
             print("failed external node event", err)
+            self.internal_shutdown_event.set()
         finally:
             self.stop_gateway()
             shutdown_event.set()
