@@ -1,8 +1,6 @@
 from arbiter import ArbiterRunner, ArbiterNode
 from arbiter.configs import NatsBrokerConfig, ArbiterNodeConfig, ArbiterConfig
 # from tests.service import TestService, TestException, ArbiterService
-from arbiter.service import ArbiterService
-from tests._service import service
 from fastapi import FastAPI
 
 import uvicorn
@@ -16,7 +14,11 @@ app = ArbiterNode(
     # gateway=None
     # gateway=uvicorn.Config(app=FastAPI(), port=8000)
 )
-app.add_service(ArbiterService(name='test_service'))
+
+@app.async_task()
+async def simple_async_stream(x: int):
+    for i in range(5):
+        yield {"result": "success_stream + " + str(x + i)}
 
 if __name__ == '__main__':
     ArbiterRunner.run(

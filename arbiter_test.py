@@ -26,7 +26,7 @@ async def simple_async_stream(x: int):
         yield {"result": "success_stream + " + str(x + i)}
 
 async def main():
-    arbiter = Arbiter(broker_config=NatsBrokerConfig())
+    arbiter = Arbiter(ArbiterConfig(broker_config=NatsBrokerConfig()))
     await arbiter.connect()
     task = asyncio.create_task(simple_async_task(arbiter=arbiter))
     stream = asyncio.create_task(simple_async_stream(arbiter=arbiter))

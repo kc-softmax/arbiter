@@ -8,7 +8,7 @@ from arbiter.task.tasks import (
 
 class TaskRegister:
     
-    def handle_task(self, task: ArbiterAsyncTask):
+    def regist_task(self, task: ArbiterAsyncTask):
         raise NotImplementedError("handle_task method must be implemented")
     
     def async_task(
@@ -34,7 +34,7 @@ class TaskRegister:
             log_format=log_format
         )
         def decorator(func: Callable) -> Callable:
-            self.handle_task(task)
+            self.regist_task(task)
             return task(func)
         return decorator
 
@@ -63,7 +63,7 @@ class TaskRegister:
         )
         # 데코레이터 함수 정의
         def decorator(func: Callable) -> Callable:
-            self.handle_task(func)
+            self.regist_task(task)
             return task(func)
         return decorator
 
@@ -90,6 +90,6 @@ class TaskRegister:
             log_format=log_format
         )
         def decorator(func: Callable) -> Callable:
-            self.handle_task(task)
+            self.regist_task(task)
             return task(func)
         return decorator
