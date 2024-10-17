@@ -5,8 +5,8 @@ import uvicorn
 import pickle
 from multiprocessing import Queue as MPQueue
 from multiprocessing import Event
+from multiprocessing import Process
 from multiprocessing.synchronize import Event as EventType
-from aiomultiprocess import Process
 from contextlib import asynccontextmanager
 from warnings import warn
 from typing import (
@@ -134,13 +134,21 @@ class ArbiterNode:
                 process = Process(
                     name=service.name,
                     target=service.run,
-                    args=(self._internal_mp_queue, event, self.arbiter_config, 5)
+                    args=(
+                        self._internal_mp_queue,
+                        event,
+                        self.arbiter_config,
+                        self.node_config.service_health_check_interval
+                    )
                 )
                 process.start()
                 self._arbiter_processes[service.service_node.node_id] = (process, event)
         except Exception as e:
             print(e, '2342')
-            pass
+            await self._warp_in_queue.put(
+                (WarpInTaskResult.FAIL,
+                 f"{WarpInPhase.PREPARATION.name}...service {service.name} failed to start"))
+            return
         await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.PREPARATION.name}...ok"))
         return
 
@@ -232,60 +240,19 @@ class ArbiterNode:
             broadcast shutdown message to all services in node
             check database            
         """
-        
         for service_node_id, (process, event) in self._arbiter_processes.items():
             if process.is_alive():
                 event.set()
             # wait for process to finish
             try:
-                await process.join(timeout=5)
+                process.join(timeout=self.node_config.service_disappearance_timeout)
             except Exception as e:
                 warn(f"Failed to stop service {service_node_id} with {e}")
                 process.terminate()
             
         await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.DISAPPEARANCE.name}...ok"))
         return
-        # send shutdown message to service belong to this node
-        # await self.arbiter.raw_broadcast(
-        #     topic=self.arbiter_node.get_system_channel(),
-        #     message=self.arbiter_node.shutdown_code)
-        
-        # fetch_data = lambda: self.arbiter.search_data(
-        #     ArbiterGatewayNode,
-        #     arbiter_node_id=self.arbiter_node.id,
-        #     state=NodeState.ACTIVE
-        # )
-        
-        # results = await fetch_data_within_timeout(
-        #     timeout=self.arbiter.config.get('service_pending_timeout'),
-        #     fetch_data=fetch_data,
-        #     check_condition=lambda data: len(data) == 0,
-        # )
-        
-        # if results:
-        #     await self._warp_in_queue.put(
-        #         (WarpInTaskResult.WARNING, f"{len(results)} services are not shutdown")
-        #     )
-            
-        # fetch_data = lambda: self.arbiter.search_data(
-        #     ArbiterServiceNode,
-        #     arbiter_node_id=self.arbiter_node.id,
-        #     state=NodeState.ACTIVE
-        # )
-        
-        # results = await fetch_data_within_timeout(
-        #     timeout=self.arbiter.config.get('service_pending_timeout'),
-        #     fetch_data=fetch_data,
-        #     check_condition=lambda data: len(data) == 0,
-        # )
-        
-        # # if results:
-        #     # await self._warp_in_queue.put(
-        #     #     (WarpInTaskResult.WARNING, f"{len(results)} services are not shutdown")
-        #     # )
-                
-        # await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.DISAPPEARANCE.name}...ok"))
-                
+          
     async def start_phase(self, phase: WarpInPhase) -> AsyncGenerator[tuple[WarpInTaskResult, str], None]:
         # if warp_in_queue is empty, then start the phase
         if not self._warp_in_queue.empty():
@@ -341,6 +308,9 @@ class ArbiterNode:
         internal_health_check = loop.run_in_executor(None, self.internal_health_check, shutdown_event)
         try:
             yield self
+        except Exception as e:
+            # TODO logging
+            print("Raise error in warp - in", e)
         finally:
             await self.arbiter.broker.broadcast("ARBITER.NODE", self.registry.local_node.get_id(), "NODE_DISCONNECT")
             await asyncio.to_thread(self._internal_mp_queue.put, obj="exit")
