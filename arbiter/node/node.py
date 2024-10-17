@@ -15,19 +15,14 @@ from typing import (
 from fastapi import FastAPI
 from arbiter import Arbiter
 from arbiter.service import ArbiterService
-# from arbiter._service import ArbiterService
 from arbiter.registry import Registry
-from arbiter.gateway import ArbiterGateway
-
 from arbiter.data.models import (
     ArbiterNode as ArbiterNodeModel,
     ArbiterServiceNode,
-    ArbiterGatewayNode,
     ArbiterTaskNode,
 )
 from arbiter.enums import (
     WarpInTaskResult,
-    ArbiterDataType,
     WarpInPhase,
     NodeState,
 )
@@ -144,7 +139,6 @@ class ArbiterNode:
                 process.start()
                 self._arbiter_processes[service.service_node.node_id] = (process, event)
         except Exception as e:
-            print(e, '2342')
             await self._warp_in_queue.put(
                 (WarpInTaskResult.FAIL,
                  f"{WarpInPhase.PREPARATION.name}...service {service.name} failed to start"))
