@@ -52,9 +52,8 @@ class ArbiterGatewayNode(ArbiterServiceNode):
 ############################################
 class ArbiterTaskNode(ArbiterBaseNode):
     # 만약 지정된 gateway가 없다면, 모든 gateway에 등록
-    gateway_node_id: Optional[str] = Field(default='')
-    queue: str
-    service_name: str
+    gateway: str = Field(default='')
+    queue: str = Field(default='')
     transformed_parameters: str = Field(default='')
     transformed_return_type: str = Field(default='')
 

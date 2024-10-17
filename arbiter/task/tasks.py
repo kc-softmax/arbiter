@@ -1,16 +1,20 @@
 from __future__ import annotations
 import asyncio
+from collections import defaultdict
 import contextlib
+import multiprocessing
 import re
 import pickle
 import ast
 import inspect
 import json
 import functools
+import time
 import warnings
 import pickle
 from fastapi import Request
 from collections.abc import AsyncGenerator
+from multiprocessing.synchronize import Event as EventType
 from types import UnionType
 from typing import  (
     Any,
@@ -23,19 +27,22 @@ from typing import  (
     Dict
 )
 from pydantic import BaseModel
+from arbiter.configs import ArbiterConfig
 from arbiter.constants import (
     ASYNC_TASK_CLOSE_MESSAGE
 )
 from arbiter.enums import NodeState
 from arbiter.utils import (
+    transform_type_from_annotation,
     convert_data_to_annotation,
     single_result_async_gen,
     get_pickled_data
 )
 from arbiter.data.models import ArbiterTaskNode
+from arbiter.task.process_runner import ProcessRunner
 from arbiter import Arbiter
 
-class ArbiterAsyncTask:
+class ArbiterAsyncTask(ProcessRunner):
 
     def __init__(
         self,
@@ -49,6 +56,7 @@ class ArbiterAsyncTask:
         log_level: str | None = None,
         log_format: str | None = None
     ):
+        super().__init__()
         assert num_of_tasks > 0, "num_of_tasks should be greater than 0"
         self.timeout = timeout
         self.retries = retries
@@ -58,22 +66,17 @@ class ArbiterAsyncTask:
         self.strict_mode = strict_mode
         self.queue = queue
         self.num_of_tasks = num_of_tasks
-        self.parameters: dict[str, inspect.Parameter] = {}
-        self.return_type: Type = None
-        self.stream = False
-
-    def __results_packing(self, data: Any) -> Any:
-        # MARK TODO Change
-        if isinstance(data, BaseModel):
-            packed_data = data.model_dump_json()
-        else:
-            packed_data = data
-        return pickle.dumps(packed_data)
+        self.stream = False        
+        self.node = ArbiterTaskNode(state=NodeState.INACTIVE)
     
-    def _set_parameters(self, signature: inspect.Signature):
+    async def setup(self):
+        self.node.state = NodeState.PENDING
+    
+    def _check_parameters(self, signature: inspect.Signature) -> dict[str, inspect.Parameter]:
+        parameters: dict[str, inspect.Parameter] = {}
         for i, param in enumerate(signature.parameters.values()):
             # 만약 self나 app이라는 이름의 파라미터가 있다면 첫번째 파라미터인지 검사 한후, 
-            if param.name in self.parameters:
+            if param.name in parameters:
                 raise ValueError(f"Duplicate parameter name: {param.name}")
 
             if param.name == 'self':
@@ -106,9 +109,10 @@ class ArbiterAsyncTask:
             # if not isinstance(param.annotation, type):
             #     print(param.annotation)
             #     # param.annotation = get_type_hints(func).get(param.name, None)
-            self.parameters[param.name] = param
+            parameters[param.name] = param
+        return parameters
     
-    def _set_return_type(self, signature: inspect.Signature, func: Callable):
+    def _check_return_type(self, signature: inspect.Signature, func: Callable) -> Type:
         # 반환 유형 힌트 가져온다. 있으면 저장한다.
         return_annotation = signature.return_annotation
         in_function_return = False
@@ -147,9 +151,9 @@ class ArbiterAsyncTask:
         
         if return_annotation == inspect.Signature.empty:
             if in_function_return:
-                self.return_type = Any
+                return Any
         else:
-            self.return_type = return_annotation
+            return return_annotation
 
     def _get_message_func(
         self,
@@ -164,13 +168,25 @@ class ArbiterAsyncTask:
         :return: An asynchronous generator yielding messages.
         """
         return arbiter.broker.listen(queue)
+ 
+    def _results_packing(self, data: Any) -> Any:
+        # MARK TODO Change
+        if isinstance(data, BaseModel):
+            packed_data = data.model_dump_json()
+        else:
+            packed_data = data
+        return pickle.dumps(packed_data)
    
-    def _parse_requset(self, request: Any) -> dict[str, Any] | Any:
+    def _parse_requset(
+        self,
+        request: Any,
+        parameters: dict[str, inspect.Parameter]
+    ) -> dict[str, Any] | Any:
         """
             사용자로부터 들어오는 데이터와 함수에 선언된 파라미터를 비교한다.
             현재 json 
         """
-        if not self.parameters:
+        if not parameters:
             if isinstance(request, dict) and len(request) > 0:
                 warnings.warn(
                     f"function has no parameters, but data is not empty: {request}"
@@ -181,18 +197,18 @@ class ArbiterAsyncTask:
         """
         if request is None:
             # default value로 return
-            for param in self.parameters.values():
+            for param in parameters.values():
                 if param.default == inspect.Parameter.empty:
                     warnings.warn(f"Missing parameter: {param.name}")                    
-            return {k: v.default for k, v in self.parameters.items()}
+            return {k: v.default for k, v in parameters.items()}
         
         if isinstance(request, list):
             # args type으로 들어온 경우
-            without_default_params = {k: v for k, v in self.parameters.items() if v.default == inspect.Parameter.empty}
+            without_default_params = {k: v for k, v in parameters.items() if v.default == inspect.Parameter.empty}
             if len(without_default_params) > len(request):
                 raise ValueError("Invalid data length")
             # 순서대로 매핑하여 request_body를 만든다.
-            request = {k: v for k, v in zip( self.parameters.keys(), request)}
+            request = {k: v for k, v in zip( parameters.keys(), request)}
         elif not isinstance(request, dict):
             request: dict[str, Any] = json.loads(request)
         assert isinstance(request, dict), "Invalid request data"
@@ -201,7 +217,7 @@ class ArbiterAsyncTask:
             사용자로 부터 받은 데이터를 request_params에 맞게 파싱한다.
         """
         parsed_request = {}
-        for name, parameter in self.parameters.items():
+        for name, parameter in parameters.items():
             annotation = parameter.annotation
             if name not in request:
                 # 사용자로 부터 받은 request에 함수의 이름이 param_name이 없다면
@@ -233,34 +249,64 @@ class ArbiterAsyncTask:
     def _parse_message(self, message: Any) -> tuple[str, Any]:
         return get_pickled_data(message)
     
+    def _transform_parameters(self, parameters: dict[str, inspect.Parameter]) -> dict[str, list]:
+        transformed_parameters: dict[str, list] = {}
+        for name, parameter in parameters.items():
+            assert name not in transformed_parameters, "Duplicate parameter name"
+            assert isinstance(parameter, inspect.Parameter), f"{name} is not a parameter"
+            annotation = parameter.annotation
+            parameter_types = transform_type_from_annotation(annotation)
+            for parameter_type in parameter_types:
+                transformed_parameters[name] = []
+                if issubclass(parameter_type, BaseModel):
+                    transformed_parameters[name].append(parameter_type.model_json_schema())
+                else:
+                    transformed_parameters[name].append(parameter_type.__name__)
+        return transformed_parameters    
+    
+    def _transform_return_type(self, return_type: Type) -> list[Any]:
+        if return_type is None:
+            return []
+        transformed_return_type: list[Any] = []
+        for return_type in transform_type_from_annotation(return_type):
+            if issubclass(return_type, BaseModel):
+                transformed_return_type.append(return_type.model_json_schema())
+            else:
+                transformed_return_type.append(return_type.__name__)
+        return transformed_return_type
+    
     def __call__(self, func: Callable) -> dict[str, inspect.Parameter]:
         setattr(func, 'is_task_function', True)
         if self.queue is None:
             self.queue = func.__name__
         signature = inspect.signature(func)
-        self._set_parameters(signature)
-        self._set_return_type(signature, func)
+        parameters = self._check_parameters(signature)
+        return_type = self._check_return_type(signature, func)
+        transformed_parameters = self._transform_parameters(parameters)
+        transformed_return_type = self._transform_return_type(return_type)
         
-        for attribute, value in self.__dict__.items():
-            setattr(func, attribute, value)
-
+        assert self.node and isinstance(self.node, ArbiterTaskNode), "Invalid node"
+        
+        self.node.queue = self.queue
+        self.node.transformed_parameters = json.dumps(transformed_parameters)
+        self.node.transformed_return_type = json.dumps(transformed_return_type)
+        
         @functools.wraps(func)
         async def wrapper(
             arbiter: Arbiter,
-            queue: str = None,
             executor: Callable = None,
-            # task_node: ArbiterTaskNode
         ):
             # executor는 task를 실행시키면서 자신을 파라미터로 넘겨줄 수 있다.
             # task를 실행시키는 곳에서 queue를 지정할 수 있다.
-            if queue is None:
-                queue = self.queue
+            # if queue is None:
+            # TODO ?
+            queue = self.queue
                 
             async for reply, message in self._get_message_func(arbiter, queue):
                 is_async_gen = False
                 try:
                     parsed_message = self._parse_message(message)
-                    request = self._parse_requset(parsed_message)
+                    request = self._parse_requset(parsed_message, parameters)
                     if executor:
                         func_result = func(executor, **request)
                     else:
@@ -275,7 +321,7 @@ class ArbiterAsyncTask:
                     async for results in async_iterator:
                         if not reply:
                             continue
-                        packed_results = self.__results_packing(results)
+                        packed_results = self._results_packing(results)
                         await arbiter.broker.emit(reply, packed_results)
                         # await arbiter.push_message(message_id, packed_results)
                                                                 
@@ -283,7 +329,7 @@ class ArbiterAsyncTask:
                     if reply is None:
                         print(func.__name__, message, e)
                     else:
-                        await arbiter.broker.emit(reply, self.__results_packing(e))
+                        await arbiter.broker.emit(reply, self._results_packing(e))
                 finally:
                     if is_async_gen and reply is not None:
                         await arbiter.broker.emit(reply, ASYNC_TASK_CLOSE_MESSAGE)
@@ -376,7 +422,11 @@ class ArbiterPeriodicTask(ArbiterAsyncTask):
             get_pickled_data(data) for data in message
         ]
     
-    def _parse_requset(self, request: Any) -> dict[str, Any] | Any:
+    def _parse_requset(
+        self, 
+        request: Any,
+        parameters: dict[str, inspect.Parameter]
+    ) -> dict[str, Any] | Any:
         # TODO update this method
         def merge_dicts(*dicts):
             merged_dict = {}
@@ -389,18 +439,19 @@ class ArbiterPeriodicTask(ArbiterAsyncTask):
             return merged_dict
         
         parsed_request = [
-            super()._parse_requset([data])
+            super()._parse_requset([data], parameters)
             for data in request
         ]    
         return merge_dicts(*parsed_request)
 
-    def _set_parameters(self, signature: inspect.Signature):
-        super()._set_parameters(signature)
-        assert len(self.parameters) < 2, "Periodic task should have less than one parameter"        
-        for param in self.parameters.values():
+    def _check_parameters(self, signature: inspect.Signature) -> dict[str, inspect.Parameter]:
+        parameters = super()._check_parameters(signature)
+        assert len(parameters) < 2, "Periodic task should have less than one parameter"
+        for param in parameters.values():
             assert get_origin(param.annotation) is list, "Periodic task parameter should be list type"
             assert param.default == [], "Periodic task parameter should have default value []"
-            
+        return parameters
+
     def _get_message_func(
         self,
         arbiter: Arbiter,

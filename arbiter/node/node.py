@@ -14,7 +14,6 @@ from typing import (
 )
 from fastapi import FastAPI
 from arbiter import Arbiter
-from arbiter.service import ArbiterService
 from arbiter.registry import Registry
 from arbiter.data.models import (
     ArbiterNode as ArbiterNodeModel,
@@ -26,13 +25,14 @@ from arbiter.enums import (
     WarpInPhase,
     NodeState,
 )
-from arbiter.abc.task_register import TaskRegister
+from arbiter.task_register import TaskRegister
 from arbiter.configs import ArbiterNodeConfig, ArbiterConfig
 from arbiter.task import ArbiterAsyncTask
+from arbiter.task_register import TaskRegister
 
 ArbiterProcess = tuple[Process, EventType]
 
-class ArbiterNode:
+class ArbiterNode(TaskRegister):
     
     def __init__(
         self,
@@ -67,26 +67,20 @@ class ArbiterNode:
         self.arbiter = Arbiter(arbiter_config)
         self.registry: Registry = Registry()
 
-        self._services: list[ArbiterService] = []
+        self._tasks: list[ArbiterAsyncTask] = []
         self._warp_in_queue: asyncio.Queue = asyncio.Queue()
         self._arbiter_processes: dict[str, ArbiterProcess] = {}
         
         self._internal_mp_queue: MPQueue = MPQueue()
         self._deafult_tasks: list[ArbiterAsyncTask] = []
-        
+    
     @property
     def name(self) -> str:
         return self.arbiter.arbiter_config.name
-                
-    def add_service(self, service: ArbiterService):
-        # change to service node
-        if any(s.name == service.name for s in self._services):
-            raise ValueError('Service with the same name is already added')
-        self._services.append(service)
     
-    def clear_services(self):
-        self._services.clear()
-
+    def regist_task(self, task: ArbiterAsyncTask):
+        self._tasks.append(task)
+        
     def start_gateway(self, shutdown_event: asyncio.Event) -> asyncio.Task:
         async def _gateway_loop():
             while not shutdown_event.is_set():
@@ -106,13 +100,8 @@ class ArbiterNode:
             name=self.name,
             state=NodeState.ACTIVE
         )
-        for service in self._services:
-            service.setup(
-                arbiter_node_id=arbiter_node.node_id,
-            )
-            self.registry.create_local_serivce_node(service.service_node)
-            # for task in service.tasks:
-            #     self.registry.create_local_task_node(task.task_node)
+        for task in self._tasks:
+            self.registry.create_local_task_node(task.node)
         self.registry.create_local_node(arbiter_node)
 
     async def _preparation_task(self):
@@ -124,11 +113,11 @@ class ArbiterNode:
         try:
             # default task가 있다면 서비스를 하나 만들어야 한다..?
             # ArbiterNode에 등록된 하위 노드의 process 객체를 생성한다
-            for service in self._services:
+            for task in self._tasks:
                 event = Event()
                 process = Process(
-                    name=service.name,
-                    target=service.run,
+                    name=task.queue,
+                    target=task.run,
                     args=(
                         self._internal_mp_queue,
                         event,
@@ -137,11 +126,11 @@ class ArbiterNode:
                     )
                 )
                 process.start()
-                self._arbiter_processes[service.service_node.node_id] = (process, event)
+                self._arbiter_processes[task.node.node_id] = (process, event)
         except Exception as e:
             await self._warp_in_queue.put(
                 (WarpInTaskResult.FAIL,
-                 f"{WarpInPhase.PREPARATION.name}...service {service.name} failed to start"))
+                 f"{WarpInPhase.PREPARATION.name}...service {task.queue} failed to start"))
             return
         await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.PREPARATION.name}...ok"))
         return
@@ -329,7 +318,6 @@ class ArbiterNode:
                 receive = self._internal_mp_queue.get(
                     timeout=self.node_config.internal_health_check_timeout
                 )
-                
         except (Exception, TimeoutError) as err:
             print("failed internal health check")
             self.internal_shutdown_event.set()
