@@ -132,8 +132,27 @@ class ArbiterService:
         while not event.is_set():
             queue.put_nowait(service_node_id)
             time.sleep(health_check_interval)
-    
-    async def run(
+        
+    def run(
+        self,
+        queue: multiprocessing.Queue,
+        event: EventType,
+        arbiter_config: ArbiterConfig,
+        health_check_interval: int,
+    ):
+        try:
+            asyncio.run(
+                self._run(
+                    queue,
+                    event,
+                    arbiter_config,
+                    health_check_interval
+                )
+            )
+        except Exception as e:
+            print("Error in run", e, self.__class__.__name__)
+        
+    async def _run(
         self,
         queue: multiprocessing.Queue,
         event: EventType,
@@ -154,15 +173,19 @@ class ArbiterService:
             
             ##############################
             loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
+            try:
+                await loop.run_in_executor(
                 None,
                 self.health_check,
                 queue,
                 event,
                 self.service_node.node_id,
                 health_check_interval)
+            except asyncio.CancelledError:
+                pass    
+            except Exception as e:
+                print("Error in health check", e)
             await self.on_shutdown()
-            pass
         except Exception as e:
             await self.on_error(e)
         finally:
