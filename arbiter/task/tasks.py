@@ -89,6 +89,7 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
         self.node.transformed_return_type = json.dumps(transformed_return_type)
     
         self.parameters = parameters
+        self.arbiter_parameter: tuple[str, Arbiter] = None
         self.func = func
                 
     def _check_parameters(self, signature: inspect.Signature) -> dict[str, inspect.Parameter]:
@@ -98,9 +99,8 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
             if param.name in parameters:
                 raise ValueError(f"Duplicate parameter name: {param.name}")
 
-            if param.name == 'self':
-                if i != 0:
-                    raise ValueError("self parameter should be the first parameter")
+            if param.annotation == Arbiter:
+                self.arbiter_parameter = (param.name, param.annotation)
                 continue
             
             if param.annotation == AsyncGenerator:
@@ -310,6 +310,8 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
                 try:
                     parsed_message = self._parse_message(message)
                     request = self._parse_requset(parsed_message)
+                    if self.arbiter_parameter:
+                        request[self.arbiter_parameter[0]] = arbiter
                     if executor:
                         func_result = self.func(executor, **request)
                     else:
