@@ -6,6 +6,7 @@ from multiprocessing.synchronize import Event
 from arbiter.configs import ArbiterConfig
 from arbiter.data.models import ArbiterBaseNode
 from arbiter import Arbiter
+from arbiter.enums import NodeState
 
 class AribterTaskNodeRunner:
     
@@ -17,21 +18,32 @@ class AribterTaskNodeRunner:
         assert self.node is not None, "Node is not set, please set the node before running the service."
         return self.node.node_id
     
-    async def on_init(self, *args, **kwargs):
-        pass
+    async def on_init(self, event_queue: multiprocessing.Queue):
+        event_queue.put(self.node)
     
-    async def on_start(self):
-        pass
+    async def on_start(self, event_queue: multiprocessing.Queue):
+        self.node.state = NodeState.ACTIVE
+        node_info = {
+            'node_id': self.node.node_id,
+            'state': NodeState.ACTIVE
+        }
+        event_queue.put(node_info)
 
-    async def on_shutdown(self):
-        pass
+    async def on_shutdown(self, event_queue: multiprocessing.Queue):
+        self.node.state = NodeState.STOPPED
+        node_info = {
+            'node_id': self.node.node_id,
+            'state': NodeState.STOPPED
+        }
+        event_queue.put(node_info)
 
     async def on_error(self, error: Exception):
         print("Error in runnig process", error)
     
     def run(
         self,
-        queue: multiprocessing.Queue,
+        health_check_queue: multiprocessing.Queue,
+        event_queue: multiprocessing.Queue,
         event: Event,
         arbiter_config: ArbiterConfig,
         health_check_interval: int,
@@ -41,7 +53,8 @@ class AribterTaskNodeRunner:
         try:
             asyncio.run(
                 self._executor(
-                    queue,
+                    health_check_queue,
+                    event_queue,
                     event,
                     arbiter_config,
                     health_check_interval,
@@ -54,7 +67,8 @@ class AribterTaskNodeRunner:
 
     async def _executor(
         self,
-        queue: multiprocessing.Queue,
+        health_check_queue: multiprocessing.Queue,
+        event_queue: multiprocessing.Queue,
         event: Event,
         arbiter_config: ArbiterConfig,
         health_check_interval: int,
@@ -66,25 +80,24 @@ class AribterTaskNodeRunner:
             await self.arbiter.connect()
             loop = asyncio.get_event_loop()
             try:
-                await self.on_init(*args, **kwargs)
+                await self.on_init(event_queue)
                 health_checker = loop.run_in_executor(
                     None,
                     self._health_check,
-                    queue,
+                    health_check_queue,
                     event,
                     self.node.node_id,
                     health_check_interval)
                 task = self()
                 executor = asyncio.create_task(task(self.arbiter))
-                await self.on_start()
+                await self.on_start(event_queue)
                 await asyncio.gather(health_checker, executor)
-                await self.on_shutdown()
             except asyncio.CancelledError:
                 pass    
             except Exception as e:
                 print("Error in health check", e)
             finally:
-                await self.on_shutdown()
+                await self.on_shutdown(event_queue)
             
         except Exception as e:
             await self.on_error(e)

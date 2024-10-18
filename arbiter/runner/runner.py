@@ -179,6 +179,7 @@ class ArbiterRunner:
                     # 재시작
                     shutdown_event.clear()
                     task = asyncio.create_task(arbiter_run(app))
+                    print("new task")
             except KeyboardInterrupt:
                 # Keyboard interrupt signal -> exit by reloading
                 pass

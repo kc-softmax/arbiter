@@ -8,24 +8,17 @@ class TaskCatalog:
         self.local_node: list[ArbiterTaskNode] = []
 
     def create_local_node(self, node: ArbiterTaskNode) -> None:
-        # local task node에서 뭐가 업데이트 되었는지 알아야한다
-        before_updated_node = list(filter(lambda x: x.queue == node.queue, self.local_node))
+        # node 객체가 들올 때에는 local node에 추가만한다
+        self.local_node.append(node)
+
+    def update_local_node(self, node_info: dict[str, int]) -> None:
+        before_updated_node = list(filter(lambda x: x.node_id == node_info['node_id'], self.local_node))
         if before_updated_node:
             idx = self.local_node.index(before_updated_node[0])
-            self.local_node[idx] = node
+            self.local_node[idx].state = node_info['state']
         else:
-            self.local_node.append(node)
-
-    # def add(self, node_id: str, node: ArbiterTaskNode) -> None:
-    #     if self.nodes.get(node_id):
-    #         before_updated_node = [filter(lambda x: x.node_id == node_id, self.nodes[node_id])]
-    #         if before_updated_node:
-    #             idx = self.nodes[node_id].index(before_updated_node)
-    #             self.nodes[node_id][idx] = node
-    #         else:
-    #             self.nodes[node_id].append(node)
-    #     else:
-    #         self.nodes[node_id].append(node)
+            # 등록되기 전에 업데이트가 될 수 있다? 발생하면 로직 다시 확인해보기
+            raise Exception("node not found")
 
     def add(self, node_id: str, node: list[ArbiterTaskNode]) -> None:
         self.nodes[node_id] = node

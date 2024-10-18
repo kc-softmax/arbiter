@@ -1,7 +1,7 @@
 from arbiter import ArbiterRunner, ArbiterNode
 from arbiter.configs import NatsBrokerConfig, ArbiterNodeConfig, ArbiterConfig
 # from tests.service import TestService, TestException, ArbiterService
-# from fastapi import FastAPI
+from fastapi import FastAPI
 
 import uvicorn
 

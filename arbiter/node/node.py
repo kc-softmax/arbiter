@@ -85,7 +85,8 @@ class ArbiterNode(TaskRegister):
         self._warp_in_queue: asyncio.Queue = asyncio.Queue()
         self._arbiter_processes: dict[str, ArbiterProcess] = {}
         
-        self._internal_mp_queue: MPQueue = MPQueue()
+        self._internal_health_check_queue: MPQueue = MPQueue()
+        self._internal_event_queue: MPQueue = MPQueue()
         self._deafult_tasks: list[ArbiterAsyncTask] = []
 
     def clear(self):
@@ -249,7 +250,8 @@ class ArbiterNode(TaskRegister):
                     name=task.queue,
                     target=task.run,
                     args=(
-                        self._internal_mp_queue,
+                        self._internal_health_check_queue,
+                        self._internal_event_queue,
                         event,
                         self.arbiter_config,
                         self.node_config.service_health_check_interval
@@ -276,12 +278,13 @@ class ArbiterNode(TaskRegister):
         self.create_local_registry()
 
         # 문제가있는 task는 버리고 갈지 에러를 낼지 생각해봐야한다
-        # start = timeit.default_timer()
-        # while len(self._tasks) != len(self.registry.local_task_node):
-        #     await asyncio.sleep(0.01)
-        #     if timeit.default_timer() - start >= self.node_config.initialization_timeout:
-        #         print("some task didn't launched")
-        #         break
+        start = timeit.default_timer()
+        while len(self._tasks) != len(self.registry.local_task_node):
+            await asyncio.sleep(0.01)
+            # start_phase에서 발생하는 에러를 피하기 위해 타임아웃을 더 작게 설정한다(이후에 task 상태가 변할 수 있기 때문)
+            if timeit.default_timer() - start >= self.node_config.initialization_timeout - 1:
+                print("some task didn't launched")
+                break
 
         self.ready_to_listen_external_event.set()
 
@@ -291,82 +294,11 @@ class ArbiterNode(TaskRegister):
         await self.arbiter.broker.broadcast("ARBITER.NODE", self.registry.local_node, "NODE_CONNECT")
         await self.arbiter.broker.broadcast("ARBITER.NODE", self.registry.local_task_node, "TASK_UPDATE")
         await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.INITIATION.name}...ok"))
-        return
-        # try:
-        #     for gateway_info in self._gateway_services:
-        #         gateway_model = gateway_info.get_service_model()
-        #         arbiter_gateway_node = ArbiterGatewayNode(
-        #             parent_model_id=gateway_model.id,                
-        #             arbiter_node_id=self.arbiter_node.id,
-        #             state=NodeState.PENDING,
-        #             host=gateway_info.host,
-        #             port=gateway_info.port,
-        #             log_level=gateway_info.log_level,
-        #             allow_origins=gateway_info.allow_origins,
-        #             allow_methods=gateway_info.allow_methods,
-        #             allow_headers=gateway_info.allow_headers,
-        #             allow_credentials=gateway_info.allow_credentials
-        #         )
-        #         await self.arbiter.save_data(arbiter_gateway_node)
-        #         # launch Sever Node
-        #         await self._generate_server_node(arbiter_gateway_node)
-
-        #         # TODO 효율적으로 바꿔야 한다.
-        #         fetch_data = lambda: self.arbiter.search_data(
-        #             ArbiterGatewayNode,
-        #             id=arbiter_gateway_node.id,
-        #             state=NodeState.ACTIVE
-        #         )
-        #         results = await fetch_data_within_timeout(
-        #             timeout=self.arbiter.config.get('service_pending_timeout'),
-        #             fetch_data=fetch_data,
-        #             check_condition=lambda data: len(data) > 0,
-        #         )
-        #         if not results:
-        #             raise ArbiterServerNodeFaileToStartError()
-        #         message = f"'{gateway_info.name}' Gateway running on http://{gateway_info.host}:{gateway_info.port}"
-        #         await self._warp_in_queue.put(
-        #             (WarpInTaskResult.INFO, message)
-        #         )
-        #         # TODO start manger fasthtml process
-        #     for service_info in self._services:
-        #         service_model = service_info.get_service_model()
-        #         if not service_model.auto_start:
-        #             continue
-        #         for _ in range(service_model.num_of_services):
-        #             module = importlib.import_module(service_model.module_name)
-        #             getattr(module, service_model.name)
-        #             pending_service = await self._start_service(service_model)
-        #             fetch_data = lambda: self.arbiter.search_data(
-        #                 ArbiterServiceNode,
-        #                 state=NodeState.ACTIVE,
-        #                 id=pending_service.id)
-        #             results = await fetch_data_within_timeout(
-        #                 timeout=self.arbiter.config.get('service_pending_timeout'),
-        #                 fetch_data=fetch_data,
-        #                 check_condition=lambda data: len(data) > 0,
-        #             )
-        #             if not results:
-        #                 raise ArbiterServiceNodeFaileToStartError
-        # except (ImportError, AttributeError) as e:
-        #     await self._warp_in_queue.put(
-        #         (WarpInTaskResult.FAIL, f"Failed to start initial services {e}")
-        #     )
-        # except TimeoutError:
-        #     await self._warp_in_queue.put(
-        #         (WarpInTaskResult.FAIL, "Failed to start initial services")
-        #     )
-        # except ArbiterServiceNodeFaileToStartError:
-        #     await self._warp_in_queue.put(
-        #         (WarpInTaskResult.FAIL, "Failed to start initial services")
-        #     )
-
-        # await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.INITIATION.name}...ok"))
        
     async def _materialization_task(self):
         if not self.gateway:
             await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.MATERIALIZATION.name}...ok"))
-            return
+
         for task in self._tasks:
             if not isinstance(task, ArbiterHttpTask):
                 continue
@@ -378,8 +310,7 @@ class ArbiterNode(TaskRegister):
                      f"{WarpInPhase.MATERIALIZATION.name} Failed to add task to gateway {task.queue} with {e}"))
                 continue
 
-        await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.MATERIALIZATION.name}...ok"))
-        return       
+        await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.MATERIALIZATION.name}...ok"))  
     
     async def _disappearance_task(self):
         """
@@ -401,9 +332,8 @@ class ArbiterNode(TaskRegister):
             except Exception as e:
                 warn(f"Failed to stop service {service_node_id} with {e}")
                 process.terminate()
-
+  
         await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.DISAPPEARANCE.name}...ok"))
-        return
           
     async def start_phase(self, phase: WarpInPhase) -> AsyncGenerator[tuple[WarpInTaskResult, str], None]:
         # if warp_in_queue is empty, then start the phase
@@ -460,6 +390,7 @@ class ArbiterNode(TaskRegister):
 
         loop = asyncio.get_running_loop()
         internal_health_check = loop.run_in_executor(None, self.internal_health_check, shutdown_event)
+        internal_event = loop.run_in_executor(None, self.internal_event, shutdown_event)
         try:
             yield self
         except Exception as e:
@@ -467,14 +398,27 @@ class ArbiterNode(TaskRegister):
             print("Raise error in warp - in", e)
         finally:
             await self.arbiter.broker.broadcast("ARBITER.NODE", self.registry.local_node.get_id(), "NODE_DISCONNECT")
-            await asyncio.to_thread(self._internal_mp_queue.put, obj="exit")
+            await asyncio.to_thread(self._internal_health_check_queue.put, obj="exit")
             internal_health_check.cancel()
+            internal_event.cancel()
             external_node_event.cancel()
             external_health_check.cancel()
             self.clear()
             # TODO task health            
             
-            self.arbiter and await self.arbiter.disconnect()            
+            self.arbiter and await self.arbiter.disconnect()
+
+    def internal_event(self, shutdown_event: asyncio.Event):
+        while not shutdown_event.is_set():
+            try:
+                node_info: ArbiterTaskNode | dict[str, str] = self._internal_event_queue.get(
+                    timeout=self.node_config.internal_event_timeout)
+                if isinstance(node_info, ArbiterTaskNode):
+                    self.registry.create_local_task_node(node_info)
+                else:
+                    self.registry.update_local_task_node(node_info)
+            except Exception as err:
+                """ignore timeout error"""
 
     def failed_nodes(self, node_ids: list[str]) -> None:
         # external health check에서 확인하여 제거하는 것이 정확 할 것 같다
@@ -486,11 +430,9 @@ class ArbiterNode(TaskRegister):
     def internal_health_check(self, shutdown_event: asyncio.Event):
         try:
             while not shutdown_event.is_set():
-                receive: str | ArbiterTaskNode = self._internal_mp_queue.get(
+                receive = self._internal_health_check_queue.get(
                     timeout=self.node_config.internal_health_check_timeout
                 )
-                if isinstance(receive, ArbiterTaskNode):
-                    self.registry.create_local_task_node(receive)
         except (Exception, TimeoutError) as err:
             print("failed internal health check", err)
             self.internal_shutdown_event.set()

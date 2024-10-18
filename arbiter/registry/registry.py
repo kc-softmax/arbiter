@@ -64,6 +64,9 @@ class Registry:
     def create_local_task_node(self, node: ArbiterTaskNode) -> None:
         self.task_nodes.create_local_node(node)
 
+    def update_local_task_node(self, node_info: dict[str, str]) -> None:
+        self.task_nodes.update_local_node(node_info)
+
     def register_node(self, node: ArbiterNode) -> None:
         self.arbiter_nodes.add(node)
 
