@@ -8,7 +8,13 @@ class TaskCatalog:
         self.local_node: list[ArbiterTaskNode] = []
 
     def create_local_node(self, node: ArbiterTaskNode) -> None:
-        self.local_node.append(node)
+        # local task node에서 뭐가 업데이트 되었는지 알아야한다
+        before_updated_node = list(filter(lambda x: x.queue == node.queue, self.local_node))
+        if before_updated_node:
+            idx = self.local_node.index(before_updated_node[0])
+            self.local_node[idx] = node
+        else:
+            self.local_node.append(node)
 
     # def add(self, node_id: str, node: ArbiterTaskNode) -> None:
     #     if self.nodes.get(node_id):
@@ -29,3 +35,6 @@ class TaskCatalog:
 
     def remove(self, node_id: str) -> None:
         self.nodes.pop(node_id, None)
+
+    def clear(self) -> None:
+        self.nodes.clear()

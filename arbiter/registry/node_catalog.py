@@ -18,3 +18,6 @@ class NodeCatalog:
 
     def remove(self, node_id: str) -> None:
         self.nodes.pop(node_id, None)
+
+    def clear(self) -> None:
+        self.nodes.clear()
