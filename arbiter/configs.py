@@ -23,6 +23,7 @@ class ArbiterNodeConfig:
     external_health_check_interval: int = 3
     external_health_check_timeout: int = 10
     internal_health_check_timeout: int = 10
+    internal_event_timeout: int = 1
 
 @dataclass
 class BrokerConfig:
