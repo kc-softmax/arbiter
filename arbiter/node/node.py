@@ -1,19 +1,29 @@
 from __future__ import annotations
 import asyncio
+import io
+import json
 import time
+import uuid
 import uvicorn
 import pickle
 from multiprocessing import Queue as MPQueue
 from multiprocessing import Event
 from multiprocessing import Process
+# from aiomultiprocess import Process
 from multiprocessing.synchronize import Event as EventType
 from contextlib import asynccontextmanager
 from warnings import warn
 from typing import (
     AsyncGenerator,
+    Callable,
+    Type,
+    Any
 )
-from fastapi import FastAPI
+from pydantic import create_model, BaseModel
+from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, Depends, HTTPException, Request
 from arbiter import Arbiter
+from arbiter.exceptions import TaskBaseError
 from arbiter.registry import Registry
 from arbiter.data.models import (
     ArbiterNode as ArbiterNodeModel,
@@ -27,8 +37,9 @@ from arbiter.enums import (
 )
 from arbiter.task_register import TaskRegister
 from arbiter.configs import ArbiterNodeConfig, ArbiterConfig
-from arbiter.task import ArbiterAsyncTask
+from arbiter.task import ArbiterAsyncTask, ArbiterHttpTask
 from arbiter.task_register import TaskRegister
+from arbiter.utils import restore_type
 
 ArbiterProcess = tuple[Process, EventType]
 
@@ -93,6 +104,118 @@ class ArbiterNode(TaskRegister):
     def stop_gateway(self):
         if self.gateway_server:
             self.gateway_server.should_exit = True
+
+    def add_http_task_to_gateway(self, task_node: ArbiterTaskNode):
+        def get_task_node() -> ArbiterTaskNode:
+            return task_node
+        
+        def get_arbiter() -> Arbiter:
+            def setup_arbiter(config: ArbiterConfig):
+                pass
+            # add ar
+            return self.arbiter
+
+        # TODO routing
+        path = f'/{task_node.queue}'
+        
+        parameters = json.loads(task_node.transformed_parameters)
+        assert isinstance(parameters, dict), "Parameters must be dict"
+        parameters = {
+            k: (restore_type(v), ...)
+            for k, v in parameters.items()
+        }
+        requset_model = create_model(task_node.name, **parameters)
+        return_type = restore_type(json.loads(task_node.transformed_return_type))
+
+        # find base model in parameters
+        is_post = True if parameters else False
+        for _, v in parameters.items():
+            if not issubclass(v[0], BaseModel):
+                is_post = False
+                
+        async def arbiter_task(
+            request: Request,
+            data: Type[BaseModel] = Depends(requset_model),  # 동적으로 생성된 Pydantic 모델 사용 # type: ignore
+            arbiter: Arbiter = Depends(get_arbiter),
+            task_node: ArbiterTaskNode = Depends(get_task_node),
+        ):
+            async def stream_response(
+                data: BaseModel,
+                arbiter: Arbiter,
+                task_node: ArbiterTaskNode,
+            ):
+                async def stream_response_generator(data_dict: dict[str, Any]):
+                    try:
+                        async for results in arbiter.async_stream(
+                            target=task_node.queue,
+                            **data_dict
+                        ):
+                            if isinstance(results, Exception):
+                                raise results
+                            if isinstance(results, BaseModel):
+                                yield results.model_dump_json()
+                            else:
+                                yield results
+                    except asyncio.CancelledError:
+                        pass
+                    except Exception as e:
+                        raise HTTPException(status_code=400, detail=f"Failed to get response {e}")
+                return StreamingResponse(stream_response_generator(data), media_type="application/json")
+            
+            data_dict: dict = data.model_dump()
+            if task_node.request:
+                request_data = {
+                    'client': request.client,
+                    'headers': request.headers,
+                    'cookies': request.cookies,
+                    'query_params': request.query_params,
+                    'path_params': request.path_params,
+                }
+                data_dict.update({'request': request_data})
+            
+            if task_node.stream:
+                return await stream_response(data_dict, arbiter, task_node)
+
+            try:
+                results = await arbiter.async_task(
+                    target=task_node.queue,
+                    **data_dict)
+                # TODO 어디에서 에러가 생기든, results 받아온다.
+                if isinstance(results, Exception):
+                    raise results
+                
+                # TODO temp, 추후 수정 필요
+                if task_node.file:
+                    if isinstance(results, tuple) or isinstance(results, list):
+                        filename, file = results
+                    else:
+                        file = results
+                        # get file extension
+                        filename = uuid.uuid4().hex
+                    # filename, file = results
+                    file_like = io.BytesIO(file)
+                    headers = {
+                        "Content-Disposition": f"attachment; filename={filename}",
+                        }
+                    return StreamingResponse(file_like, media_type="application/octet-stream", headers=headers)
+                if isinstance(results, BaseModel):
+                    return results.model_dump()                
+                return results
+            except TaskBaseError as e:
+                raise e
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Failed to get response {e}")
+
+        if is_post:
+            self.gateway.router.post(
+                path,
+                response_model=return_type
+            )(arbiter_task)
+        else:
+            self.gateway.router.get(
+                path,
+                response_model=return_type
+            )(arbiter_task)   
 
     def create_local_registry(self):
         # 자신의 registry는 local_node로 관리한다
@@ -212,7 +335,25 @@ class ArbiterNode(TaskRegister):
         #     )
 
         # await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.INITIATION.name}...ok"))
-           
+       
+    async def _materialization_task(self):
+        if not self.gateway:
+            await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.MATERIALIZATION.name}...ok"))
+            return
+        for task in self._tasks:
+            if not isinstance(task, ArbiterHttpTask):
+                continue
+            try:
+                self.add_http_task_to_gateway(task.node)
+            except Exception as e:
+                await self._warp_in_queue.put(
+                    (WarpInTaskResult.WARNING,
+                     f"{WarpInPhase.MATERIALIZATION.name} Failed to add task to gateway {task.queue} with {e}"))
+                continue
+
+        await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.MATERIALIZATION.name}...ok"))
+        return       
+    
     async def _disappearance_task(self):
         """
             WarpInPhase Arbiter DISAPPEARANCE
@@ -226,7 +367,8 @@ class ArbiterNode(TaskRegister):
         for service_node_id, (process, event) in self._arbiter_processes.items():
             if process.is_alive():
                 event.set()
-            # wait for process to finish
+
+        for service_node_id, (process, event) in self._arbiter_processes.items():
             try:
                 process.join(timeout=self.node_config.service_disappearance_timeout)
             except Exception as e:
@@ -251,6 +393,9 @@ class ArbiterNode(TaskRegister):
             case WarpInPhase.INITIATION:
                 timeout = self.node_config.initialization_timeout
                 asyncio.create_task(self._initialize_task())
+            case WarpInPhase.MATERIALIZATION:
+                timeout = self.node_config.materialization_timeout
+                asyncio.create_task(self._materialization_task())
             case WarpInPhase.DISAPPEARANCE:
                 timeout = self.node_config.disappearance_timeout
                 asyncio.create_task(self._disappearance_task())

@@ -16,6 +16,7 @@ class ArbiterNodeConfig:
     system_timeout: int = 60
     preparation_timeout: int = 5
     initialization_timeout: int = 30
+    materialization_timeout: int = 10
     disappearance_timeout: int = 10
     service_health_check_interval: int = 3
     service_disappearance_timeout: int = 10
