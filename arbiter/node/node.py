@@ -6,6 +6,7 @@ import time
 import uuid
 import uvicorn
 import pickle
+import timeit
 from multiprocessing import Queue as MPQueue
 from multiprocessing import Event
 from multiprocessing import Process
@@ -42,6 +43,7 @@ from arbiter.task_register import TaskRegister
 from arbiter.utils import restore_type
 
 ArbiterProcess = tuple[Process, EventType]
+ExternalMessage = str | ArbiterNodeModel | dict[str, ArbiterTaskNode]
 
 class ArbiterNode(TaskRegister):
     
@@ -74,7 +76,8 @@ class ArbiterNode(TaskRegister):
         self.log_level = log_level
         self.log_format = log_format
 
-        self.internal_shutdown_event = asyncio.Event()        
+        self.internal_shutdown_event = asyncio.Event()
+        self.ready_to_listen_external_event = asyncio.Event()
         self.arbiter = Arbiter(arbiter_config)
         self.registry: Registry = Registry()
 
@@ -84,7 +87,13 @@ class ArbiterNode(TaskRegister):
         
         self._internal_mp_queue: MPQueue = MPQueue()
         self._deafult_tasks: list[ArbiterAsyncTask] = []
-    
+
+    def clear(self):
+        self.registry.clear()
+        self._arbiter_processes.clear()
+        self.internal_shutdown_event.clear()
+        self.ready_to_listen_external_event.clear()
+
     @property
     def name(self) -> str:
         return self.arbiter.arbiter_config.name
@@ -223,8 +232,6 @@ class ArbiterNode(TaskRegister):
             name=self.name,
             state=NodeState.ACTIVE
         )
-        for task in self._tasks:
-            self.registry.create_local_task_node(task.node)
         self.registry.create_local_node(arbiter_node)
 
     async def _preparation_task(self):
@@ -262,7 +269,27 @@ class ArbiterNode(TaskRegister):
         """
             WarpInPhase Arbiter initialization
         """
-    
+
+        # initialize된 상태에 대해 어떻게 할 것인가?
+        # node를 초기화한다
+        # task node에 대한 health check를 모두 통과해야한다
+        self.create_local_registry()
+
+        # 문제가있는 task는 버리고 갈지 에러를 낼지 생각해봐야한다
+        start = timeit.default_timer()
+        while len(self._tasks) != len(self.registry.local_task_node):
+            await asyncio.sleep(0.01)
+            if timeit.default_timer() - start >= self.node_config.initialization_timeout:
+                print("some task didn't launched")
+                break
+
+        self.ready_to_listen_external_event.set()
+
+        # 처음에 노드의 모든 정보를 보낸다
+        # task가 정상/비정상이든 일단 보낸다
+        # task로부터 state 혹은 parameter가 업데이트되면 다시 보내서 peer node가 업데이트 할 수 있도록 한다
+        await self.arbiter.broker.broadcast("ARBITER.NODE", self.registry.local_node, "NODE_CONNECT")
+        await self.arbiter.broker.broadcast("ARBITER.NODE", self.registry.local_task_node, "TASK_UPDATE")
         await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.INITIATION.name}...ok"))
         return
         # try:
@@ -374,7 +401,7 @@ class ArbiterNode(TaskRegister):
             except Exception as e:
                 warn(f"Failed to stop service {service_node_id} with {e}")
                 process.terminate()
-            
+
         await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.DISAPPEARANCE.name}...ok"))
         return
           
@@ -412,7 +439,7 @@ class ArbiterNode(TaskRegister):
                 yield message
             except asyncio.TimeoutError:
                 yield (WarpInTaskResult.FAIL, f"Warp In Timeout in {phase.name} phase.")
-    
+
     @asynccontextmanager
     async def warp_in(
         self,
@@ -428,7 +455,6 @@ class ArbiterNode(TaskRegister):
             and prepare for the dynamic preparation
             we called it "WarpIn"
         """
-        self.create_local_registry()
         external_node_event = asyncio.create_task(self.external_node_event(shutdown_event))
         external_health_check = asyncio.create_task(self.external_health_check(shutdown_event))
 
@@ -445,6 +471,7 @@ class ArbiterNode(TaskRegister):
             internal_health_check.cancel()
             external_node_event.cancel()
             external_health_check.cancel()
+            self.clear()
             # TODO task health            
             
             self.arbiter and await self.arbiter.disconnect()            
@@ -453,30 +480,37 @@ class ArbiterNode(TaskRegister):
         # external health check에서 확인하여 제거하는 것이 정확 할 것 같다
         for node_id in node_ids:
             self.registry.unregister_node(node_id)
-            self.registry.unregister_service_node(node_id)
             self.registry.unregister_task_node(node_id)
             self.registry.failed_health_signal(node_id)
-            
+
     def internal_health_check(self, shutdown_event: asyncio.Event):
         try:
             while not shutdown_event.is_set():
-                receive = self._internal_mp_queue.get(
+                receive: str | ArbiterTaskNode = self._internal_mp_queue.get(
                     timeout=self.node_config.internal_health_check_timeout
                 )
+                if isinstance(receive, ArbiterTaskNode):
+                    self.registry.create_local_task_node(receive)
         except (Exception, TimeoutError) as err:
-            print("failed internal health check")
+            print("failed internal health check", err)
             self.internal_shutdown_event.set()
         finally:
             self.stop_gateway()
             shutdown_event.set()
-    
+
     async def external_health_check(self, shutdown_event: asyncio.Event):
         try:
+            await self.ready_to_listen_external_event.wait()
+    
             while not shutdown_event.is_set():
-                await self.arbiter.broker.broadcast(
-                    "ARBITER.NODE", 
-                    self.registry.local_node.get_id(),
-                    "NODE_HEALTH")
+                # local registry가 생성된 후 부터 health check가 되어야한다
+                if self.registry.local_node:
+                    await self.arbiter.broker.broadcast(
+                        "ARBITER.NODE", 
+                        self.registry.local_node.get_id(),
+                        "NODE_HEALTH")
+
+                # validate check node
                 now = time.time()
                 node_ids: list[str] = []
                 for node_id, received_time in self.registry.node_health.items():
@@ -484,9 +518,10 @@ class ArbiterNode(TaskRegister):
                         print("failed external health check", node_id)
                         node_ids.append(node_id)
                 self.failed_nodes(node_ids)
+
                 await asyncio.sleep(self.node_config.external_health_check_interval)
         except Exception as err:
-            print('failed external health checok', err)
+            print('failed external health check', err)
             self.internal_shutdown_event.set()
         finally:
             self.stop_gateway()
@@ -494,43 +529,32 @@ class ArbiterNode(TaskRegister):
 
     async def external_node_event(self, shutdown_event: asyncio.Event):
         try:
+            await self.ready_to_listen_external_event.wait()
+
             subject = "ARBITER.NODE"
-            await self.arbiter.broker.broadcast(subject, self.registry.raw_node_info, "NODE_CONNECT")
             async for reply, message in self.arbiter.broker.listen(subject):
                 # node_id 혹은 node 임시이기 때문에 정해야한다
-                message: str | dict[
-                    str, ArbiterNodeModel, ArbiterServiceNode, ArbiterTaskNode
-                ] = pickle.loads(message)
+                node: ExternalMessage = pickle.loads(message)
                 match reply:
                     case "NODE_CONNECT":
                         """It will execute when first connect with same broker"""
-                        peer_node = message['node']
-                        peer_service_node = message['service']
-                        peer_task_node = message['task']
-                        peer_node_id = peer_node.get_id()
+                        peer_node_id = node.get_id()
                         local_node_id = self.registry.local_node.get_id()
                         if not self.registry.get_node(peer_node_id) and peer_node_id != local_node_id:
-                            self.registry.register_node(peer_node)
-                            self.registry.register_service_node(peer_node_id, peer_service_node)
-                            self.registry.register_task_node(peer_node_id, peer_task_node)
+                            self.registry.register_node(node)
                             # Peer Node에게도 나의 node 정보를 보내줘야한다
-                            await self.arbiter.broker.broadcast(subject, self.registry.raw_node_info, "NODE_CONNECT")
+                            await self.arbiter.broker.broadcast(subject, self.registry.local_node, "NODE_CONNECT")
+                            print("connected peer node", peer_node_id)
                     case "NODE_UPDATE":
                         """reload app, cover over exist peer id node info"""
-                        peer_node = message['node']
-                        peer_service_node = message['service']
-                        peer_task_node = message['task']
-                        self.registry.register_node(peer_node)
-                        self.registry.register_service_node(peer_node_id, peer_service_node)
-                        self.registry.register_task_node(peer_node_id, peer_task_node)
+                    case "TASK_UPDATE":
+                        """receive task node, cover over exist peer id task node info"""
                     case "NODE_HEALTH":
-                        peer_node_id = message
-                        if peer_node_id == self.registry.local_node.get_id():
-                            continue
+                        peer_node_id = node
                         self.registry.get_health_signal(peer_node_id, time.time())
                     case "NODE_DISCONNECT":
                         """remove registry"""
-                        print("disconneced node -", message)
+                        print("disconnected peer node -", node)
 
         except Exception as err:
             print("failed external node event", err)

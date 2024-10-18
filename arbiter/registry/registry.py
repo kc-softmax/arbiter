@@ -20,13 +20,21 @@ class Registry:
     def local_node(self) -> ArbiterNode:
         return self.arbiter_nodes.local_node
 
-    @property
-    def local_service_node(self) -> ArbiterServiceNode:
-        return self.service_nodes.local_node
+    # @property
+    # def local_service_node(self) -> ArbiterServiceNode:
+    #     return self.service_nodes.local_node
 
     @property
-    def local_task_node(self) -> ArbiterTaskNode:
+    def local_task_node(self) -> list[ArbiterTaskNode]:
         return self.task_nodes.local_node
+
+    @local_node.setter
+    def local_node(self, value):
+        self.arbiter_nodes.local_node = value
+
+    @local_task_node.setter
+    def local_task_node(self, value):
+        self.task_nodes.local_node = value
 
     @property
     def raw_node_info(self) -> dict[
@@ -36,7 +44,7 @@ class Registry:
             str, ArbiterNode | ArbiterServiceNode | ArbiterTaskNode
         ] = {
             'node': self.local_node,
-            'service': self.local_service_node,
+            # 'service': self.local_service_node,
             'task': self.local_task_node,
         }
         return node_info
@@ -82,3 +90,10 @@ class Registry:
 
     def unregister_task_node(self, node_id: str) -> None:
         self.task_nodes.remove(node_id)
+
+    def clear(self):
+        self.local_node = None
+        self.local_task_node = []
+        self.node_health.clear()
+        self.arbiter_nodes.clear()
+        self.task_nodes.clear()
