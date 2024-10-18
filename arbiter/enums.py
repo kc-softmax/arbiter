@@ -59,8 +59,8 @@ class WarpInPhase(IntEnum):
     INITIATION = 14
     """소환 시작 단계"""
         
-    # MATERIALIZATION = 15
-    # """건물이 구체화되는 단계"""
+    MATERIALIZATION = 15
+    """건물이 구체화되는 단계"""
     
     DISAPPEARANCE = 16
     """완료 후 사라지는 단계"""

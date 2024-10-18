@@ -7,8 +7,7 @@ from arbiter.configs import ArbiterConfig
 from arbiter.data.models import ArbiterBaseNode
 from arbiter import Arbiter
 
-
-class ProcessRunner:
+class AribterTaskNodeRunner:
     
     def __init__(self):
         self.arbiter: Arbiter = None
@@ -18,17 +17,17 @@ class ProcessRunner:
         assert self.node is not None, "Node is not set, please set the node before running the service."
         return self.node.node_id
     
+    async def on_init(self, *args, **kwargs):
+        pass
+    
     async def on_start(self):
         pass
 
     async def on_shutdown(self):
         pass
-    
-    async def setup(self):
-        raise NotImplementedError("Please implement the setup method.")
-    
+
     async def on_error(self, error: Exception):
-        pass
+        print("Error in runnig process", error)
     
     def run(
         self,
@@ -36,48 +35,57 @@ class ProcessRunner:
         event: Event,
         arbiter_config: ArbiterConfig,
         health_check_interval: int,
+        *args,
+        **kwargs
     ):
         try:
             asyncio.run(
-                self._run(
+                self._executor(
                     queue,
                     event,
                     arbiter_config,
-                    health_check_interval
+                    health_check_interval,
+                    *args,
+                    **kwargs
                 )
             )
         except Exception as e:
             print("Error in run", e, self.__class__.__name__)
-        
-    async def _run(
+
+    async def _executor(
         self,
         queue: multiprocessing.Queue,
         event: Event,
         arbiter_config: ArbiterConfig,
         health_check_interval: int,
+        *args,
+        **kwargs
     ):
-        """
-        Run the service.
-        """
         try:
             self.arbiter = Arbiter(arbiter_config)
             await self.arbiter.connect()
-            await self.setup()
-            await self.on_start()
             loop = asyncio.get_event_loop()
             try:
-                await loop.run_in_executor(
-                None,
-                self._health_check,
-                queue,
-                event,
-                self.node.node_id,
-                health_check_interval)
+                await self.on_init(*args, **kwargs)
+                health_checker = loop.run_in_executor(
+                    None,
+                    self._health_check,
+                    queue,
+                    event,
+                    self.node.node_id,
+                    health_check_interval)
+                task = self()
+                executor = asyncio.create_task(task(self.arbiter))
+                await self.on_start()
+                await asyncio.gather(health_checker, executor)
+                await self.on_shutdown()
             except asyncio.CancelledError:
                 pass    
             except Exception as e:
                 print("Error in health check", e)
-            await self.on_shutdown()
+            finally:
+                await self.on_shutdown()
+            
         except Exception as e:
             await self.on_error(e)
         finally:
@@ -91,5 +99,5 @@ class ProcessRunner:
         health_check_interval: int,        
     ):
         while not event.is_set():
-            queue.put_nowait(node_id)
+            queue.put(node_id)
             time.sleep(health_check_interval)

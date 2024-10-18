@@ -3,7 +3,7 @@ import inspect
 from typing import  Any, Callable
 from arbiter.enums import NodeState
 from arbiter.data.models import ArbiterServiceNode
-from arbiter.task.process_runner import ProcessRunner
+from arbiter.task.task_runner import ProcessRunner
 
 class ServiceMeta(type):
 
