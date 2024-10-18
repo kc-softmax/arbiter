@@ -30,6 +30,7 @@ async def simple_http_stream(x: int):
 async def simple_http_task(x: int):
     return {"result": "success + " + str(x)}
 
+
 if __name__ == '__main__':
     ArbiterRunner.run(
         app,
