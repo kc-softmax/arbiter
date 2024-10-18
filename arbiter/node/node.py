@@ -276,12 +276,12 @@ class ArbiterNode(TaskRegister):
         self.create_local_registry()
 
         # 문제가있는 task는 버리고 갈지 에러를 낼지 생각해봐야한다
-        start = timeit.default_timer()
-        while len(self._tasks) != len(self.registry.local_task_node):
-            await asyncio.sleep(0.01)
-            if timeit.default_timer() - start >= self.node_config.initialization_timeout:
-                print("some task didn't launched")
-                break
+        # start = timeit.default_timer()
+        # while len(self._tasks) != len(self.registry.local_task_node):
+        #     await asyncio.sleep(0.01)
+        #     if timeit.default_timer() - start >= self.node_config.initialization_timeout:
+        #         print("some task didn't launched")
+        #         break
 
         self.ready_to_listen_external_event.set()
 
