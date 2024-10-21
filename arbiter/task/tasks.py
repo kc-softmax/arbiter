@@ -71,13 +71,14 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
 
         self.func: Callable = None        
         self.parameters: dict[str, inspect.Parameter] = None
+        self.arbiter_parameter: tuple[str, Arbiter] = None
 
     def setup_task_node(self, func: Callable):
         setattr(func, 'is_task_function', True)
         if self.queue is None:
             self.queue = func.__name__
         signature = inspect.signature(func)
-        parameters = self._check_parameters(signature)
+        parameters, arbiter_parameter = self._check_parameters(signature)
         return_type = self._check_return_type(signature, func)
         transformed_parameters = self._transform_parameters(parameters)
         transformed_return_type = self._transform_return_type(return_type)
@@ -89,18 +90,21 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
         self.node.transformed_return_type = json.dumps(transformed_return_type)
     
         self.parameters = parameters
-        self.arbiter_parameter: tuple[str, Arbiter] = None
+        self.arbiter_parameter = arbiter_parameter
         self.func = func
                 
-    def _check_parameters(self, signature: inspect.Signature) -> dict[str, inspect.Parameter]:
+    def _check_parameters(
+        self,
+        signature: inspect.Signature
+    ) -> tuple[dict[str, inspect.Parameter], tuple[str, Arbiter]]:
         parameters: dict[str, inspect.Parameter] = {}
+        arbiter_parameter = None
         for i, param in enumerate(signature.parameters.values()):
             # 만약 self나 app이라는 이름의 파라미터가 있다면 첫번째 파라미터인지 검사 한후, 
             if param.name in parameters:
                 raise ValueError(f"Duplicate parameter name: {param.name}")
-
             if param.annotation == Arbiter:
-                self.arbiter_parameter = (param.name, param.annotation)
+                arbiter_parameter = (param.name, param.annotation)
                 continue
             
             if param.annotation == AsyncGenerator:
@@ -129,7 +133,7 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
             #     print(param.annotation)
             #     # param.annotation = get_type_hints(func).get(param.name, None)
             parameters[param.name] = param
-        return parameters
+        return parameters, arbiter_parameter
     
     def _check_return_type(self, signature: inspect.Signature, func: Callable) -> Type:
         # 반환 유형 힌트 가져온다. 있으면 저장한다.
@@ -304,7 +308,7 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
         async def wrapper(
             arbiter: Arbiter,
             executor: Callable = None,
-        ):      
+        ):
             async for reply, message in self._get_message_func(arbiter):
                 is_async_gen = False
                 try:
@@ -449,13 +453,16 @@ class ArbiterPeriodicTask(ArbiterAsyncTask):
         ]    
         return merge_dicts(*parsed_request)
 
-    def _check_parameters(self, signature: inspect.Signature) -> dict[str, inspect.Parameter]:
-        parameters = super()._check_parameters(signature)
+    def _check_parameters(
+        self, 
+        signature: inspect.Signature
+    ) -> tuple[dict[str, inspect.Parameter], tuple[str, Arbiter]]:
+        parameters, arbiter_parameter = super()._check_parameters(signature)
         assert len(parameters) < 2, "Periodic task should have less than one parameter"
         for param in parameters.values():
             assert get_origin(param.annotation) is list, "Periodic task parameter should be list type"
             assert param.default == [], "Periodic task parameter should have default value []"
-        return parameters
+        return parameters, arbiter_parameter
 
     def _get_message_func(
         self,
