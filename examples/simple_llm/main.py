@@ -20,8 +20,8 @@ topic_maps = {
     "Workplace Safety": "workplace_safety"
 }
 
-ollama_server_1  = "http://192.168.0.119:11434/api"
-ollama_server_2  = "http://192.168.0.66:11434/api"
+ollama_server_1  = "http://192.168.210.194:8082/api"
+ollama_server_2  = "http://192.168.210.194:8081/api"
 
 server_maps = {
     "Employee Benefits": ollama_server_1,
@@ -34,7 +34,12 @@ server_maps = {
 
 # ############################################################################################################
 app = ArbiterNode(
-    arbiter_config=ArbiterConfig(broker_config=NatsBrokerConfig()),
+    arbiter_config=ArbiterConfig(
+        broker_config=NatsBrokerConfig(
+            port=45817,
+            user="local",
+            password="Ohe47FvRyPvH6gnEELJtX1ZFe7O70GEb"
+        )),
     node_config=ArbiterNodeConfig(system_timeout=5),    
     gateway=uvicorn.Config(app=FastAPI(), host="0.0.0.0", port=8080)
 )

@@ -42,7 +42,7 @@ class RedisBrokerConfig(BrokerConfig):
 class NatsBrokerConfig(BrokerConfig):
     host: str = "localhost"
     port: int = 4222
-    name: str = None
+    user: str = None
     password: str = None
     max_reconnect_attempts: int = 5
     # TODO ADD MORE CONFIGS from nats.aio.connect
