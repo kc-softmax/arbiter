@@ -49,17 +49,21 @@ def send_llm_request(
     content: str,
 ) -> str:
     url = server_maps.get(topic)
-    with httpx.Client(base_url=url) as client:
-        response = client.post("/generate", json={
-            "model": "llama3.2",
-            "stream": False,
-            "prompt": content,
-        })
-        data = response.json()
-        
-        return data["response"]
+    try:
+        with httpx.Client(base_url=url) as client:
+            response = client.post("/generate", json={
+                "model": "llama3.2",
+                "stream": False,
+                "prompt": content,
+            }, timeout=300)
+            if response.status_code == 200:
+                data = response.json()
+                return data["response"]
+            return f"Error: {response.status_code}"
+    except Exception as e:
+        return f"Error in catch: {e}"
 
-@app.http_task()
+@app.http_task(timeout=300)
 async def get_llm_request_from_client(
     topic: str,
     content: str,
@@ -71,28 +75,29 @@ async def get_llm_request_from_client(
     response = await arbiter.async_task(
         target=target_queue,
         topic=topic, 
-        content=content)
-    if response and isinstance(response, str):
-        await arbiter.emit_message("store_request", topic, content, response)
+        content=content,
+        timeout=3000)
+    # if response and isinstance(response, str):
+    #     await arbiter.emit_message("store_request", topic, content, response)
     return response
 
-@app.async_task(queue='employee_benefits')
+@app.async_task(queue='employee_benefits', timeout=3000)
 async def send_llm_requset_to_employee_benefits(topic: str, content: str) -> str:
     return send_llm_request(topic, content)
  
-@app.async_task(queue='work_life_balance')
+@app.async_task(queue='work_life_balance', timeout=3000)
 async def send_llm_requset_to_work_life_balance(topic: str, content: str) -> str:
     return send_llm_request(topic, content)
 
-@app.async_task(queue='remote_work_policies')
+@app.async_task(queue='remote_work_policies', timeout=3000)
 async def send_llm_requset_to_remote_work_policies(topic: str, content: str) -> str:
     return send_llm_request(topic, content)
 
-@app.async_task(queue='employee_training')
+@app.async_task(queue='employee_training', timeout=3000)
 async def send_llm_requset_to_employee_training(topic: str, content: str) -> str:
     return send_llm_request(topic, content)
 
-@app.async_task(queue='workplace_safety')
+@app.async_task(queue='workplace_safety', timeout=3000)
 async def send_llm_requset_to_workplace_safety(topic: str, content: str) -> str:
     return send_llm_request(topic, content)
 

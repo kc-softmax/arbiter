@@ -53,6 +53,7 @@ class ArbiterTaskNode(ArbiterBaseNode):
     queue: str = Field(default='')
     transformed_parameters: str = Field(default='')
     transformed_return_type: str = Field(default='')
+    timeout: int = Field(default=5)
 
     # for http task
     http: bool = Field(default=False)

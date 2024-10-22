@@ -61,7 +61,7 @@ class Arbiter:
     ) -> Any:
 
         """Request execution logic shared between task and stream."""
-        timeout = self.arbiter_config.default_send_timeout
+        timeout = kwargs.pop("timeout", self.arbiter_config.default_send_timeout)
         retry = 0
         return_type = None
         request_data = await self.__request_packer(*args, **kwargs)
@@ -89,7 +89,7 @@ class Arbiter:
         *args,
         **kwargs
     ) -> AsyncGenerator[Any, None]:
-        timeout = self.arbiter_config.default_send_timeout
+        timeout = kwargs.pop("timeout", self.arbiter_config.default_send_timeout)
         retry = 0
         return_type = None
         request_data = await self.__request_packer(*args, **kwargs)
