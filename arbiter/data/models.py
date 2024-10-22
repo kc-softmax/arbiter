@@ -20,6 +20,12 @@ class ArbiterBaseNode(BaseModel):
     def get_id(self) -> str:
         return self.node_id
     
+    def get_node_info(self) -> dict[str, Any]:
+        return  {
+            'node_id': self.get_id(),
+            'state': self.state,
+        }
+    
     def __hash__(self) -> int:
         return hash(self.node_id)
     
@@ -62,10 +68,7 @@ class ArbiterTaskNode(ArbiterBaseNode):
     stream: bool = Field(default=False)
     file: bool = Field(default=False)
     request: bool = Field(default=False)
-        
-    def get_id(self) -> str:
-        return self.queue
-    
+            
     def __eq__(self, other: ArbiterTaskNode) -> bool:
         return self.queue == other.queue
 

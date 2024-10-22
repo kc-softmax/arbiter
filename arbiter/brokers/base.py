@@ -57,6 +57,7 @@ class ArbiterBrokerInterface(ABC):
         self, 
         target: str,
         message: bytes,
+        reply: str = '',
     ):
         raise NotImplementedError
 
