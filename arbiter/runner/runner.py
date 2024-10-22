@@ -93,18 +93,6 @@ class ArbiterRunner:
                                 case WarpInTaskResult.FAIL:
                                     raise Exception(message)
 
-                        async for result, message in arbiter_runner.start_phase(WarpInPhase.MATERIALIZATION):
-                            match result:
-                                case WarpInTaskResult.SUCCESS:
-                                    console.print(f"[bold green]{arbiter_runner.name}[/bold green] [bold yellow]{message}[/bold yellow].")
-                                    break
-                                case WarpInTaskResult.INFO:
-                                    console.print(f"[bold green]{arbiter_runner.name}[/bold green] [white]{message}[/white]")
-                                case WarpInTaskResult.WARNING:
-                                    console.print(f"[bold yellow]{arbiter_runner.name}[/bold yellow] [bold blue]{message}[/bold blue].")
-                                case WarpInTaskResult.FAIL:
-                                    raise Exception(message)
-
                         """asyncio.Event
                         It used to share the state of each coroutine.
                         1. Event flag will change when occur keyboard interrupt signal

@@ -11,11 +11,12 @@ class TaskCatalog:
         # node 객체가 들올 때에는 local node에 추가만한다
         self.local_node.append(node)
 
-    def update_local_node(self, node_info: dict[str, int]) -> None:
+    def update_local_node(self, node_info: dict[str, int]) -> ArbiterTaskNode:
         before_updated_node = list(filter(lambda x: x.node_id == node_info['node_id'], self.local_node))
         if before_updated_node:
             idx = self.local_node.index(before_updated_node[0])
             self.local_node[idx].state = node_info['state']
+            return self.local_node[idx]
         else:
             # 등록되기 전에 업데이트가 될 수 있다? 발생하면 로직 다시 확인해보기
             raise Exception("node not found")

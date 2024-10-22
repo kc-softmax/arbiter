@@ -35,7 +35,6 @@ class ArbiterBaseNode(BaseModel):
 
 ############################################
 class ArbiterNode(ArbiterBaseNode):
-    gateway_nodes: list[ArbiterGatewayNode] = Field(default_factory=list)
 
     def get_health_check_channel(self) -> str:
         return f"__health_check__{self.node_id}"
@@ -46,15 +45,7 @@ class ArbiterNode(ArbiterBaseNode):
     def get_routing_channel(self) -> str:
         return f"__routing__{self.node_id}"
     
-############################################
-class ArbiterServiceNode(ArbiterBaseNode):
-    task_node_ids: list[str] = Field(default_factory=list)
-    description: Optional[str] = Field(default='')
 
-class ArbiterGatewayNode(ArbiterServiceNode):
-    host: str
-    port: int
-    options: dict[str, Any] = Field(default_factory=dict)    
 ############################################
 class ArbiterTaskNode(ArbiterBaseNode):
     # 만약 지정된 gateway가 없다면, 모든 gateway에 등록
@@ -70,5 +61,5 @@ class ArbiterTaskNode(ArbiterBaseNode):
     request: bool = Field(default=False)
             
     def __eq__(self, other: ArbiterTaskNode) -> bool:
-        return self.queue == other.queue
+        return (self.queue == other.queue) or (self.node_id == other.node_id)
 
