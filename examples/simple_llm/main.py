@@ -49,19 +49,16 @@ def send_llm_request(
     content: str,
 ) -> str:
     url = server_maps.get(topic)
-    try:
-        with httpx.Client(base_url=url) as client:
-            response = client.post("/generate", json={
-                "model": "llama3.2",
-                "stream": False,
-                "prompt": content,
-            }, timeout=300)
-            if response.status_code == 200:
-                data = response.json()
-                return data["response"]
-            return f"Error: {response.status_code}"
-    except Exception as e:
-        return f"Error in catch: {e}"
+    with httpx.Client(base_url=url) as client:
+        response = client.post("/generate", json={
+            "model": "llama3.2",
+            "stream": False,
+            "prompt": content,
+        }, timeout=3)
+        if response.status_code == 200:
+            data = response.json()
+            return data["response"]
+        return f"Error: {response.status_code}"
 
 @app.http_task(timeout=300)
 async def get_llm_request_from_client(
