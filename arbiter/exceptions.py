@@ -20,22 +20,6 @@ class ArbiterInconsistentServiceModelError(Exception):
     """Raised when the arbiter has inconsistent service."""
     def __init__(self, message="The arbiter has inconsistent service model."):
         super().__init__(message)
-        
-class ArbiterServiceHealthCheckError(Exception):
-    """Raised when the arbiter fails to health check a service."""
-    def __init__(self, message="The arbiter fails to health check a service."):
-        super().__init__(message)
-        
-class ArbiterServerNodeFaileToStartError(Exception):
-    """Raised when the arbiter server node fails to start."""
-    def __init__(self, message="The arbiter server node fails to start."):
-        super().__init__(message)
-
-class ArbiterServiceNodeFaileToStartError(Exception):
-    """Raised when the arbiter service node fails to start."""
-    def __init__(self, message="The arbiter service node fails to start."):
-        super().__init__(message)
-
 
 ### Exception Group ###
 class BaseError(Exception):

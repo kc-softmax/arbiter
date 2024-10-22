@@ -36,15 +36,18 @@ server_maps = {
 app = ArbiterNode(
     arbiter_config=ArbiterConfig(
         broker_config=NatsBrokerConfig(
-            port=45817,
-            user="local",
-            password="Ohe47FvRyPvH6gnEELJtX1ZFe7O70GEb"
+            # port=45817,
+            # user="local",
+            # password="Ohe47FvRyPvH6gnEELJtX1ZFe7O70GEb"
         )),
     node_config=ArbiterNodeConfig(system_timeout=5),    
     gateway=uvicorn.Config(app=FastAPI(), host="0.0.0.0", port=8080)
 )
 
-def send_llm_request(topic: str, content: str) -> str:
+def send_llm_request(
+    topic: str, 
+    content: str,
+) -> str:
     url = server_maps.get(topic)
     with httpx.Client(base_url=url) as client:
         response = client.post("/generate", json={
@@ -53,6 +56,7 @@ def send_llm_request(topic: str, content: str) -> str:
             "prompt": content,
         })
         data = response.json()
+        
         return data["response"]
 
 @app.http_task()
@@ -68,6 +72,8 @@ async def get_llm_request_from_client(
         target=target_queue,
         topic=topic, 
         content=content)
+    if response and isinstance(response, str):
+        await arbiter.emit_message("store_request", topic, content, response)
     return response
 
 @app.async_task(queue='employee_benefits')

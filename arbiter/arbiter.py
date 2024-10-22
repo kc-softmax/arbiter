@@ -125,6 +125,7 @@ class Arbiter:
         **kwargs
     ):
         request_data = await self.__request_packer(*args, **kwargs)
+        # check type validation?
         await self.broker.emit(target, request_data)    
     
     async def __request_packer(

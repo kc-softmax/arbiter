@@ -116,19 +116,7 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
 
             if param.annotation == Request:
                 raise ValueError("fastapi Request is not allowed, use pydantic model instead")
-            
-            if param.name == 'request':
-                if not hasattr(self, 'request'):
-                    raise ValueError("request parameter is not allowed, except request=True in decorator")
-                # check request annotat
-                # annotation is dict
-                if param.annotation == dict:
-                    continue
-                origin = get_origin(param.annotation)
-                if origin is dict or origin is Dict:
-                    continue
-                raise ValueError("request parameter should be dict")                
-            
+                        
             # if not isinstance(param.annotation, type):
             #     print(param.annotation)
             #     # param.annotation = get_type_hints(func).get(param.name, None)
@@ -390,6 +378,27 @@ class ArbiterHttpTask(ArbiterAsyncTask):
         requset_data.update(
             super()._parse_requset(request))
         return requset_data
+    
+    def _check_parameters(
+        self, 
+        signature: inspect.Signature
+    ) -> tuple[dict[str, inspect.Parameter], tuple[str, Arbiter]]:
+        parameters, arbiter_parameter = super()._check_parameters(signature)
+        if self.request:
+            # request parameter를 사용할 경우 검사한다.
+            for param in parameters.values():
+                if param.name == 'request':
+                    # check request annotat
+                    # annotation is dict
+                    if param.annotation == dict:
+                        continue
+                    origin = get_origin(param.annotation)
+                    if origin is dict or origin is Dict:
+                        continue
+                    raise ValueError("request parameter should be dict")
+            
+        return parameters, arbiter_parameter
+    
     
 class ArbiterPeriodicTask(ArbiterAsyncTask):
     """

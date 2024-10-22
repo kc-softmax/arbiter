@@ -1,0 +1,1 @@
+git+ssh://git@github.com:kc-softmax/arbiter.git
