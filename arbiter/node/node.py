@@ -254,7 +254,8 @@ class ArbiterNode(TaskRegister):
                         self._internal_event_queue,
                         event,
                         self.arbiter_config,
-                        self.node_config.service_health_check_interval
+                        self.node_config.service_health_check_interval,
+                        self.node_config.task_close_timeout
                     )
                 )
                 process.start()
@@ -403,9 +404,7 @@ class ArbiterNode(TaskRegister):
             internal_event.cancel()
             external_node_event.cancel()
             external_health_check.cancel()
-            self.clear()
-            # TODO task health            
-            
+            self.clear()            
             self.arbiter and await self.arbiter.disconnect()
 
     def internal_event(self, shutdown_event: asyncio.Event):
@@ -413,10 +412,16 @@ class ArbiterNode(TaskRegister):
             try:
                 node_info: ArbiterTaskNode | dict[str, str] = self._internal_event_queue.get(
                     timeout=self.node_config.internal_event_timeout)
+                target = "ARBITER.NODE"
+                
                 if isinstance(node_info, ArbiterTaskNode):
                     self.registry.create_local_task_node(node_info)
                 else:
                     self.registry.update_local_task_node(node_info)
+                # TODO broadcast to all nodes
+                # update task node state or create task node
+                # if create task node, and has gateway, then add to gateway
+                # and refresh gateway
             except Exception as err:
                 """ignore timeout error"""
 

@@ -18,7 +18,8 @@ class ArbiterNodeConfig:
     initialization_timeout: int = 3
     materialization_timeout: int = 10
     disappearance_timeout: int = 10
-    service_health_check_interval: int = 3
+    service_health_check_interval: int = 1
+    task_close_timeout: int = 5
     service_disappearance_timeout: int = 10
     external_health_check_interval: int = 3
     external_health_check_timeout: int = 10
@@ -41,6 +42,7 @@ class RedisBrokerConfig(BrokerConfig):
 class NatsBrokerConfig(BrokerConfig):
     host: str = "localhost"
     port: int = 4222
+    name: str = None
     password: str = None
     max_reconnect_attempts: int = 5
     # TODO ADD MORE CONFIGS from nats.aio.connect

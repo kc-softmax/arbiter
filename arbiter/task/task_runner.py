@@ -23,22 +23,16 @@ class AribterTaskNodeRunner:
     
     async def on_start(self, event_queue: multiprocessing.Queue):
         self.node.state = NodeState.ACTIVE
-        node_info = {
-            'node_id': self.node.node_id,
-            'state': NodeState.ACTIVE
-        }
-        event_queue.put(node_info)
+        event_queue.put(self.node.get_node_info())
 
     async def on_shutdown(self, event_queue: multiprocessing.Queue):
         self.node.state = NodeState.STOPPED
-        node_info = {
-            'node_id': self.node.node_id,
-            'state': NodeState.STOPPED
-        }
-        event_queue.put(node_info)
+        event_queue.put(self.node.get_node_info())
 
-    async def on_error(self, error: Exception):
+    async def on_error(self, error: Exception, event_queue: multiprocessing.Queue):
         print("Error in runnig process", error)
+        self.node.state = NodeState.STOPPED
+        event_queue.put(self.node.get_node_info())
     
     def run(
         self,
@@ -47,6 +41,7 @@ class AribterTaskNodeRunner:
         event: Event,
         arbiter_config: ArbiterConfig,
         health_check_interval: int,
+        task_close_timeout: int,
         *args,
         **kwargs
     ):
@@ -58,6 +53,7 @@ class AribterTaskNodeRunner:
                     event,
                     arbiter_config,
                     health_check_interval,
+                    task_close_timeout,
                     *args,
                     **kwargs
                 )
@@ -72,6 +68,7 @@ class AribterTaskNodeRunner:
         event: Event,
         arbiter_config: ArbiterConfig,
         health_check_interval: int,
+        task_close_timeout,
         *args,
         **kwargs
     ):
@@ -91,7 +88,14 @@ class AribterTaskNodeRunner:
                 task = self()
                 executor = asyncio.create_task(task(self.arbiter))
                 await self.on_start(event_queue)
-                await asyncio.gather(health_checker, executor)
+                await health_checker
+                # await asyncio.gather(health_checker, executor)
+                if executor:
+                    executor.cancel()
+                    try:
+                        await asyncio.wait_for(executor, timeout=task_close_timeout)
+                    except asyncio.CancelledError:
+                        pass
             except asyncio.CancelledError:
                 pass    
             except Exception as e:

@@ -45,6 +45,8 @@ class ArbiterNatsBroker(ArbiterBrokerInterface):
         self.nats = await nats.connect(
             connection_url,
             name=self.name,
+            user=self.config.name,
+            password=self.config.password,
             max_reconnect_attempts=self.config.max_reconnect_attempts,
             disconnected_cb=disconnected_cb,
             reconnected_cb=reconnected_cb,
