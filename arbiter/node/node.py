@@ -159,6 +159,7 @@ class ArbiterNode(TaskRegister):
                     try:
                         async for results in arbiter.async_stream(
                             target=task_node.queue,
+                            timeout=task_node.timeout,
                             **data_dict
                         ):
                             if isinstance(results, Exception):
@@ -190,6 +191,7 @@ class ArbiterNode(TaskRegister):
             try:
                 results = await arbiter.async_task(
                     target=task_node.queue,
+                    timeout=task_node.timeout,
                     **data_dict)
                 # TODO 어디에서 에러가 생기든, results 받아온다.
                 if isinstance(results, Exception):

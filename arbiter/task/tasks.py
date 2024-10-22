@@ -88,7 +88,7 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
         self.node.queue = self.queue
         self.node.transformed_parameters = json.dumps(transformed_parameters)
         self.node.transformed_return_type = json.dumps(transformed_return_type)
-    
+        self.node.timeout = self.timeout
         self.parameters = parameters
         self.arbiter_parameter = arbiter_parameter
         self.func = func
