@@ -6,6 +6,7 @@ from arbiter.task.tasks import (
     ArbiterSubscribeTask
 )
 
+
 class TaskRegister:
     
     def regist_task(self, task: ArbiterAsyncTask):
