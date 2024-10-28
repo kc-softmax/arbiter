@@ -17,12 +17,13 @@ OTEL_SERVER_URL = "http://localhost:4317"
 
 
 class TracerSingleton:
+
     _instance = None
-    _depth: dict[str, dict[str, any]] = {}
+    _depth: dict[str, dict[str, str]] = {}
 
     def __new__(cls, name: str = None, *, func: Callable[..., Any] = None):
         if func is None:
-            if name and not cls._depth.get(name):
+            if name and name not in cls._depth:
                 cls._depth[name] = {}
             return lambda func: cls(name=name, func=func)
 
@@ -30,20 +31,26 @@ class TracerSingleton:
             cls._instance = super(TracerSingleton, cls).__new__(cls)
             cls._instance._initialize_tracer()
 
+        if not name:
+            name = func.__name__
+
         if inspect.iscoroutinefunction(func):
             @functools.wraps(func)
             async def wrappers(*args, **kwargs):
-                if name is None:
-                    name = func.__name__
-                headers: dict[str, any] = cls._depth[name] if name and cls._depth.get(name) else {}
+                headers: dict[str, any] = cls._depth[name] if name and name in cls._depth else {}
                 context = extract(headers)
                 with cls._instance._tracer.start_as_current_span(name, context) as span:
                     span.add_event(func.__name__)
                     for key, value in kwargs.items():
                         span.set_attribute(key, value)
+
+                    # traceparent를 주입한다
                     inject(headers)
+
                     # inject 주입 후에 headers를 다시 갱신한다
-                    cls._depth[name].update(headers)
+                    if name in cls._depth:
+                        cls._depth[name].update(headers)
+
                     try:
                         res = await func(*args, **kwargs)
                         span.set_attribute("http.status", 200)
@@ -54,15 +61,21 @@ class TracerSingleton:
         else:
             @functools.wraps(func)
             def wrappers(*args, **kwargs):
-                headers: dict[str, any] = cls._depth[name] if name and cls._depth.get(name) else {}
+                headers: dict[str, any] = cls._depth[name] if name and name in cls._depth else {}
+                # traceparent를 추출한다
                 context = extract(headers)
                 with cls._instance._tracer.start_as_current_span(name, context) as span:
                     span.add_event(func.__name__)
                     for key, value in kwargs.items():
                         span.set_attribute(key, value)
+
+                    # traceparent를 주입한다
                     inject(headers)
+
                     # inject 주입 후에 headers를 다시 갱신한다
-                    cls._depth[name].update(headers)
+                    if name in cls._depth:
+                        cls._depth[name].update(headers)
+
                     try:
                         res = func(*args, **kwargs)
                         span.set_attribute("http.status", 200)
@@ -91,14 +104,14 @@ class TracerSingleton:
 # import asyncio
 
 
-# @TracerSingleton(name="hello")
+# @TracerSingleton(name="arbiter")
 # def hello(x: int, y: int):
 #     pass
 
 
-# @TracerSingleton(name="hello")
+# @TracerSingleton(name="arbiter")
 # async def main():
-#     hello(1, 2)
+#     hello(x=1, y=2)
 
 # if __name__ == '__main__':
 #     asyncio.run(main())
