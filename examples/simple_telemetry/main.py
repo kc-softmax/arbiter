@@ -33,6 +33,8 @@ class TracerSingleton:
         if inspect.iscoroutinefunction(func):
             @functools.wraps(func)
             async def wrappers(*args, **kwargs):
+                if name is None:
+                    name = func.__name__
                 headers: dict[str, any] = cls._depth[name] if name and cls._depth.get(name) else {}
                 context = extract(headers)
                 with cls._instance._tracer.start_as_current_span(name, context) as span:
