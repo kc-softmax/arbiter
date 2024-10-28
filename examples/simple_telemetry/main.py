@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import functools
 import inspect
+import asyncio
 
 from typing import Callable, Any
 
@@ -16,30 +19,50 @@ from opentelemetry.propagate import inject, extract
 OTEL_SERVER_URL = "http://localhost:4317"
 
 
-class TracerSingleton:
-
+class TracerRepositry:
+    
     _instance = None
     _depth: dict[str, dict[str, str]] = {}
+    
+    def __init__(self, name: str) -> None:
+        self.name = name
 
-    def __new__(cls, name: str = None, *, func: Callable[..., Any] = None):
-        if func is None:
-            if name and name not in cls._depth:
-                cls._depth[name] = {}
-            return lambda func: cls(name=name, func=func)
+    def _initialize_tracer(self):
+        # service name은 singleton으로 선언되어야한다
+        resource = Resource.create({SERVICE_NAME: "Arbiter"})
+        trace.set_tracer_provider(TracerProvider(resource=resource))
 
+        otlp_exporter = OTLPSpanExporter(endpoint=OTEL_SERVER_URL, insecure=True)
+        processor = BatchSpanProcessor(otlp_exporter)  # Trace Exporter
+        tracer_provider: TracerProvider = trace.get_tracer_provider()
+        tracer_provider.add_span_processor(processor)
+
+        # Tracer 인스턴스 생성
+        self._tracer = trace.get_tracer(__name__)
+
+    def __new__(cls, *args, **kwargs) -> TracerRepositry:
         if cls._instance is None:
-            cls._instance = super(TracerSingleton, cls).__new__(cls)
+            cls._instance = super(TracerRepositry, cls).__new__(cls)
             cls._instance._initialize_tracer()
+        return cls._instance
 
-        if not name:
-            name = func.__name__
+    def tracing(self, func: Callable[..., None] = None) -> Callable:
+
+        if self.name and self.name not in self._depth:
+            self._depth[self.name] = {}
+
+        if self.name is None:
+            self.name = func.__name__
+
+        span_name = func.__name__
 
         if inspect.iscoroutinefunction(func):
             @functools.wraps(func)
             async def wrappers(*args, **kwargs):
-                headers: dict[str, any] = cls._depth[name] if name and name in cls._depth else {}
+                headers: dict[str, any] = self._depth[self.name] if self.name and self.name in self._depth else {}
+                # traceparent를 추출한다
                 context = extract(headers)
-                with cls._instance._tracer.start_as_current_span(name, context) as span:
+                with self._tracer.start_as_current_span(span_name, context) as span:
                     span.add_event(func.__name__)
                     for key, value in kwargs.items():
                         span.set_attribute(key, value)
@@ -48,8 +71,8 @@ class TracerSingleton:
                     inject(headers)
 
                     # inject 주입 후에 headers를 다시 갱신한다
-                    if name in cls._depth:
-                        cls._depth[name].update(headers)
+                    if self.name in self._depth:
+                        self._depth[self.name].update(headers)
 
                     try:
                         res = await func(*args, **kwargs)
@@ -61,10 +84,9 @@ class TracerSingleton:
         else:
             @functools.wraps(func)
             def wrappers(*args, **kwargs):
-                headers: dict[str, any] = cls._depth[name] if name and name in cls._depth else {}
-                # traceparent를 추출한다
+                headers: dict[str, any] = self._depth[self.name] if self.name and self.name in self._depth else {}
                 context = extract(headers)
-                with cls._instance._tracer.start_as_current_span(name, context) as span:
+                with self._tracer.start_as_current_span(span_name, context) as span:
                     span.add_event(func.__name__)
                     for key, value in kwargs.items():
                         span.set_attribute(key, value)
@@ -73,8 +95,8 @@ class TracerSingleton:
                     inject(headers)
 
                     # inject 주입 후에 headers를 다시 갱신한다
-                    if name in cls._depth:
-                        cls._depth[name].update(headers)
+                    if self.name in self._depth:
+                        self._depth[self.name].update(headers)
 
                     try:
                         res = func(*args, **kwargs)
@@ -85,33 +107,26 @@ class TracerSingleton:
                 return res
         return wrappers
 
-    def _initialize_tracer(self):
-        resource = Resource.create({SERVICE_NAME: "trace_http_task"})
-        trace.set_tracer_provider(TracerProvider(resource=resource))
 
-        otlp_exporter = OTLPSpanExporter(endpoint=OTEL_SERVER_URL, insecure=True)
-        processor = BatchSpanProcessor(otlp_exporter)  # Trace Exporter
-        tracer_provider: TracerProvider = trace.get_tracer_provider()
-        tracer_provider.add_span_processor(processor)
+class SimpleTelemetry:
 
-        # Tracer 인스턴스 생성
-        self._tracer = trace.get_tracer(__name__)
-
-    def get_tracer(self):
-        return self._tracer
+    @staticmethod
+    def register_trace(name: str = None):
+        task = TracerRepositry(name=name)
+        def decorator(func):
+            return task.tracing(func)
+        return decorator
 
 
-# import asyncio
-
-
-# @TracerSingleton(name="arbiter")
-# def hello(x: int, y: int):
+# simple_telemetry = SimpleTelemetry()
+# @simple_telemetry.register_trace(name="arbiter")
+# def second(x: int, y: int):
 #     pass
 
 
-# @TracerSingleton(name="arbiter")
-# async def main():
-#     hello(x=1, y=2)
+# @simple_telemetry.register_trace(name="arbiter")
+# async def first():
+#     second(x=1, y=2)
 
 # if __name__ == '__main__':
-#     asyncio.run(main())
+#     asyncio.run(first())
