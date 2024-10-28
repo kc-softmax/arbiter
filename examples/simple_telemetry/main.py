@@ -1,4 +1,5 @@
 import functools
+import inspect
 
 from typing import Callable, Any
 
@@ -29,22 +30,44 @@ class TracerSingleton:
             cls._instance = super(TracerSingleton, cls).__new__(cls)
             cls._instance._initialize_tracer()
 
-        @functools.wraps(func)
-        async def wrappers(*args, **kwargs):
-            headers: dict[str, any] = cls._depth[name] if name and cls._depth.get(name) else {}
-            context = extract(headers)
-            with cls._instance._tracer.start_as_current_span(name, context) as span:
-                span.add_event(func.__name__)
-                inject(headers)
-                # inject 주입 후에 headers를 다시 갱신한다
-                cls._depth[name].update(headers)
-                try:
-                    res = await func(*args, **kwargs)
-                    span.set_attribute("http.status", 200)
-                except Exception as err:
-                    span.set_attribute("http.status", 500)
-                    raise err
-            return res
+        if inspect.iscoroutinefunction(func):
+            @functools.wraps(func)
+            async def wrappers(*args, **kwargs):
+                headers: dict[str, any] = cls._depth[name] if name and cls._depth.get(name) else {}
+                context = extract(headers)
+                with cls._instance._tracer.start_as_current_span(name, context) as span:
+                    span.add_event(func.__name__)
+                    for key, value in kwargs.items():
+                        span.set_attribute(key, value)
+                    inject(headers)
+                    # inject 주입 후에 headers를 다시 갱신한다
+                    cls._depth[name].update(headers)
+                    try:
+                        res = await func(*args, **kwargs)
+                        span.set_attribute("http.status", 200)
+                    except Exception as err:
+                        span.set_attribute("http.status", 500)
+                        raise err
+                return res
+        else:
+            @functools.wraps(func)
+            def wrappers(*args, **kwargs):
+                headers: dict[str, any] = cls._depth[name] if name and cls._depth.get(name) else {}
+                context = extract(headers)
+                with cls._instance._tracer.start_as_current_span(name, context) as span:
+                    span.add_event(func.__name__)
+                    for key, value in kwargs.items():
+                        span.set_attribute(key, value)
+                    inject(headers)
+                    # inject 주입 후에 headers를 다시 갱신한다
+                    cls._depth[name].update(headers)
+                    try:
+                        res = func(*args, **kwargs)
+                        span.set_attribute("http.status", 200)
+                    except Exception as err:
+                        span.set_attribute("http.status", 500)
+                        raise err
+                return res
         return wrappers
 
     def _initialize_tracer(self):
@@ -65,13 +88,15 @@ class TracerSingleton:
 
 # import asyncio
 
+
 # @TracerSingleton(name="hello")
-# async def hello(x: int, y: int):
+# def hello(x: int, y: int):
 #     pass
 
 
+# @TracerSingleton(name="hello")
 # async def main():
-#     await hello(1, 2)
+#     hello(1, 2)
 
 # if __name__ == '__main__':
 #     asyncio.run(main())
