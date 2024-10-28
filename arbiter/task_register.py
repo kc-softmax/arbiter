@@ -8,10 +8,10 @@ from arbiter.task.tasks import (
 
 
 class TaskRegister:
-    
+
     def regist_task(self, task: ArbiterAsyncTask):
         raise NotImplementedError("handle_task method must be implemented")
-    
+
     def async_task(
         self,
         queue: str = None,
