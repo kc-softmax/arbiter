@@ -32,6 +32,6 @@ async def get_history():
 if __name__ == '__main__':
     ArbiterRunner.run(
         app,
-        reload=False,
-        # repl=True
+        reload=True,
     )
+    

@@ -1,12 +1,18 @@
+import importlib
 import os
 import configparser
 import asyncio
 import inspect
+from pathlib import Path
+import pathlib
 import subprocess
 from functools import wraps, partial
+import sys
+from typing import Any
 from typer import Typer
 from mako.template import Template
 from arbiter.constants import PROJECT_NAME, CONFIG_FILE
+from arbiter.node import ArbiterNode
 from enum import Enum
 
 
@@ -157,3 +163,53 @@ class AsyncTyper(Typer):
     def command(self, *args, **kwargs):
         decorator = super().command(*args, **kwargs)
         return partial(self.maybe_run_async, decorator)
+
+def get_app(module: str, app: str = None) -> Any:
+    try:
+        module = importlib.import_module(module)
+    except ModuleNotFoundError as exc:
+        if exc.name != module:
+            raise exc from None
+        raise Exception(f"Could not import module {module}")
+
+    # app 이름이 주어지지 않았다면 혹은 공백 모듈 내의 ArbiterNode 인스턴스를 자동으로 찾는다
+    if not app:
+        # 모듈 내에서 FastAPI 인스턴스 자동 탐색
+        for name, obj in inspect.getmembers(module):
+            if isinstance(obj, ArbiterNode):  # ArbiterNode 인스턴스를 찾는다
+                return obj
+        raise Exception(f"No ArbiterNode instance found in module {module}")
+    
+    # app 이름이 주어졌을 때 해당 인스턴스를 가져온다
+    try:
+        instance = getattr(module, app)
+    except AttributeError:
+        raise Exception(f"app name '{app}' is not found in module {module}")
+
+    return instance
+
+def get_reload_dirs(module: str = None) -> list[Path]:
+    if not module:
+        reload_dirs = [Path(os.getcwd())]
+    else:
+        reload_dir = module.split(".")
+        reload_dir.pop()
+        reload_dir = f"{os.getcwd()}/" + ".".join(reload_dir)
+        reload_dirs = [Path(reload_dir)]
+    return reload_dirs
+
+def get_module_path_from_main():
+    # __main__ 모듈의 파일 경로 가져오기
+    main_module = sys.modules['__main__']
+    main_file = pathlib.Path(main_module.__file__).resolve()
+
+    # sys.path 에서 경로를 기반으로 모듈 경로 추출
+    for path in map(pathlib.Path, sys.path):
+        try:
+            relative_path = main_file.relative_to(path)
+            module_name = ".".join(relative_path.with_suffix("").parts)
+            return module_name
+        except ValueError:
+            # path 가 main_file과 연관이 없을 때 발생하는 예외
+            continue
+    return None

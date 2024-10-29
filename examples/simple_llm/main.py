@@ -102,6 +102,6 @@ async def send_llm_requset_to_workplace_safety(topic: str, content: str) -> str:
 if __name__ == '__main__':
     ArbiterRunner.run(
         app,
-        reload=False,
-        # repl=True
+        reload=True,
     )
+    
