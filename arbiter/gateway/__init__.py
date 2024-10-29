@@ -1,1 +1,129 @@
-from .app import ArbiterGateway
+    # def add_http_task_to_gateway(self, task_node: ArbiterTaskNode):
+    #     def get_task_node() -> ArbiterTaskNode:
+    #         # if task_node.state
+    #         return task_node
+        
+    #     def get_arbiter() -> Arbiter:
+    #         return self.arbiter
+
+    #     # TODO routing
+    #     path = f'/{task_node.queue}'
+        
+    #     parameters = json.loads(task_node.transformed_parameters)
+    #     assert isinstance(parameters, dict), "Parameters must be dict"
+    #     parameters = {
+    #         k: (restore_type(v), ...)
+    #         for k, v in parameters.items()
+    #     }
+    #     requset_model = create_model(task_node.name, **parameters)
+    #     return_type = restore_type(json.loads(task_node.transformed_return_type))
+
+    #     # find base model in parameters
+    #     is_post = True if parameters else False
+    #     for _, v in parameters.items():
+    #         if not issubclass(v[0], BaseModel):
+    #             is_post = False
+                
+    #     async def arbiter_task(
+    #         request: Request,
+    #         data: Type[BaseModel] = Depends(requset_model),  # 동적으로 생성된 Pydantic 모델 사용 # type: ignore
+    #         arbiter: Arbiter = Depends(get_arbiter),
+    #         task_node: ArbiterTaskNode = Depends(get_task_node),
+    #     ):
+    #         async def stream_response(
+    #             data: BaseModel,
+    #             arbiter: Arbiter,
+    #             task_node: ArbiterTaskNode,
+    #         ):
+    #             async def stream_response_generator(data_dict: dict[str, Any]):
+    #                 try:
+    #                     async for results in arbiter.async_stream(
+    #                         target=task_node.queue,
+    #                         timeout=task_node.timeout,
+    #                         **data_dict
+    #                     ):
+    #                         if isinstance(results, Exception):
+    #                             raise results
+    #                         if isinstance(results, BaseModel):
+    #                             yield results.model_dump_json()
+    #                         else:
+    #                             yield results
+    #                 except asyncio.CancelledError:
+    #                     pass
+    #                 except Exception as e:
+    #                     raise HTTPException(status_code=400, detail=f"Failed to get response {e}")
+    #             return StreamingResponse(stream_response_generator(data), media_type="application/json")
+            
+    #         data_dict: dict = data.model_dump()
+    #         if task_node.request:
+    #             request_data = {
+    #                 'client': request.client,
+    #                 'headers': request.headers,
+    #                 'cookies': request.cookies,
+    #                 'query_params': request.query_params,
+    #                 'path_params': request.path_params,
+    #             }
+    #             data_dict.update({'request': request_data})
+            
+    #         if task_node.stream:
+    #             return await stream_response(data_dict, arbiter, task_node)
+
+    #         try:
+    #             results = await arbiter.async_task(
+    #                 target=task_node.queue,
+    #                 timeout=task_node.timeout,
+    #                 **data_dict)
+    #             # TODO 어디에서 에러가 생기든, results 받아온다.
+    #             if isinstance(results, Exception):
+    #                 raise results
+                
+    #             # TODO temp, 추후 수정 필요
+    #             if task_node.file:
+    #                 if isinstance(results, tuple) or isinstance(results, list):
+    #                     filename, file = results
+    #                 else:
+    #                     file = results
+    #                     # get file extension
+    #                     filename = uuid.uuid4().hex
+    #                 # filename, file = results
+    #                 file_like = io.BytesIO(file)
+    #                 headers = {
+    #                     "Content-Disposition": f"attachment; filename={filename}",
+    #                     }
+    #                 return StreamingResponse(file_like, media_type="application/octet-stream", headers=headers)
+    #             if isinstance(results, BaseModel):
+    #                 return results.model_dump()                
+    #             return results
+    #         except TaskBaseError as e:
+    #             raise e
+    #         except Exception as e:
+    #             raise HTTPException(status_code=400, detail=f"Failed to get response {e}")
+
+    #     if is_post:
+    #         self.gateway.router.post(
+    #             path,
+    #             response_model=return_type
+    #         )(arbiter_task)
+    #     else:
+    #         self.gateway.router.get(
+    #             path,
+    #             response_model=return_type
+    #         )(arbiter_task)
+
+    # # config = uvicorn.Config("main:app", port=5000, log_level="info")
+    # # server = uvicorn.Server(config)
+    # # server.run()        
+
+    # # def start_gateway(self, shutdown_event: asyncio.Event) -> asyncio.Task:
+    # #     async def _gateway_loop():
+    # #         while not shutdown_event.is_set():
+    # #             for http_task in self.registry.all_active_http_tasks:
+    # #                 self.add_http_task_to_gateway(http_task)
+    # #             self.registry.http_reload = False
+    # #             self.gateway_server.should_exit = False
+    # #             self.gateway_server.run()
+    # #             await self.gateway_server.serve()
+    # #             # TODO 1초면 종료 다 할 수 있나? 다른 
+    # #             await asyncio.sleep(1)
+    # #     return asyncio.create_task(_gateway_loop())
+    

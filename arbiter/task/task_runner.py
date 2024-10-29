@@ -18,18 +18,39 @@ class AribterTaskNodeRunner:
         assert self.node is not None, "Node is not set, please set the node before running the service."
         return self.node.node_id
     
-    async def on_init(self, event_queue: multiprocessing.Queue):
+    async def on_init(
+        self,
+        event_queue: multiprocessing.Queue,
+        *args,
+        **kwargs
+    ):
         event_queue.put(self.node)
     
-    async def on_start(self, event_queue: multiprocessing.Queue):
+    async def on_start(
+        self, 
+        event_queue: multiprocessing.Queue,
+        *args,
+        **kwargs
+    ):
         self.node.state = NodeState.ACTIVE
         event_queue.put(self.node.get_node_info())
 
-    async def on_shutdown(self, event_queue: multiprocessing.Queue):
+    async def on_shutdown(
+        self,
+        event_queue: multiprocessing.Queue,
+        *args,
+        **kwargs
+    ):
         self.node.state = NodeState.STOPPED
         event_queue.put(self.node.get_node_info())
 
-    async def on_error(self, error: Exception, event_queue: multiprocessing.Queue):
+    async def on_error(
+        self, 
+        error: Exception,
+        event_queue: multiprocessing.Queue,
+        *args,
+        **kwargs
+    ):
         print("Error in runnig process", error)
         self.node.state = NodeState.STOPPED
         event_queue.put(self.node.get_node_info())
@@ -68,11 +89,14 @@ class AribterTaskNodeRunner:
         event: Event,
         arbiter_config: ArbiterConfig,
         health_check_interval: int,
-        task_close_timeout,
         *args,
         **kwargs
     ):
         try:
+            if _task_close_timeout := kwargs.get("task_close_timeout", None):
+                task_close_timeout = _task_close_timeout
+            else:
+                task_close_timeout = arbiter_config.default_task_close_timeout
             self.arbiter = Arbiter(arbiter_config)
             await self.arbiter.connect()
             loop = asyncio.get_event_loop()
@@ -89,7 +113,6 @@ class AribterTaskNodeRunner:
                 executor = asyncio.create_task(task(self.arbiter))
                 await self.on_start(event_queue)
                 await health_checker
-                # await asyncio.gather(health_checker, executor)
                 if executor:
                     executor.cancel()
                     try:

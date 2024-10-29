@@ -76,7 +76,6 @@ class ArbiterNode(TaskRegister):
         self.log_level = log_level
         self.log_format = log_format
 
-        self.internal_shutdown_event = asyncio.Event()
         self.ready_to_listen_external_event = asyncio.Event()
         self.arbiter = Arbiter(arbiter_config)
         self.registry: Registry = Registry()
@@ -87,12 +86,10 @@ class ArbiterNode(TaskRegister):
         
         self._internal_health_check_queue: MPQueue = MPQueue()
         self._internal_event_queue: MPQueue = MPQueue()
-        self._deafult_tasks: list[ArbiterAsyncTask] = []
 
     def clear(self):
         self.registry.clear()
         self._arbiter_processes.clear()
-        self.internal_shutdown_event.clear()
         self.ready_to_listen_external_event.clear()
 
     @property
@@ -101,134 +98,6 @@ class ArbiterNode(TaskRegister):
     
     def regist_task(self, task: ArbiterAsyncTask):
         self._tasks.append(task)
-        
-    def start_gateway(self, shutdown_event: asyncio.Event) -> asyncio.Task:
-        async def _gateway_loop():
-            while not shutdown_event.is_set():
-                for http_task in self.registry.all_active_http_tasks:
-                    self.add_http_task_to_gateway(http_task)
-                self.registry.http_reload = False
-                self.gateway_server.should_exit = False
-                await self.gateway_server.serve()
-                # TODO 1초면 종료 다 할 수 있나? 다른 
-                await asyncio.sleep(1)
-        return asyncio.create_task(_gateway_loop())
-    
-    def stop_gateway(self):
-        if self.gateway_server:
-            self.gateway_server.should_exit = True
-
-    def add_http_task_to_gateway(self, task_node: ArbiterTaskNode):
-        def get_task_node() -> ArbiterTaskNode:
-            # if task_node.state
-            return task_node
-        
-        def get_arbiter() -> Arbiter:
-            return self.arbiter
-
-        # TODO routing
-        path = f'/{task_node.queue}'
-        
-        parameters = json.loads(task_node.transformed_parameters)
-        assert isinstance(parameters, dict), "Parameters must be dict"
-        parameters = {
-            k: (restore_type(v), ...)
-            for k, v in parameters.items()
-        }
-        requset_model = create_model(task_node.name, **parameters)
-        return_type = restore_type(json.loads(task_node.transformed_return_type))
-
-        # find base model in parameters
-        is_post = True if parameters else False
-        for _, v in parameters.items():
-            if not issubclass(v[0], BaseModel):
-                is_post = False
-                
-        async def arbiter_task(
-            request: Request,
-            data: Type[BaseModel] = Depends(requset_model),  # 동적으로 생성된 Pydantic 모델 사용 # type: ignore
-            arbiter: Arbiter = Depends(get_arbiter),
-            task_node: ArbiterTaskNode = Depends(get_task_node),
-        ):
-            async def stream_response(
-                data: BaseModel,
-                arbiter: Arbiter,
-                task_node: ArbiterTaskNode,
-            ):
-                async def stream_response_generator(data_dict: dict[str, Any]):
-                    try:
-                        async for results in arbiter.async_stream(
-                            target=task_node.queue,
-                            timeout=task_node.timeout,
-                            **data_dict
-                        ):
-                            if isinstance(results, Exception):
-                                raise results
-                            if isinstance(results, BaseModel):
-                                yield results.model_dump_json()
-                            else:
-                                yield results
-                    except asyncio.CancelledError:
-                        pass
-                    except Exception as e:
-                        raise HTTPException(status_code=400, detail=f"Failed to get response {e}")
-                return StreamingResponse(stream_response_generator(data), media_type="application/json")
-            
-            data_dict: dict = data.model_dump()
-            if task_node.request:
-                request_data = {
-                    'client': request.client,
-                    'headers': request.headers,
-                    'cookies': request.cookies,
-                    'query_params': request.query_params,
-                    'path_params': request.path_params,
-                }
-                data_dict.update({'request': request_data})
-            
-            if task_node.stream:
-                return await stream_response(data_dict, arbiter, task_node)
-
-            try:
-                results = await arbiter.async_task(
-                    target=task_node.queue,
-                    timeout=task_node.timeout,
-                    **data_dict)
-                # TODO 어디에서 에러가 생기든, results 받아온다.
-                if isinstance(results, Exception):
-                    raise results
-                
-                # TODO temp, 추후 수정 필요
-                if task_node.file:
-                    if isinstance(results, tuple) or isinstance(results, list):
-                        filename, file = results
-                    else:
-                        file = results
-                        # get file extension
-                        filename = uuid.uuid4().hex
-                    # filename, file = results
-                    file_like = io.BytesIO(file)
-                    headers = {
-                        "Content-Disposition": f"attachment; filename={filename}",
-                        }
-                    return StreamingResponse(file_like, media_type="application/octet-stream", headers=headers)
-                if isinstance(results, BaseModel):
-                    return results.model_dump()                
-                return results
-            except TaskBaseError as e:
-                raise e
-            except Exception as e:
-                raise HTTPException(status_code=400, detail=f"Failed to get response {e}")
-
-        if is_post:
-            self.gateway.router.post(
-                path,
-                response_model=return_type
-            )(arbiter_task)
-        else:
-            self.gateway.router.get(
-                path,
-                response_model=return_type
-            )(arbiter_task)
 
     def create_local_registry(self):
         # 자신의 registry는 local_node로 관리한다
@@ -263,6 +132,7 @@ class ArbiterNode(TaskRegister):
                 )
                 process.start()
                 self._arbiter_processes[task.node.node_id] = (process, event)
+                           
         except Exception as e:
             await self._warp_in_queue.put(
                 (WarpInTaskResult.FAIL,
@@ -293,6 +163,7 @@ class ArbiterNode(TaskRegister):
                 break
 
         self.ready_to_listen_external_event.set()
+
 
         # 처음에 노드의 모든 정보를 보낸다
         # task가 정상/비정상이든 일단 보낸다
@@ -431,9 +302,7 @@ class ArbiterNode(TaskRegister):
                 )
         except (Exception, TimeoutError) as err:
             print("failed internal health check", err)
-            self.internal_shutdown_event.set()
         finally:
-            self.stop_gateway()
             shutdown_event.set()
 
     async def gateway_event(self, shutdown_event: asyncio.Event):
@@ -441,13 +310,11 @@ class ArbiterNode(TaskRegister):
             await self.ready_to_listen_external_event.wait()
             while not shutdown_event.is_set():
                 if self.registry.http_reload:
-                    self.stop_gateway()                    
+                    pass
                 await asyncio.sleep(self.node_config.gateway_health_check_interval)
         except Exception as err:
             print("failed gateway event", err)
-            self.internal_shutdown_event.set()
         finally:
-            self.stop_gateway()
             shutdown_event.set()
 
     async def external_health_check(self, shutdown_event: asyncio.Event):
@@ -474,9 +341,7 @@ class ArbiterNode(TaskRegister):
                 await asyncio.sleep(self.node_config.external_health_check_interval)
         except Exception as err:
             print('failed external health check', err)
-            self.internal_shutdown_event.set()
         finally:
-            self.stop_gateway()
             shutdown_event.set()
 
     async def external_node_event(self, shutdown_event: asyncio.Event):
@@ -522,7 +387,5 @@ class ArbiterNode(TaskRegister):
 
         except Exception as err:
             print("failed external node event", err)
-            self.internal_shutdown_event.set()
         finally:
-            self.stop_gateway()
             shutdown_event.set()

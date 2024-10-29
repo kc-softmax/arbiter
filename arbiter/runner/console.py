@@ -21,11 +21,9 @@ class ArbiterConsole(code.InteractiveConsole):
         super().__init__()
         print("Welcome to ArbiterConsole! Custom Interactive Python Console.")
         
-
-
     async def check_shutdown_event(self):
         # shutdown_event가 set되면 session의 prompt를 강제 종료
-        await self.shutdown_event.wait()
+        self.shutdown_event.wait()
         if self.session.app.is_running:
             self.session.app.exit()  # 이 부분이 session.prompt() 대기를 깨울 수 있음
 
@@ -56,6 +54,7 @@ class ArbiterConsole(code.InteractiveConsole):
             return asyncio.run(self.run_arbiter_task(source.strip()))
         if source == "exit()":
             self.shutdown_event.set()
+            print("Exiting ArbiterConsole...")
             return True
         return super().runsource(source, filename, symbol)
     
