@@ -141,13 +141,7 @@ class ArbiterNode(TaskRegister):
                 (WarpInTaskResult.FAIL,
                  f"{WarpInPhase.PREPARATION.name}...service {task.queue} failed to start"))
             return
-        
-        await self._external_broadcast_queue.put((
-            ExternalEvent(
-                event=ExternalNodeEvent.NODE_CONNECT,
-                data=self.registry.local_node,
-            ), False))
-        
+                
         await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.PREPARATION.name}...ok"))
         
         return
@@ -168,15 +162,23 @@ class ArbiterNode(TaskRegister):
                     WarpInTaskResult.FAIL,
                     f"{WarpInPhase.INITIATION.name} some task didn't launched"))
                 return
-        self.ready_to_listen_external_event.set()
         # 처음에 노드의 모든 정보를 보낸다
         # task가 정상/비정상이든 일단 보낸다 deprecated
-        # task로부터 state 혹은 parameter가 업데이트되면 다시 보내서 peer node가 업데이트 할 수 있도록 한다        
+        # task로부터 state 혹은 parameter가 업데이트되면 다시 보내서 peer node가 업데이트 할 수 있도록 한다
+        self.ready_to_listen_external_event.set()
+
+        await self._external_broadcast_queue.put((
+            ExternalEvent(
+                event=ExternalNodeEvent.NODE_CONNECT,
+                data=self.registry.local_node,
+            ), False))
+ 
         await self._external_broadcast_queue.put((
             ExternalEvent(
                 event=ExternalNodeEvent.TASK_UPDATE,
                 data=get_active_tasks(),
             ), True))
+        
         await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.INITIATION.name}...ok"))
        
     async def _disappearance_task(self):
@@ -402,6 +404,7 @@ class ArbiterNode(TaskRegister):
                 if event.peer_node_id == self.registry.local_node.get_id():
                     # ignore local node
                     continue
+                
                 match event.event:
                     case ExternalNodeEvent.NODE_CONNECT:
                         """It will execute when first connect with same broker"""
@@ -415,7 +418,7 @@ class ArbiterNode(TaskRegister):
                                 event=ExternalNodeEvent.NODE_CONNECT,
                                 data=self.registry.local_task_node
                             )))
-                        print("connected peer node", event.peer_node_id)
+                        # print("connected peer node", event.peer_node_id)
                     case ExternalNodeEvent.NODE_UPDATE:
                         # RAW NODE INFO 
                         pass
