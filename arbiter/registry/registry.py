@@ -44,8 +44,6 @@ class Registry:
         self.task_nodes.local_node = value
     
     def update_health_signal(self, node_id: str) -> None:
-        # if node_id not in self.node_health:
-        #     print(f"Node {node_id} is registered")
         self.node_health[node_id] = time.time()
     
     def check_node_healths(self, timeout: int) -> bool:
