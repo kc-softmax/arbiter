@@ -1,48 +1,43 @@
 from __future__ import annotations
 import asyncio
-import io
-import json
-import time
-import uuid
 import uvicorn
 import pickle
 import timeit
+from dataclasses import dataclass
+from fastapi import FastAPI
 from multiprocessing import Queue as MPQueue
-from multiprocessing import Event
-from multiprocessing import Process
-# from aiomultiprocess import Process
-from multiprocessing.synchronize import Event as EventType
+from multiprocessing import Event, Process
+from multiprocessing.synchronize import Event as MPEvent
 from contextlib import asynccontextmanager
 from warnings import warn
-from typing import (
-    AsyncGenerator,
-    Callable,
-    Type,
-    Any
-)
-from pydantic import create_model, BaseModel
-from fastapi.responses import StreamingResponse
-from fastapi import FastAPI, Depends, HTTPException, Request
+from typing import AsyncGenerator
 from arbiter import Arbiter
-from arbiter.exceptions import TaskBaseError
 from arbiter.registry import Registry
 from arbiter.data.models import (
     ArbiterNode as ArbiterNodeModel,
     ArbiterTaskNode,
 )
 from arbiter.enums import (
+    ExternalNodeEvent,
     WarpInTaskResult,
     WarpInPhase,
     NodeState,
 )
 from arbiter.task_register import TaskRegister
 from arbiter.configs import ArbiterNodeConfig, ArbiterConfig
-from arbiter.task import ArbiterAsyncTask, ArbiterHttpTask
+from arbiter.task import ArbiterAsyncTask
 from arbiter.task_register import TaskRegister
-from arbiter.utils import restore_type
+from arbiter.constants import EXTERNAL_EVENT_SUBJECT
+from arbiter.utils import check_queue_and_exit
 
-ArbiterProcess = tuple[Process, EventType]
-ExternalMessage = str | ArbiterNodeModel | dict[str, ArbiterNodeModel | ArbiterTaskNode] | list[ArbiterTaskNode]
+ArbiterProcess = tuple[Process, MPEvent]
+
+@dataclass
+class ExternalEvent:
+    event: ExternalNodeEvent
+    peer_node_id: str | None = None
+    data: ArbiterNodeModel | ArbiterTaskNode | None = None
+
 
 class ArbiterNode(TaskRegister):
     
@@ -75,26 +70,34 @@ class ArbiterNode(TaskRegister):
         
         self.log_level = log_level
         self.log_format = log_format
-
+        
+        self.is_alive_event = asyncio.Event()
         self.ready_to_listen_external_event = asyncio.Event()
         self.arbiter = Arbiter(arbiter_config)
         self.registry: Registry = Registry()
 
         self._tasks: list[ArbiterAsyncTask] = []
         self._warp_in_queue: asyncio.Queue = asyncio.Queue()
-        self._arbiter_processes: dict[str, ArbiterProcess] = {}
+        self._external_broadcast_queue: asyncio.Queue[tuple[ExternalEvent, bool]] = asyncio.Queue()
+        self._external_emit_queue: asyncio.Queue[tuple[str, ExternalEvent]] = asyncio.Queue()
         
+        self._arbiter_processes: dict[str, ArbiterProcess] = {}
+
         self._internal_health_check_queue: MPQueue = MPQueue()
         self._internal_event_queue: MPQueue = MPQueue()
 
-    def clear(self):
-        self.registry.clear()
-        self._arbiter_processes.clear()
-        self.ready_to_listen_external_event.clear()
 
     @property
     def name(self) -> str:
         return self.arbiter.arbiter_config.name
+    
+    @property
+    def node_id(self) -> str:
+        return self.registry.local_node.get_id()
+
+    def clear(self):
+        self.registry.clear()
+        self._arbiter_processes.clear()
     
     def regist_task(self, task: ArbiterAsyncTask):
         self._tasks.append(task)
@@ -131,61 +134,55 @@ class ArbiterNode(TaskRegister):
                     )
                 )
                 process.start()
-                self._arbiter_processes[task.node.node_id] = (process, event)
-                           
+                self.registry.create_local_task_node(task.node)
+                self._arbiter_processes[task.node.node_id] = (process, event)            
         except Exception as e:
             await self._warp_in_queue.put(
                 (WarpInTaskResult.FAIL,
                  f"{WarpInPhase.PREPARATION.name}...service {task.queue} failed to start"))
             return
+        
+        await self._external_broadcast_queue.put((
+            ExternalEvent(
+                event=ExternalNodeEvent.NODE_CONNECT,
+                data=self.registry.local_node,
+            ), False))
+        
         await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.PREPARATION.name}...ok"))
+        
         return
 
     async def _initialize_task(self):
-        """
-            WarpInPhase Arbiter initialization
-        """
-
-        # initialize된 상태에 대해 어떻게 할 것인가?
-        # node를 초기화한다
-        # task node에 대한 health check를 모두 통과해야한다
-        self.create_local_registry()
-
-        # 문제가있는 task는 버리고 갈지 에러를 낼지 생각해봐야한다
+        def get_active_tasks() -> list[ArbiterTaskNode]:
+            return [
+                node 
+                for node in self.registry.local_task_node
+                if node.state == NodeState.ACTIVE
+            ]
         start = timeit.default_timer()
-        while len(self._tasks) != len(self.registry.local_task_node):
+        while len(self._tasks) != len(get_active_tasks()):
             await asyncio.sleep(0.01)
             # start_phase에서 발생하는 에러를 피하기 위해 타임아웃을 더 작게 설정한다(이후에 task 상태가 변할 수 있기 때문)
             if timeit.default_timer() - start >= self.node_config.initialization_timeout - 1:
                 self._warp_in_queue.put_nowait((
                     WarpInTaskResult.FAIL,
                     f"{WarpInPhase.INITIATION.name} some task didn't launched"))
-                break
-
+                return
         self.ready_to_listen_external_event.set()
-
-
         # 처음에 노드의 모든 정보를 보낸다
-        # task가 정상/비정상이든 일단 보낸다
-        # task로부터 state 혹은 parameter가 업데이트되면 다시 보내서 peer node가 업데이트 할 수 있도록 한다
-        await self.arbiter.broker.broadcast(
-            "ARBITER.NODE",
-            self.registry.raw_node_info,
-            "NODE_CONNECT"
-        )
+        # task가 정상/비정상이든 일단 보낸다 deprecated
+        # task로부터 state 혹은 parameter가 업데이트되면 다시 보내서 peer node가 업데이트 할 수 있도록 한다        
+        await self._external_broadcast_queue.put((
+            ExternalEvent(
+                event=ExternalNodeEvent.TASK_UPDATE,
+                data=get_active_tasks(),
+            ), True))
         await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.INITIATION.name}...ok"))
-        self.gateway_reload = True
        
     async def _disappearance_task(self):
         """
             WarpInPhase Arbiter DISAPPEARANCE
-            stop all web service with ternimate gunicorn process
-            
-            if master
-                broadcast shutdown message to all nodes
-            broadcast shutdown message to all services in node
-            check database            
-        """
+        """       
         for service_node_id, (process, event) in self._arbiter_processes.items():
             if process.is_alive():
                 event.set()
@@ -205,7 +202,7 @@ class ArbiterNode(TaskRegister):
             warn('Warp In Queue is not empty')
             # remove all messages in the queue
             while not self._warp_in_queue.empty():
-                data = self._warp_in_queue.get_nowait()
+                data = await self._warp_in_queue.get()
                 print(data)
         match phase:
             case WarpInPhase.PREPARATION:
@@ -234,59 +231,77 @@ class ArbiterNode(TaskRegister):
     @asynccontextmanager
     async def warp_in(
         self,
-        shutdown_event: asyncio.Event,
+        shutdown_event: MPEvent,
     ) -> AsyncGenerator[ArbiterNode, Exception]:
         """
             Connect to Arbiter
             Create Master Node or Replica Node
         """
         await self.arbiter.connect()
+        self.create_local_registry()
         """ 
             Finish the static preparation
             and prepare for the dynamic preparation
             we called it "WarpIn"
         """
-        if self.gateway:
-            gateway_event = asyncio.create_task(self.gateway_event(shutdown_event))
-        else:
-            gateway_event = None
 
-        external_node_event = asyncio.create_task(self.external_node_event(shutdown_event))
+        external_broadcast_task = asyncio.create_task(self.external_broadcast_task())
+        external_emit_task = asyncio.create_task(self.external_emit_task())
+        external_node_event = asyncio.create_task(self.external_node_event())
+        external_event_listener = asyncio.create_task(self.external_event_listener(shutdown_event))
         external_health_check = asyncio.create_task(self.external_health_check(shutdown_event))
-
+        
         loop = asyncio.get_running_loop()
         internal_health_check = loop.run_in_executor(None, self.internal_health_check, shutdown_event)
         internal_event = loop.run_in_executor(None, self.internal_event, shutdown_event)
+
         try:
             yield self
         except Exception as e:
             # TODO logging
             print("Raise error in warp - in", e)
         finally:
-            await self.arbiter.broker.broadcast(
-                "ARBITER.NODE",
-                self.registry.local_node.get_id(),
-                "NODE_DISCONNECT")
-            await asyncio.to_thread(self._internal_health_check_queue.put, obj="exit")
-            gateway_event and gateway_event.cancel()
-            internal_health_check.cancel()
-            internal_event.cancel()
+            await self._external_broadcast_queue.put((
+                ExternalEvent(
+                    event=ExternalNodeEvent.NODE_DISCONNECT), False))
+            if not await check_queue_and_exit(
+                self._external_broadcast_queue, 
+                self.node_config.disappearance_timeout):
+                # TODO logging
+                print("Failed to empty broadcast queue")
+            
+            if not await check_queue_and_exit(
+                self._external_emit_queue, 
+                self.node_config.disappearance_timeout):
+                print("Failed to empty emit queue")
+
+            shutdown_event.set()
+
+            external_broadcast_task.cancel()
+            external_emit_task.cancel()            
+            external_event_listener.cancel()
             external_node_event.cancel()
             external_health_check.cancel()
+            await asyncio.to_thread(self._internal_health_check_queue.put, obj="exit")
+            internal_health_check.cancel()
+            internal_event.cancel()
             self.clear()            
+            
             self.arbiter and await self.arbiter.disconnect()
 
-    def internal_event(self, shutdown_event: asyncio.Event):
+    def internal_event(self, shutdown_event: MPEvent):
+        """
+        NODE 와 TASK NODE와 통신하는 내부 이벤트 큐
+        internal_event_timeout은 sleep 효과를 주기 위해 사용한다
+        따로 종료 이벤트가 없다.
+        """
         while not shutdown_event.is_set():
             try:
-                node_info: ArbiterTaskNode | dict[str, str] = self._internal_event_queue.get(
+                node_info: dict[str, str] = self._internal_event_queue.get(
                     timeout=self.node_config.internal_event_timeout)
-                target = "ARBITER.NODE"
-                
-                if isinstance(node_info, ArbiterTaskNode):
-                    self.registry.create_local_task_node(node_info)
-                else:
-                    self.registry.update_local_task_node(node_info)
+                          
+                self.registry.update_local_task_node(node_info)
+                # print("internal event", node_info)
                 # TODO broadcast to all nodes
                 # update task node state or create task node
                 # if create task node, and has gateway, then add to gateway
@@ -294,7 +309,11 @@ class ArbiterNode(TaskRegister):
             except Exception as err:
                 """ignore timeout error"""
 
-    def internal_health_check(self, shutdown_event: asyncio.Event):
+    def internal_health_check(self, shutdown_event: MPEvent):
+        """
+        NODE 에서 하위 TASK NODE의 HEALTH CHECK를 수행한다
+        현재 NODE에서 동작하고 있는 TASK NODE가 없다면, 현재는 스스로 종료하게 한다.
+        """
         try:
             while not shutdown_event.is_set():
                 receive = self._internal_health_check_queue.get(
@@ -303,89 +322,125 @@ class ArbiterNode(TaskRegister):
         except (Exception, TimeoutError) as err:
             print("failed internal health check", err)
         finally:
-            shutdown_event.set()
+            self.is_alive_event.set()
 
-    async def gateway_event(self, shutdown_event: asyncio.Event):
-        try:
-            await self.ready_to_listen_external_event.wait()
-            while not shutdown_event.is_set():
-                if self.registry.http_reload:
-                    pass
-                await asyncio.sleep(self.node_config.gateway_health_check_interval)
-        except Exception as err:
-            print("failed gateway event", err)
-        finally:
-            shutdown_event.set()
-
-    async def external_health_check(self, shutdown_event: asyncio.Event):
-        try:
-            await self.ready_to_listen_external_event.wait()
+    async def external_broadcast_task(self):
+        while True:
+            event, reply = await self._external_broadcast_queue.get()
+            event.peer_node_id = self.registry.local_node.get_id()
+            await self.arbiter.broker.broadcast(
+                EXTERNAL_EVENT_SUBJECT,
+                event,
+                event.peer_node_id if reply else None)
+            self._external_broadcast_queue.task_done()
     
+    async def external_emit_task(self):
+        while True:
+            target, event = await self._external_emit_queue.get()
+            event.peer_node_id = self.registry.local_node.get_id()
+            await self.arbiter.broker.emit(target, event)
+            self._external_emit_queue.task_done()
+
+    async def external_event_listener(
+        self, 
+        shutdown_event: MPEvent
+    ):
+        try:
+            async for reply, event in self.arbiter.broker.subscribe_listen(self.registry.local_node.get_id()):
+                # 만약 종료하라고 메세지가 온다면..?
+                # add node to registry
+                if not event:
+                    continue
+                event: ExternalEvent = pickle.loads(event)
+                match event.event:
+                    case ExternalNodeEvent.NODE_CONNECT:
+                        """It will execute when first connect with same broker"""
+                        if self.registry.get_node(event.peer_node_id):
+                            print("already connected peer node", event.peer_node_id)
+                            continue
+                        self.registry.register_node(event.data)
+                    case ExternalNodeEvent.TASK_UPDATE:
+                        self.registry.register_task_node(event.peer_node_id, event.data)
+                    case _:
+                        # unknown event
+                        raise ValueError(f"Unknown ExternalNodeEvenType {event.event}")                    
+        except Exception as err:
+            print("failed external event listener", err)
+        finally:
+            self.is_alive_event.set()
+        
+    async def external_health_check(self, shutdown_event: MPEvent):
+        try:
+            await self.ready_to_listen_external_event.wait()
             while not shutdown_event.is_set():
                 # local registry가 생성된 후 부터 health check가 되어야한다
-                # if self.registry.local_node:
-                await self.arbiter.broker.broadcast(
-                    "ARBITER.NODE", 
-                    self.registry.local_node.get_id(),
-                    "NODE_HEALTH")
-
-                # validate check node
+                await self._external_broadcast_queue.put((
+                    ExternalEvent(event=ExternalNodeEvent.NODE_HEALTH_CHECK)
+                    , False))
                 failed_node_ids = self.registry.check_node_healths(
                     self.node_config.external_health_check_timeout
                 )
-
                 if failed_node_ids:
-                    # check gateway need to reload
-                    self.gateway_reload = True
-                
+                    pass
+                    # print("failed node ids", failed_node_ids)
+                    # # get current task queue
+                    
+                #     # check gateway need to reload
                 await asyncio.sleep(self.node_config.external_health_check_interval)
         except Exception as err:
             print('failed external health check', err)
         finally:
-            shutdown_event.set()
+            self.is_alive_event.set()
 
-    async def external_node_event(self, shutdown_event: asyncio.Event):
+    async def external_node_event(self):
         try:
             await self.ready_to_listen_external_event.wait()
-
-            subject = "ARBITER.NODE"
              # TODO udpate subscribe_listen, for other brokers
-            async for reply, message in self.arbiter.broker.listen(subject):
+            async for reply, event in self.arbiter.broker.subscribe_listen(EXTERNAL_EVENT_SUBJECT):
                 # node_id 혹은 node 임시이기 때문에 정해야한다
-                node: ExternalMessage = pickle.loads(message)
-                match reply:
-                    case "NODE_CONNECT":
+                event: ExternalEvent = pickle.loads(event)   
+                if event.peer_node_id == self.registry.local_node.get_id():
+                    # ignore local node
+                    continue
+                match event.event:
+                    case ExternalNodeEvent.NODE_CONNECT:
                         """It will execute when first connect with same broker"""
-                        arbiter_node = node['node']
-                        task_nodes = node['task']
-                        peer_node_id = arbiter_node.get_id()
-                        local_node_id = self.registry.local_node.get_id()
-                        # 이미 등록된 노드가 아니고, 자신의 노드가 아닌 경우에만 등록한다
-                        if not self.registry.get_node(peer_node_id) and peer_node_id != local_node_id:
-                            self.registry.register_node(arbiter_node)
-                            self.registry.register_task_node(peer_node_id, task_nodes)
-                            # Peer Node에게도 나의 node 정보를 보내줘야한다
-                            await self.arbiter.broker.broadcast(subject, self.registry.raw_node_info, "NODE_CONNECT")
-                            self.gateway_reload = True
-                            print("connected peer node", peer_node_id)
-                    case "NODE_UPDATE":
-                        """reload app, cover over exist peer id node info"""
-                        self.gateway_reload = True
-                    case "TASK_UPDATE":
-                        # print("update peer task node -", node)
-                        for _node in node:
-                            self.registry.register_task_node(_node.get_id(), _node)
-                        self.gateway_reload = True
-                        """receive task node, cover over exist peer id task node info"""
-                    case "NODE_HEALTH":
-                        peer_node_id = node
-                        self.registry.update_health_signal(peer_node_id)
-                    case "NODE_DISCONNECT":
+                        if self.registry.get_node(event.peer_node_id):
+                            print("already connected peer node", event.peer_node_id)
+                            continue
+                        self.registry.register_node(event.data)
+                        reply and await self._external_emit_queue.put((
+                            reply,
+                            ExternalEvent(
+                                event=ExternalNodeEvent.NODE_CONNECT,
+                                data=self.registry.local_task_node
+                            )))
+                        print("connected peer node", event.peer_node_id)
+                    case ExternalNodeEvent.NODE_UPDATE:
+                        # RAW NODE INFO 
+                        pass
+                    case ExternalNodeEvent.NODE_HEALTH_CHECK:
+                        self.registry.update_health_signal(event.peer_node_id)
+                    case ExternalNodeEvent.NODE_DISCONNECT:
                         """remove registry"""
-                        self.registry.failed_health_signal(node)
-                        print("disconnected peer node -", node)
-
+                        self.registry.failed_health_signal(event.peer_node_id)
+                        pass
+                    case ExternalNodeEvent.TASK_UPDATE:
+                        # currently, for task node update
+                        # overwrite task node
+                        self.registry.register_task_node(event.peer_node_id, event.data)
+                        reply and await self._external_emit_queue.put((
+                            reply,
+                            ExternalEvent(
+                                event=ExternalNodeEvent.TASK_UPDATE,
+                                data=self.registry.local_task_node)))
+                    case ExternalNodeEvent.TASK_STATE_UPDATE:
+                        pass
+                    case _:
+                        # unknown event
+                        raise ValueError(f"Unknown ExternalNodeEvenType {event.event}")                    
+                
         except Exception as err:
             print("failed external node event", err)
         finally:
-            shutdown_event.set()
+            self.is_alive_event.set()

@@ -35,6 +35,15 @@ from typing import (
 from arbiter.constants import ALLOWED_TYPES
 from arbiter.parser import pydantic_from_schema
 
+async def check_queue_and_exit(queue: asyncio.Queue, timeout: int = 5) -> bool:
+    try:
+        # 5초 동안 queue가 비워지길 기다립니다.
+        await asyncio.wait_for(queue.join(), timeout=timeout)
+        return True
+    except asyncio.TimeoutError:
+        # 5초 동안 queue가 비워지지 않으면 강제 종료합니다.
+        return False
+
 async def wait_until(condition: Callable, timeout=None, check_interval=0.1):
     start_time = asyncio.get_event_loop().time()
     while True:

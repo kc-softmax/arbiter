@@ -48,7 +48,8 @@ class ArbiterBrokerInterface(ABC):
     async def emit(
         self, 
         target: str,
-        message: bytes
+        message: bytes,
+        reply: str = ''
     ):
         raise NotImplementedError
     

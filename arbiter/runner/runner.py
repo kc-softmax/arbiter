@@ -46,6 +46,7 @@ class ArbiterRunner:
                             # Danimoth is the warp-in master.
                             case WarpInTaskResult.SUCCESS:
                                 console.print(f"[bold green]{arbiter_runner.name}[/bold green] [bold yellow]{message}[/bold yellow].")
+                                # console.print(f"[bold green]{arbiter_runner.name}[/bold green] [bold yellow]{arbiter_runner.node_id}[/bold yellow].")
                                 break
                             case WarpInTaskResult.FAIL:
                                 raise Exception(message)
@@ -78,10 +79,11 @@ class ArbiterRunner:
                         ) as repl_task:
                             print("Waiting for interact to complete...")
                             await repl_task
-                        shutdown_event.set()
                     else:
                         console.print(f"[bold white]Press [red]CTRL + C[/red] to quit[/bold white]")
-                    shutdown_event.wait()                  
+                    
+                    # loop until shutdown_event is set
+                    await arbiter_runner.is_alive_event.wait()
 
                 except Exception as e:
                     # arbiter 를 소환 혹은 실행하는 도중 예외가 발생하면 처리한다.
@@ -91,7 +93,7 @@ class ArbiterRunner:
                     async for result, message in arbiter_runner.start_phase(WarpInPhase.DISAPPEARANCE):                        
                         match result:
                             case WarpInTaskResult.SUCCESS:
-                                # console.print(f"[bold green]{arbiter_runner.name}[/bold green]'s warp-out [bold green]Completed[bold green].")
+                                console.print(f"[bold green]{arbiter_runner.name}[/bold green]'s warp-out [bold green]Completed[bold green].")
                                 break
                             case WarpInTaskResult.WARNING:
                                 console.log(f"[bold yellow]{arbiter_runner.name}[/bold yellow]'s warp-out catch warning {message}")
@@ -102,7 +104,7 @@ class ArbiterRunner:
         except Exception as e:
             # start_phase에서 발생한 예외를 처리한다.
             console.print(f"[bold red]An error occurred when loading arbiter[/bold red] {e}")
-
+         
     @classmethod
     def runner(
         cls,
@@ -121,7 +123,7 @@ class ArbiterRunner:
             pass    
         except Exception as e:
             console.print(f"An error occurred when running arbiter: {e}")
-
+        
     @classmethod
     async def watch_and_restart(
         cls,
