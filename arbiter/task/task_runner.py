@@ -24,7 +24,8 @@ class AribterTaskNodeRunner:
         *args,
         **kwargs
     ):
-        event_queue.put(self.node)
+        self.node.state = NodeState.PENDING        
+        event_queue.put(self.node.encode_node_state())
     
     async def on_start(
         self, 
@@ -33,7 +34,7 @@ class AribterTaskNodeRunner:
         **kwargs
     ):
         self.node.state = NodeState.ACTIVE
-        event_queue.put(self.node.get_node_info())
+        event_queue.put(self.node.encode_node_state())
 
     async def on_shutdown(
         self,
@@ -42,7 +43,7 @@ class AribterTaskNodeRunner:
         **kwargs
     ):
         self.node.state = NodeState.STOPPED
-        event_queue.put(self.node.get_node_info())
+        event_queue.put(self.node.encode_node_state())
 
     async def on_error(
         self, 
@@ -53,7 +54,7 @@ class AribterTaskNodeRunner:
     ):
         print("Error in runnig process", error)
         self.node.state = NodeState.STOPPED
-        event_queue.put(self.node.get_node_info())
+        event_queue.put(self.node.encode_node_state())
     
     def run(
         self,

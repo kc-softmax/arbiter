@@ -14,6 +14,22 @@ class ServiceState(IntEnum):
     INACTIVE = 3
     STOPPED = 4
 
+class ExternalNodeEvent(IntEnum):
+    NODE_CONNECT = 1
+    """새로운 외부 노드가 연결되었을 때 발생하는 이벤트"""
+    NODE_DISCONNECT = 2
+    """외부 노드가 연결을 해제했을 때 발생하는 이벤트"""
+    NODE_RECONNECT = 3
+    """외부 노드가 재연결을 시도할 때 발생하는 이벤트(현재는 사용 X)"""
+    NODE_UPDATE = 4
+    """외부 노드의 정보가 업데이트 되었을 때 발생하는 이벤트"""
+    NODE_HEALTH_CHECK = 5
+    """외부 노드의 상태를 체크하는 이벤트"""
+    TASK_STATE_UPDATE = 6
+    """외부 노드의 TASK 상태가 업데이트 되었을 때 발생하는 이벤트"""
+    TASK_UPDATE = 7
+    """외부 노드의 TASK 정보가 업데이트 되었을 때 발생하는 이벤트"""
+
 class StreamCommand(IntEnum):
     SET_TARGET = 21
     """메세지를 전달 대상을 설정하는 명령어"""    

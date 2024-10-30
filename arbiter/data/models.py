@@ -20,7 +20,7 @@ class ArbiterBaseNode(BaseModel):
     def get_id(self) -> str:
         return self.node_id
     
-    def get_node_info(self) -> dict[str, Any]:
+    def encode_node_state(self) -> dict[str, Any]:
         return  {
             'node_id': self.get_id(),
             'state': self.state,

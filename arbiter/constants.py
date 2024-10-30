@@ -6,6 +6,8 @@ from typing import Any
 ALLOWED_TYPES = (BaseModel, tuple, list, dict, int, str, float, bool, bytes, datetime, None, Any)
 
 ASYNC_TASK_CLOSE_MESSAGE = b'q__end__q'
+EXTERNAL_EVENT_SUBJECT = "arbiter.external_event"
 
 PROJECT_NAME  = "arbiter"
 CONFIG_FILE = "arbiter.setting.ini"
+

@@ -100,16 +100,17 @@ class ArbiterNatsBroker(ArbiterBrokerInterface):
     async def emit(
         self,
         target: str,
-        message: bytes | Any
+        message: bytes | Any,
+        reply: str = ''
     ) -> None:
         if not isinstance(message, bytes):
             message = pickle.dumps(message)
-        await self.nats.publish(target, message)
+        await self.nats.publish(target, message, reply)
     
     async def broadcast(
         self,
         target: str,
-        message: bytes,
+        message: bytes | Any,
         reply: str = '',
     ) -> None:
         # TODO Consider, get response from all subscribers
@@ -148,15 +149,19 @@ class ArbiterNatsBroker(ArbiterBrokerInterface):
         self,
         queue: str,
     ) -> AsyncGenerator[bytes, None]:
-        sub = await self.nats.subscribe(queue)
         try:
+            sub = await self.nats.subscribe(queue)
             while True:
                 message = await sub.next_msg(None)
                 yield (message.reply, message.data)
         except Exception as e:
-            print(f"Error in subscribe_listen: {e}")
+            pass
+            # print(f"Error in subscribe_listen: {e}")
         finally:
-            await sub.unsubscribe()
+            try:
+                await sub.unsubscribe()
+            except Exception as e:
+                pass
     
     async def periodic_listen(
         self,
