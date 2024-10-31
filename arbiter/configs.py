@@ -5,7 +5,7 @@ from dataclasses import dataclass
 class ArbiterConfig:
     broker_config: BrokerConfig
     name: str = "Danimoth"
-    default_send_timeout: int = 5,
+    default_send_timeout: int = 5
     default_task_close_timeout: int = 5
     retry_attempts: int = 3
     retry_interval: float = 0.1

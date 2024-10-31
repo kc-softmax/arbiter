@@ -60,12 +60,14 @@ def send_llm_request(
             return data["response"]
         return f"Error: {response.status_code}"
 
-@app.http_task(timeout=300)
+@app.http_task()
 async def get_llm_request_from_client(
     topic: str,
     content: str,
     arbiter: Arbiter
 ) -> str:
+    return "hi ho silva"
+    print("get_llm_request_from_client")
     target_queue = topic_maps.get(topic)
     if not target_queue:
         return "Invalid topic"

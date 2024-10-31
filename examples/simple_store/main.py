@@ -14,7 +14,7 @@ app = ArbiterNode(
         )),
     node_config=ArbiterNodeConfig(system_timeout=5))
 
-@app.http_task(timeout=300)
+@app.http_task()
 async def test(
     topic: str,
     content: str,

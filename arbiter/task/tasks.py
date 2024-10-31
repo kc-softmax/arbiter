@@ -117,9 +117,6 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
             if param.annotation == Request:
                 raise ValueError("fastapi Request is not allowed, use pydantic model instead")
                         
-            # if not isinstance(param.annotation, type):
-            #     print(param.annotation)
-            #     # param.annotation = get_type_hints(func).get(param.name, None)
             parameters[param.name] = param
         return parameters, arbiter_parameter
     
@@ -298,6 +295,8 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
             executor: Callable = None,
         ):
             async for reply, message in self._get_message_func(arbiter):
+                print("reply", reply)
+                print("message", message)
                 is_async_gen = False
                 try:
                     parsed_message = self._parse_message(message)
@@ -324,7 +323,7 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
                                                                 
                 except Exception as e:
                     if reply is None:
-                        print(self.func.__name__, message, e)
+                        pass
                     else:
                         await arbiter.broker.emit(reply, self._results_packing(e))
                 finally:

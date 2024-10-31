@@ -28,7 +28,6 @@ class ArbiterNatsBroker(ArbiterBrokerInterface):
 
     async def connect(self) -> None:
         async def disconnected_cb():
-            # print('Got disconnected!')
             pass
 
         async def reconnected_cb():
@@ -38,7 +37,6 @@ class ArbiterNatsBroker(ArbiterBrokerInterface):
             print(f'There was an error: {e}')
 
         async def closed_cb():
-            # print('Connection is closed')
             pass
             
         connection_url = f"nats://{self.config.host}:{self.config.port}"
@@ -48,6 +46,7 @@ class ArbiterNatsBroker(ArbiterBrokerInterface):
             user=self.config.user,
             password=self.config.password,
             max_reconnect_attempts=self.config.max_reconnect_attempts,
+            
             disconnected_cb=disconnected_cb,
             reconnected_cb=reconnected_cb,
             error_cb=error_cb,
@@ -64,7 +63,8 @@ class ArbiterNatsBroker(ArbiterBrokerInterface):
         timeout: int = 0
     ) -> Any:
         try:
-            # TODO 
+            # TODO
+            print(self.nats.is_connected)
             response = await self.nats.request(target, pickle.dumps(message), timeout=timeout)
             return get_pickled_data(response.data)
         except asyncio.TimeoutError as e:
@@ -123,19 +123,24 @@ class ArbiterNatsBroker(ArbiterBrokerInterface):
     ) -> AsyncGenerator[Msg, None]:
         async def message_handler(msg: Msg):
             # 메시지를 받을 때마다 큐에 추가
+            print("message_handler", msg.data)
             await message_queue.put((msg.reply, msg.data))
         # 구독자 생성, subject
         message_queue = asyncio.Queue()
         try:
+            print(self.nats.is_connected)
             sub = await self.nats.subscribe(queue, cb=message_handler)
+            print("sub", queue)
             while True:
                 if timeout:
                     # 큐에서 메시지를 꺼내서 반환
                     message = await asyncio.wait_for(message_queue.get(), timeout=timeout)
+                    print("message", message)
                 else:
                     message = await message_queue.get()
                 yield message    
         except asyncio.TimeoutError:
+            print("Timeout in listen")
             pass
         except Exception as e:
             print(f"Error in listen: {e}")
