@@ -12,6 +12,7 @@ from arbiter.brokers.base import ArbiterBrokerInterface
 from arbiter.utils import get_pickled_data
 from arbiter.constants import ASYNC_TASK_CLOSE_MESSAGE
 
+
 class ArbiterNatsBroker(ArbiterBrokerInterface):
 
     def __init__(
@@ -55,7 +56,7 @@ class ArbiterNatsBroker(ArbiterBrokerInterface):
         
     async def disconnect(self) -> None:
         self.nats and await self.nats.close()
-    
+
     async def request(
         self,
         target: str, 
@@ -64,7 +65,6 @@ class ArbiterNatsBroker(ArbiterBrokerInterface):
     ) -> Any:
         try:
             # TODO
-            print(self.nats.is_connected)
             response = await self.nats.request(target, pickle.dumps(message), timeout=timeout)
             return get_pickled_data(response.data)
         except asyncio.TimeoutError as e:
@@ -72,7 +72,7 @@ class ArbiterNatsBroker(ArbiterBrokerInterface):
         except NoRespondersError as e:
             print(f"No responders in request to {target} {e}")
             raise TaskNotRegisteredError(f"Task {target} is not registered")
-        
+
         raise Exception(f"Unknown error in request to {target}")
     
     async def stream(
@@ -123,19 +123,15 @@ class ArbiterNatsBroker(ArbiterBrokerInterface):
     ) -> AsyncGenerator[Msg, None]:
         async def message_handler(msg: Msg):
             # 메시지를 받을 때마다 큐에 추가
-            print("message_handler", msg.data)
             await message_queue.put((msg.reply, msg.data))
         # 구독자 생성, subject
         message_queue = asyncio.Queue()
         try:
-            print(self.nats.is_connected)
             sub = await self.nats.subscribe(queue, cb=message_handler)
-            print("sub", queue)
             while True:
                 if timeout:
                     # 큐에서 메시지를 꺼내서 반환
                     message = await asyncio.wait_for(message_queue.get(), timeout=timeout)
-                    print("message", message)
                 else:
                     message = await message_queue.get()
                 yield message    

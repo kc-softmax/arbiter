@@ -58,18 +58,15 @@ class ArbiterGateway:
                         gateway.app,
                         arbiter,
                         node)
-            rs = await arbiter.async_task('get_llm_request_from_client', 5, 4)
-            print(rs, arbiter)
+
             server = uvicorn.Server(gateway)
-            print(gateway.app)
             loop = asyncio.get_event_loop()
             loop.run_in_executor(None, server.run)
-            print("Gateway is running", arbiter_config)
-            event.wait()
+            while not event.is_set() and not server.should_exit:
+                await asyncio.sleep(0.01)
             server.should_exit = True
             server.force_exit = True
-            # await server.shutdown()
-            print("Gateway is closing")
+            await server.shutdown()
         except Exception as e:
             print("Error in executor", e, self.__class__.__name__)
         finally:
@@ -151,7 +148,6 @@ class ArbiterGateway:
                 return await stream_response(data_dict, arbiter, task_node)
 
             try:
-                print(task_node.queue, data_dict, _arbiter.broker.nats.is_connected)
                 results = await _arbiter.async_task(
                     target=task_node.queue,
                     timeout=task_node.timeout,
