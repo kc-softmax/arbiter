@@ -68,7 +68,6 @@ class Arbiter:
         
         while retry < self.arbiter_config.retry_attempts:
             try:
-                print("Requesting", target, request_data)
                 results = await self.broker.request(target, request_data, timeout)
                 # If single result, return it directly
                 if return_type:

@@ -295,8 +295,6 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
             executor: Callable = None,
         ):
             async for reply, message in self._get_message_func(arbiter):
-                print("reply", reply)
-                print("message", message)
                 is_async_gen = False
                 try:
                     parsed_message = self._parse_message(message)
