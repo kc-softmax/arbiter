@@ -62,5 +62,21 @@ class ArbiterTaskNode(ArbiterBaseNode):
     request: bool = Field(default=False)
             
     def __eq__(self, other: ArbiterTaskNode) -> bool:
-        return (self.queue == other.queue) or (self.node_id == other.node_id)
+        return (
+            self.queue == other.queue
+        ) and (
+            self.transformed_parameters == other.transformed_parameters
+        ) and (
+            self.transformed_return_type == other.transformed_return_type
+        ) and (
+            self.timeout == other.timeout
+        ) and (
+            self.http == other.http
+        ) and (
+            self.stream == other.stream
+        ) and (
+            self.file == other.file
+        ) and (
+            self.request == other.request
+        )
 

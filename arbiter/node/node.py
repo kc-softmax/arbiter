@@ -102,6 +102,7 @@ class ArbiterNode(TaskRegister):
                 event,
                 self.arbiter_config,
                 self.registry.http_tasks,
+                self.node_config.gateway_health_check_interval
             )
         )
         process.start()
@@ -226,6 +227,7 @@ class ArbiterNode(TaskRegister):
             warn('Warp In Queue is not empty')
             # remove all messages in the queue
             while not self._warp_in_queue.empty():
+                print("remove message", self._warp_in_queue.get_nowait())
                 await self._warp_in_queue.get()
         match phase:
             case WarpInPhase.PREPARATION:
@@ -287,6 +289,8 @@ class ArbiterNode(TaskRegister):
             await self._external_broadcast_queue.put((
                 ExternalEvent(
                     event=ExternalNodeEvent.NODE_DISCONNECT), False))
+            self._external_broadcast_queue.put_nowait((None, None))
+            self._external_emit_queue.put_nowait((None, None))
             if not await check_queue_and_exit(
                 self._external_broadcast_queue, 
                 self.node_config.disappearance_timeout):
@@ -350,11 +354,10 @@ class ArbiterNode(TaskRegister):
     async def gateway_reload_task(self, shutdown_event: MPEvent):
         try:
             await self.ready_to_listen_external_event.wait()
-            await asyncio.sleep(self.node_config.gateway_reload_timeout)
             while not shutdown_event.is_set():
                 if self.registry.check_gateway_reload():
                     self._refresh_gateway_process()
-                await asyncio.sleep(self.node_config.gateway_reload_timeout)
+                await asyncio.sleep(self.node_config.gateway_refresh_interval)
         except Exception as err:
             print('failed external health check', err)
         finally:
@@ -363,20 +366,25 @@ class ArbiterNode(TaskRegister):
     async def external_broadcast_task(self):
         while True:
             event, reply = await self._external_broadcast_queue.get()
+            if event is None:
+                break
             event.peer_node_id = self.registry.local_node.get_id()
             await self.arbiter.broker.broadcast(
                 EXTERNAL_EVENT_SUBJECT,
                 event,
                 event.peer_node_id if reply else None)
             self._external_broadcast_queue.task_done()
-    
+        self._external_broadcast_queue.task_done()    
     async def external_emit_task(self):
         while True:
             target, event = await self._external_emit_queue.get()
+            if event is None:
+                break
             event.peer_node_id = self.registry.local_node.get_id()
             await self.arbiter.broker.emit(target, event)
             self._external_emit_queue.task_done()
-
+        self._external_emit_queue.task_done()
+            
     async def external_event_listener(
         self, 
         shutdown_event: MPEvent

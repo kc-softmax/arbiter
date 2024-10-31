@@ -47,7 +47,11 @@ class Registry:
     
     def check_gateway_reload(self) -> bool:
         http_task = self.all_active_http_tasks
-        if len(http_task) != len(self.http_tasks):
+        # if http_task is changed, return True
+        if (
+            len(http_task) != len(self.http_tasks) or 
+            not all(a == b for a, b in zip(http_task, self.http_tasks))
+        ):
             self.http_tasks = http_task
             return True
         return False

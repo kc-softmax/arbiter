@@ -24,6 +24,7 @@ class ArbiterGateway:
         event: MPEvent,
         arbiter_config: ArbiterConfig,
         task_node: list[ArbiterTaskNode],
+        gateway_health_check_interval: float,
         *args,
         **kwargs
     ):
@@ -33,6 +34,7 @@ class ArbiterGateway:
                     event,
                     arbiter_config,
                     task_node,
+                    gateway_health_check_interval,
                     *args,
                     **kwargs
                 )
@@ -45,6 +47,7 @@ class ArbiterGateway:
         event: MPEvent,
         arbiter_config: ArbiterConfig,
         task_node: list[ArbiterTaskNode],
+        gateway_health_check_interval: float,
         *args,
         **kwargs
     ):
@@ -63,10 +66,9 @@ class ArbiterGateway:
             loop = asyncio.get_event_loop()
             loop.run_in_executor(None, server.run)
             while not event.is_set() and not server.should_exit:
-                await asyncio.sleep(0.01)
+                await asyncio.sleep(gateway_health_check_interval)
             server.should_exit = True
-            server.force_exit = True
-            await server.shutdown()
+            await asyncio.sleep(0.5)
         except Exception as e:
             print("Error in executor", e, self.__class__.__name__)
         finally:
