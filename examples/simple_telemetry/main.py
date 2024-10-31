@@ -3,8 +3,9 @@ from __future__ import annotations
 import functools
 import inspect
 import asyncio
+import os
 
-from typing import Callable, Any
+from typing import Callable, AsyncIterator, AsyncGenerator
 
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
@@ -15,6 +16,7 @@ from opentelemetry.sdk.trace.export import (
 )
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.propagate import inject, extract
+from starlette.requests import Request
 
 OTEL_SERVER_URL = "http://localhost:4317"
 
@@ -29,7 +31,8 @@ class TracerRepositry:
 
     def _initialize_tracer(self):
         # service name은 singleton으로 선언되어야한다
-        resource = Resource.create({SERVICE_NAME: "Arbiter"})
+        # resource = Resource.create({SERVICE_NAME: "Arbiter"})
+        resource = Resource.create({SERVICE_NAME: str(os.getpid())})
         trace.set_tracer_provider(TracerProvider(resource=resource))
 
         otlp_exporter = OTLPSpanExporter(endpoint=OTEL_SERVER_URL, insecure=True)
@@ -46,33 +49,57 @@ class TracerRepositry:
             cls._instance._initialize_tracer()
         return cls._instance
 
-    def tracing(self, func: Callable[..., None] = None) -> Callable:
+    def _reset(self):
+        self._depth[self.name].clear()
 
-        if self.name and self.name not in self._depth:
-            self._depth[self.name] = {}
+    def _parse_headers(self, *args, **kwargs) -> dict[str, str]:
+        for param in args:
+            if hasattr(param, "headers"):
+                _headers = dict(param.headers)
+                if _headers.get("traceparent"):
+                    self._depth[self.name] = {"traceparent": _headers["traceparent"]}
+                break
+        for value in kwargs.values():
+            if hasattr(value, "headers"):
+                _headers = dict(value.headers)
+                if _headers.get("traceparent"):
+                    self._depth[self.name] = {"traceparent": _headers["traceparent"]}
+                break
+
+        if kwargs.get("headers"):
+            headers = kwargs.get("headers")
+        else:
+            headers: dict[str, any] = self._depth[self.name]
+        return headers
+
+    def tracing(self, func: Callable[..., None] = None) -> Callable:
 
         if self.name is None:
             self.name = func.__name__
+
+        if self.name and self.name not in self._depth:
+            self._depth[self.name] = {}
 
         span_name = func.__name__
 
         if inspect.iscoroutinefunction(func):
             @functools.wraps(func)
             async def wrappers(*args, **kwargs):
-                headers: dict[str, any] = self._depth[self.name] if self.name and self.name in self._depth else {}
+                # 외부 서비스로부터 header가 주입되었다
+                headers = self._parse_headers(*args, **kwargs)
+
                 # traceparent를 추출한다
                 context = extract(headers)
                 with self._tracer.start_as_current_span(span_name, context) as span:
                     span.add_event(func.__name__)
-                    for key, value in kwargs.items():
-                        span.set_attribute(key, value)
+                    # for key, value in kwargs.items():
+                    #     span.set_attribute(key, value)
 
                     # traceparent를 주입한다
                     inject(headers)
 
                     # inject 주입 후에 headers를 다시 갱신한다
-                    if self.name in self._depth:
-                        self._depth[self.name].update(headers)
+                    self._depth[self.name].update(headers)
 
                     try:
                         res = await func(*args, **kwargs)
@@ -80,23 +107,27 @@ class TracerRepositry:
                     except Exception as err:
                         span.set_attribute("http.status", 500)
                         raise err
+                    finally:
+                        self._reset()
                 return res
         else:
             @functools.wraps(func)
             def wrappers(*args, **kwargs):
-                headers: dict[str, any] = self._depth[self.name] if self.name and self.name in self._depth else {}
+                # 외부 서비스로부터 header가 주입되었다
+                headers = self._parse_headers(*args, **kwargs)
+
+                # traceparent를 추출한다
                 context = extract(headers)
                 with self._tracer.start_as_current_span(span_name, context) as span:
                     span.add_event(func.__name__)
-                    for key, value in kwargs.items():
-                        span.set_attribute(key, value)
+                    # for key, value in kwargs.items():
+                    #     span.set_attribute(key, value)
 
                     # traceparent를 주입한다
                     inject(headers)
 
                     # inject 주입 후에 headers를 다시 갱신한다
-                    if self.name in self._depth:
-                        self._depth[self.name].update(headers)
+                    self._depth[self.name].update(headers)
 
                     try:
                         res = func(*args, **kwargs)
@@ -104,29 +135,45 @@ class TracerRepositry:
                     except Exception as err:
                         span.set_attribute("http.status", 500)
                         raise err
+                    finally:
+                        self._reset()
                 return res
         return wrappers
+
+    def get_headers(self) -> str:
+        return self._depth.get(self.name, {})
 
 
 class SimpleTelemetry:
 
-    @staticmethod
-    def register_trace(name: str = None):
-        task = TracerRepositry(name=name)
+    def __init__(self):
+        self.tracer: TracerRepositry = None
+
+    def register_trace(self, name: str = None):
+        self.tracer = TracerRepositry(name=name)
         def decorator(func):
-            return task.tracing(func)
+            return self.tracer.tracing(func)
         return decorator
 
+    def get_headers(self) -> dict[str, str]:
+        return self.tracer.get_headers()
 
+
+# import requests
+# import nats
 # simple_telemetry = SimpleTelemetry()
 # @simple_telemetry.register_trace(name="arbiter")
-# def second(x: int, y: int):
+# async def second(x: int, y: int):
+#     headers = simple_telemetry.get_headers()
+#     # res = requests.get("/", headers=headers)
+#     # nat = await nats.connect()
+#     # nat.publish("TEST", headers=headers)
 #     pass
 
 
 # @simple_telemetry.register_trace(name="arbiter")
 # async def first():
-#     second(x=1, y=2)
+#     await second(x=1, y=2)
 
 # if __name__ == '__main__':
 #     asyncio.run(first())
