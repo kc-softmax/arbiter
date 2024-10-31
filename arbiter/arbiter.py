@@ -68,6 +68,7 @@ class Arbiter:
         
         while retry < self.arbiter_config.retry_attempts:
             try:
+                print("Requesting", target, request_data)
                 results = await self.broker.request(target, request_data, timeout)
                 # If single result, return it directly
                 if return_type:
@@ -75,10 +76,12 @@ class Arbiter:
                 else:
                     return results
             except asyncio.TimeoutError:
+                print("Timeout in request")
                 retry += 1
                 time.sleep(self.arbiter_config.retry_interval)
                 continue
             except Exception as e:
+                print("Error in request", e)
                 raise e
         
         raise TimeoutError("Request timeout")
@@ -155,7 +158,6 @@ class Arbiter:
                     data[key] = value
         else:
             data = []
-            
         return data
     
     async def __results_unpacker(self, return_type: Any, results: Any):

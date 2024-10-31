@@ -111,11 +111,9 @@ class ArbiterNode(TaskRegister):
         if self._gateway_process:
             process, event = self._gateway_process
             if process.is_alive():
-                print("Gateway is alive", process.pid)
                 event.set()
             try:
                 process.join(timeout=self.node_config.service_disappearance_timeout)
-                print("Gateway is closed")
             except Exception as e:
                 warn(f"Failed to stop gateway with {e}")
                 process.terminate()
@@ -228,8 +226,7 @@ class ArbiterNode(TaskRegister):
             warn('Warp In Queue is not empty')
             # remove all messages in the queue
             while not self._warp_in_queue.empty():
-                data = await self._warp_in_queue.get()
-                print(data)
+                await self._warp_in_queue.get()
         match phase:
             case WarpInPhase.PREPARATION:
                 asyncio.create_task(self._preparation_task())
@@ -453,7 +450,7 @@ class ArbiterNode(TaskRegister):
                             reply,
                             ExternalEvent(
                                 event=ExternalNodeEvent.NODE_CONNECT,
-                                data=self.registry.local_task_node
+                                data=self.registry.local_node
                             )))
                         # print("connected peer node", event.peer_node_id)
                     case ExternalNodeEvent.NODE_UPDATE:
