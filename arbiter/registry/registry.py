@@ -9,10 +9,12 @@ from arbiter.registry.task_catalog import TaskCatalog
 
 
 class Registry:
-    def __init__(self):
+    
+    def __init__(self, name: str):
         # get, set할 때 어떤 노드인지 알 수 있는 방법
-        self.arbiter_nodes: NodeCatalog = NodeCatalog()
+        self.arbiter_nodes: NodeCatalog = NodeCatalog(name)
         self.task_nodes: TaskCatalog = TaskCatalog()
+        self.http_tasks: list[ArbiterTaskNode] = []
         self.node_health: dict[str, int] = {}
 
     @property
@@ -43,6 +45,13 @@ class Registry:
     def local_task_node(self, value):
         self.task_nodes.local_node = value
     
+    def check_gateway_reload(self) -> bool:
+        http_task = self.all_active_http_tasks
+        if len(http_task) != len(self.http_tasks):
+            self.http_tasks = http_task
+            return True
+        return False
+    
     def update_health_signal(self, node_id: str) -> None:
         self.node_health[node_id] = time.time()
     
@@ -62,9 +71,6 @@ class Registry:
         if node_id in self.node_health:
             # set health to -100 for immediate clear from health check
             self.node_health[node_id] = -100
-
-    def create_local_node(self, node: ArbiterNode) -> None:
-        self.arbiter_nodes.create_local_node(node)
 
     def create_local_task_node(self, node: ArbiterTaskNode) -> None:
         self.task_nodes.create_local_node(node)

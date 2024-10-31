@@ -1,13 +1,14 @@
 from arbiter.data.models import ArbiterNode
+from arbiter.enums import NodeState
 
 
 class NodeCatalog:
-    def __init__(self) -> None:
+    def __init__(self, name: str) -> None:
         self.nodes: dict[str, ArbiterNode] = {}
-        self.local_node: ArbiterNode = None
-
-    def create_local_node(self, node: ArbiterNode) -> None:
-        self.local_node = node
+        self.local_node: ArbiterNode = ArbiterNode(
+            name=name,
+            state=NodeState.ACTIVE
+        )
 
     def add(self, node: ArbiterNode) -> None:
         node_id = node.get_id()

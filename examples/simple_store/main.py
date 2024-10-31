@@ -1,3 +1,4 @@
+from fastapi import FastAPI
 from arbiter import ArbiterRunner, ArbiterNode
 from arbiter.configs import NatsBrokerConfig, ArbiterNodeConfig, ArbiterConfig
 from tinydb import TinyDB, Query
@@ -11,10 +12,14 @@ app = ArbiterNode(
             # user="local",
             # password="Ohe47FvRyPvH6gnEELJtX1ZFe7O70GEb"
         )),
-    node_config=ArbiterNodeConfig(system_timeout=5),    
-    gateway=None
-)
+    node_config=ArbiterNodeConfig(system_timeout=5))
 
+@app.http_task(timeout=300)
+async def test(
+    topic: str,
+    content: str,
+) -> str:
+    return "Hello"
 
 @app.async_task()
 async def store_request(
@@ -25,13 +30,12 @@ async def store_request(
 ):
     db.insert({'topic': topic, 'content': content, 'answer': answer})
 
-@app.http_task()
-async def get_history():
-    return db.all()
+# @app.http_task()
+# async def get_history():
+#     return db.all()
 
 if __name__ == '__main__':
     ArbiterRunner.run(
         app,
         reload=True,
     )
-    
