@@ -17,17 +17,18 @@ class ArbiterNodeConfig:
     system_timeout: int = 60
     preparation_timeout: int = 5
     initialization_timeout: int = 3
-    gateway_reload_timeout: int = 5
     materialization_timeout: int = 10
     disappearance_timeout: int = 10
     task_close_timeout: int = 5
     
     service_disappearance_timeout: int = 10
     service_health_check_interval: int = 1
-    external_health_check_interval: int = 1 # MAX 1
+    external_health_check_interval: float = 0.5 # MAX 1
     external_health_check_timeout: int = 10
     internal_health_check_timeout: int = 5
-    refresh_gateway_interval: float = 0.1
+    
+    gateway_refresh_interval: float = 1
+    gateway_health_check_interval: float = 0.1
     internal_event_timeout: int = 1
 
 @dataclass

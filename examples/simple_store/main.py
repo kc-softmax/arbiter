@@ -17,7 +17,6 @@ app = ArbiterNode(
 @app.http_task()
 async def test(
     topic: str,
-    content: str,
 ) -> str:
     return "Hello"
 
@@ -34,8 +33,10 @@ async def store_request(
 # async def get_history():
 #     return db.all()
 
+
 if __name__ == '__main__':
     ArbiterRunner.run(
         app,
         reload=True,
     )
+    
