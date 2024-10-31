@@ -73,7 +73,7 @@ async def get_llm_request_from_client(
         target=target_queue,
         topic=topic, 
         content=content,
-        timeout=3000)
+        timeout=10)
     # if response and isinstance(response, str):
     #     await arbiter.emit_message("store_request", topic, content, response)
     return response
@@ -104,5 +104,3 @@ if __name__ == '__main__':
         app,
         reload=True,
     )
-    
-    

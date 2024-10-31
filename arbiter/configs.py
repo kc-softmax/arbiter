@@ -24,10 +24,10 @@ class ArbiterNodeConfig:
     
     service_disappearance_timeout: int = 10
     service_health_check_interval: int = 1
-    gateway_health_check_interval: int = 1
     external_health_check_interval: int = 1 # MAX 1
     external_health_check_timeout: int = 10
     internal_health_check_timeout: int = 5
+    refresh_gateway_interval: float = 0.1
     internal_event_timeout: int = 1
 
 @dataclass

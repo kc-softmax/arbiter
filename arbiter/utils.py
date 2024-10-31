@@ -1,3 +1,4 @@
+import inspect
 import os
 import json
 import configparser
@@ -6,10 +7,12 @@ import re
 import pickle
 import signal
 import socket
+import sys
 import types
 import time
 import asyncio
 import importlib
+from fastapi import FastAPI
 import psutil
 from collections import abc
 from asyncio.subprocess import Process
@@ -34,6 +37,31 @@ from typing import (
 )
 from arbiter.constants import ALLOWED_TYPES
 from arbiter.parser import pydantic_from_schema
+
+def get_app_reference(app: FastAPI) -> str:
+    
+    for module_name, module in sys.modules.items():
+        if module is None:
+            continue
+        # 모듈 내에서 FastAPI 인스턴스가 있는지 확인
+        for name, obj in inspect.getmembers(module):
+            if obj is app:
+                return module_name, name
+    # # 앱이 정의된 모듈을 가져옴
+    # module = inspect.getmodule(app)
+    # module_name = module.__name__
+
+    # # 모듈 내에서 app 객체 이름을 찾음
+    # app_name = None
+    # for name, obj in inspect.getmembers(module):
+    #     if obj is app:
+    #         app_name = name
+    #         break
+        
+    # if app_name:
+    #     return module_name, app_name
+    # else:
+    raise ValueError("Could not find the app instance in the module")
 
 async def check_queue_and_exit(queue: asyncio.Queue, timeout: int = 5) -> bool:
     try:

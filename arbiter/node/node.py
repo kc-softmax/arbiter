@@ -13,6 +13,7 @@ from warnings import warn
 from typing import AsyncGenerator
 from arbiter import Arbiter
 from arbiter.registry import Registry
+from arbiter.registry.gateway import register_gateway
 from arbiter.data.models import (
     ArbiterNode as ArbiterNodeModel,
     ArbiterTaskNode,
@@ -26,6 +27,7 @@ from arbiter.enums import (
 from arbiter.task_register import TaskRegister
 from arbiter.configs import ArbiterNodeConfig, ArbiterConfig
 from arbiter.task import ArbiterAsyncTask
+from arbiter.task.gateway import ArbiterGateway
 from arbiter.task_register import TaskRegister
 from arbiter.constants import EXTERNAL_EVENT_SUBJECT
 from arbiter.utils import check_queue_and_exit
@@ -37,7 +39,6 @@ class ExternalEvent:
     event: ExternalNodeEvent
     peer_node_id: str | None = None
     data: ArbiterNodeModel | ArbiterTaskNode | None = None
-
 
 class ArbiterNode(TaskRegister):
     
@@ -53,28 +54,24 @@ class ArbiterNode(TaskRegister):
         assert node_config.external_health_check_interval <= 1, "External health check interval must be less than 1"
         self.arbiter_config = arbiter_config
         self.node_config = node_config
-        
+
+        self.arbiter = Arbiter(arbiter_config)
+        self.registry = Registry(self.name)
         if isinstance(gateway, FastAPI):
-            self.gateway_config = uvicorn.Config(app=gateway)
-            self.gateway_server = uvicorn.Server(self.gateway_config)
-            self.gateway = gateway
+            gateway = uvicorn.Config(app=gateway)
         elif isinstance(gateway, uvicorn.Config):
             assert gateway.app is not None, "Config's app must be provided"
-            self.gateway_config = gateway
-            self.gateway_server = uvicorn.Server(self.gateway_config)
-            self.gateway = gateway.app
+            gateway = gateway
         else:
-            self.gateway_config = None
-            self.gateway_server = None
-            self.gateway = None
-        
+            gateway = None
+            
+        gateway and register_gateway(self.name, gateway)
+    
         self.log_level = log_level
         self.log_format = log_format
         
         self.is_alive_event = asyncio.Event()
         self.ready_to_listen_external_event = asyncio.Event()
-        self.arbiter = Arbiter(arbiter_config)
-        self.registry: Registry = Registry()
 
         self._tasks: list[ArbiterAsyncTask] = []
         self._warp_in_queue: asyncio.Queue = asyncio.Queue()
@@ -82,10 +79,9 @@ class ArbiterNode(TaskRegister):
         self._external_emit_queue: asyncio.Queue[tuple[str, ExternalEvent]] = asyncio.Queue()
         
         self._arbiter_processes: dict[str, ArbiterProcess] = {}
-
+        self._gateway_process: ArbiterProcess | None = None
         self._internal_health_check_queue: MPQueue = MPQueue()
         self._internal_event_queue: MPQueue = MPQueue()
-
 
     @property
     def name(self) -> str:
@@ -94,48 +90,65 @@ class ArbiterNode(TaskRegister):
     @property
     def node_id(self) -> str:
         return self.registry.local_node.get_id()
-
-    def clear(self):
-        self.registry.clear()
-        self._arbiter_processes.clear()
     
     def regist_task(self, task: ArbiterAsyncTask):
         self._tasks.append(task)
 
-    def create_local_registry(self):
-        # 자신의 registry는 local_node로 관리한다
-        arbiter_node = ArbiterNodeModel(
-            name=self.name,
-            state=NodeState.ACTIVE
+    def _start_gateway_process(self) -> ArbiterProcess:
+        event = Event()
+        process = Process(
+            target=ArbiterGateway().run,
+            args=(
+                event,
+                self.arbiter_config,
+                self.registry.http_tasks,
+            )
         )
-        self.registry.create_local_node(arbiter_node)
+        process.start()
+        return process, event
+    
+    def _refresh_gateway_process(self):
+        if self._gateway_process:
+            process, event = self._gateway_process
+            if process.is_alive():
+                print("Gateway is alive", process.pid)
+                event.set()
+            try:
+                process.join(timeout=self.node_config.service_disappearance_timeout)
+                print("Gateway is closed")
+            except Exception as e:
+                warn(f"Failed to stop gateway with {e}")
+                process.terminate()
+        self._gateway_process = self._start_gateway_process()
+
+    def _start_task_process(self, task: ArbiterAsyncTask) -> ArbiterProcess:
+        event = Event()
+        process = Process(
+            target=task.run,
+            args=(
+                self._internal_health_check_queue,
+                self._internal_event_queue,
+                event,
+                self.arbiter_config,
+                self.node_config.service_health_check_interval,
+                self.node_config.task_close_timeout
+            )
+        )
+        process.start()
+        self.registry.create_local_task_node(task.node)
+        return process, event
 
     async def _preparation_task(self):
         """
             만들기 전에 검사하는 단계라고 생각하면 될까?
             Process를 만든다?
             1차 유효성 검증 후 registry 채널에 등록 요청 한다.
-        """
+        """        
         try:
             # default task가 있다면 서비스를 하나 만들어야 한다..?
             # ArbiterNode에 등록된 하위 노드의 process 객체를 생성한다
             for task in self._tasks:
-                event = Event()
-                process = Process(
-                    name=task.queue,
-                    target=task.run,
-                    args=(
-                        self._internal_health_check_queue,
-                        self._internal_event_queue,
-                        event,
-                        self.arbiter_config,
-                        self.node_config.service_health_check_interval,
-                        self.node_config.task_close_timeout
-                    )
-                )
-                process.start()
-                self.registry.create_local_task_node(task.node)
-                self._arbiter_processes[task.node.node_id] = (process, event)            
+                self._arbiter_processes[task.node.node_id] = self._start_task_process(task)
         except Exception as e:
             await self._warp_in_queue.put(
                 (WarpInTaskResult.FAIL,
@@ -162,6 +175,7 @@ class ArbiterNode(TaskRegister):
                     WarpInTaskResult.FAIL,
                     f"{WarpInPhase.INITIATION.name} some task didn't launched"))
                 return
+    
         # 처음에 노드의 모든 정보를 보낸다
         # task가 정상/비정상이든 일단 보낸다 deprecated
         # task로부터 state 혹은 parameter가 업데이트되면 다시 보내서 peer node가 업데이트 할 수 있도록 한다
@@ -194,6 +208,16 @@ class ArbiterNode(TaskRegister):
                 process.join(timeout=self.node_config.service_disappearance_timeout)
             except Exception as e:
                 warn(f"Failed to stop service {service_node_id} with {e}")
+                process.terminate()
+                
+        if self._gateway_process:
+            process, event = self._gateway_process
+            if process.is_alive():
+                event.set()
+            try:
+                process.join(timeout=self.node_config.service_disappearance_timeout)
+            except Exception as e:
+                warn(f"Failed to stop gateway with {e}")
                 process.terminate()
   
         await self._warp_in_queue.put((WarpInTaskResult.SUCCESS, f"{WarpInPhase.DISAPPEARANCE.name}...ok"))
@@ -240,7 +264,6 @@ class ArbiterNode(TaskRegister):
             Create Master Node or Replica Node
         """
         await self.arbiter.connect()
-        self.create_local_registry()
         """ 
             Finish the static preparation
             and prepare for the dynamic preparation
@@ -252,6 +275,7 @@ class ArbiterNode(TaskRegister):
         external_node_event = asyncio.create_task(self.external_node_event())
         external_event_listener = asyncio.create_task(self.external_event_listener(shutdown_event))
         external_health_check = asyncio.create_task(self.external_health_check(shutdown_event))
+        gateway_reload_task = asyncio.create_task(self.gateway_reload_task(shutdown_event))
         
         loop = asyncio.get_running_loop()
         internal_health_check = loop.run_in_executor(None, self.internal_health_check, shutdown_event)
@@ -278,17 +302,17 @@ class ArbiterNode(TaskRegister):
                 print("Failed to empty emit queue")
 
             shutdown_event.set()
-
+            await asyncio.to_thread(self._internal_health_check_queue.put, obj="exit")
+            gateway_reload_task.cancel()
             external_broadcast_task.cancel()
             external_emit_task.cancel()            
             external_event_listener.cancel()
             external_node_event.cancel()
             external_health_check.cancel()
-            await asyncio.to_thread(self._internal_health_check_queue.put, obj="exit")
             internal_health_check.cancel()
             internal_event.cancel()
-            self.clear()            
-            
+            self.registry.clear()
+            self._arbiter_processes.clear()
             self.arbiter and await self.arbiter.disconnect()
 
     def internal_event(self, shutdown_event: MPEvent):
@@ -326,6 +350,19 @@ class ArbiterNode(TaskRegister):
         finally:
             self.is_alive_event.set()
 
+    async def gateway_reload_task(self, shutdown_event: MPEvent):
+        try:
+            await self.ready_to_listen_external_event.wait()
+            await asyncio.sleep(self.node_config.gateway_reload_timeout)
+            while not shutdown_event.is_set():
+                if self.registry.check_gateway_reload():
+                    self._refresh_gateway_process()
+                await asyncio.sleep(self.node_config.gateway_reload_timeout)
+        except Exception as err:
+            print('failed external health check', err)
+        finally:
+            self.is_alive_event.set()
+            
     async def external_broadcast_task(self):
         while True:
             event, reply = await self._external_broadcast_queue.get()
@@ -404,7 +441,7 @@ class ArbiterNode(TaskRegister):
                 if event.peer_node_id == self.registry.local_node.get_id():
                     # ignore local node
                     continue
-                
+                # print("external event", event.event)
                 match event.event:
                     case ExternalNodeEvent.NODE_CONNECT:
                         """It will execute when first connect with same broker"""
