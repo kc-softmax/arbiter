@@ -1,4 +1,5 @@
 import httpx
+from typing import Any
 from arbiter import Arbiter, ArbiterRunner, ArbiterNode
 from arbiter.configs import NatsBrokerConfig, ArbiterNodeConfig, ArbiterConfig
 from fastapi import FastAPI
@@ -63,7 +64,8 @@ def send_llm_request(
 @app.http_task()
 async def get_llm_request_from_client(
     topic: str,
-    content: str,
+    content: dict,
+    array: list,
     arbiter: Arbiter
 ) -> str:
     return "hi ho silva"

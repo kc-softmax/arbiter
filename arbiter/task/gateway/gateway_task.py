@@ -5,8 +5,8 @@ import uuid
 from fastapi.responses import StreamingResponse
 import uvicorn
 import asyncio
-
 from typing import Any, Type
+from types import GenericAlias
 from fastapi import Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel, create_model
 from arbiter.exceptions import TaskBaseError
@@ -98,12 +98,14 @@ class ArbiterGateway:
         }
         requset_model = create_model(task_node.name, **parameters)
         return_type = restore_type(json.loads(task_node.transformed_return_type))
-
         # find base model in parameters
-        is_post = True if parameters else False
+        is_post = False
         for _, v in parameters.items():
-            if not issubclass(v[0], BaseModel):
-                is_post = False
+            if isinstance(v[0], type) and issubclass(v[0], BaseModel):
+                is_post = True
+            elif isinstance(v[0], GenericAlias):
+                is_post = True
+                
                 
         async def arbiter_task(
             request: Request,

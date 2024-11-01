@@ -17,6 +17,7 @@ app = ArbiterNode(
 @app.http_task()
 async def test(
     topic: str,
+    content: dict[str, str],  
 ) -> str:
     return "Hello"
 
