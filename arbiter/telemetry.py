@@ -27,7 +27,8 @@ class TracerRepository:
     _instance: dict[str, TracerRepository] = {}
     _tracer: Tracer = None
     
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, name: str) -> None:
+        self.name = name
         self.headers: dict[str, str] = {}
 
     def _initialize_tracer(self):
@@ -72,7 +73,10 @@ class TracerRepository:
 
     def tracing(self, func: Callable[..., None], traceparent: str = None) -> Callable:
 
-        span_name = func.__name__
+        if traceparent:
+            span_name = f'{traceparent}.{self.name}.{func.__name__}'
+        else:
+            span_name = f'{self.name}.{func.__name__}'
 
         if inspect.iscoroutinefunction(func):
             @functools.wraps(func)
@@ -113,6 +117,7 @@ class TracerRepository:
                     context = extract(self.headers)
 
                 with self._tracer.start_as_current_span(span_name, context) as span:
+                    # span.add_event(func.__name__)
                     for key, value in kwargs.items():
                         if type(value) in [str, int, bool, bytes]:
                             span.set_attribute(key, value)
