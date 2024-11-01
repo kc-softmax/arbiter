@@ -36,7 +36,7 @@ async def simple_http_task(x: int):
 if __name__ == '__main__':
     ArbiterRunner.run(
         app,
-        # reload=True
+        reload=True
         # repl=True
     )
 
