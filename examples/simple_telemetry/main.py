@@ -27,12 +27,13 @@ class TracerRepository:
     _instance: dict[str, TracerRepository] = {}
     _tracer: Tracer = None
     
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, name: str) -> None:
+        self.name = name
         self.headers: dict[str, str] = {}
 
     def _initialize_tracer(self):
         # service name은 singleton으로 선언되어야한다
-        resource = Resource.create({SERVICE_NAME: "Arbiter"})
+        resource = Resource.create({SERVICE_NAME: "arbiter.service"})
         trace.set_tracer_provider(TracerProvider(resource=resource))
 
         otlp_exporter = OTLPSpanExporter(endpoint=OTEL_SERVER_URL, insecure=True)
@@ -72,7 +73,10 @@ class TracerRepository:
 
     def tracing(self, func: Callable[..., None], traceparent: str = None) -> Callable:
 
-        span_name = func.__name__
+        if traceparent:
+            span_name = f'{traceparent}.{self.name}.{func.__name__}'
+        else:
+            span_name = f'{self.name}.{func.__name__}'
 
         if inspect.iscoroutinefunction(func):
             @functools.wraps(func)
@@ -85,9 +89,10 @@ class TracerRepository:
                     context = extract(self.headers)
 
                 with self._tracer.start_as_current_span(span_name, context) as span:
-                    span.add_event(func.__name__)
-                    # for key, value in kwargs.items():
-                    #     span.set_attribute(key, value)
+                    # span.add_event(func.__name__)
+                    for key, value in kwargs.items():
+                        if type(value) in [str, int, bool, bytes]:
+                            span.set_attribute(key, value)
 
                     # traceparent를 주입한다
                     inject(self.headers)
@@ -112,9 +117,10 @@ class TracerRepository:
                     context = extract(self.headers)
 
                 with self._tracer.start_as_current_span(span_name, context) as span:
-                    span.add_event(func.__name__)
-                    # for key, value in kwargs.items():
-                    #     span.set_attribute(key, value)
+                    # span.add_event(func.__name__)
+                    for key, value in kwargs.items():
+                        if type(value) in [str, int, bool, bytes]:
+                            span.set_attribute(key, value)
 
                     # traceparent를 주입한다
                     inject(self.headers)
@@ -152,17 +158,17 @@ class TracerRepository:
 
 # first(1, 2)
 
-# node = TracerRepository(name="node")
-# task = TracerRepository(name="task")
+node = TracerRepository(name="node")
+task = TracerRepository(name="task")
 
-# @node()
-# def first(x: int, y: int):
-#     second(x, y)
+@node()
+def first(x: int, y: int):
+    second(x=x, y=y)
 
 
-# @task(traceparent="task")
-# def second(x: int, y: int):
-#     print(x, y)
+@task(traceparent="node")
+def second(x: int, y: int):
+    print(x, y)
     
 
-# first(1, 2)
+first(x=1, y=2)
