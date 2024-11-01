@@ -43,8 +43,7 @@ class TracerRepository:
         # Tracer 인스턴스 생성
         return trace.get_tracer(__name__)
 
-    def __new__(cls, *args, **kwargs) -> TracerRepository:
-        name = kwargs.get("name")
+    def __new__(cls, name: str) -> TracerRepository:
         if name not in cls._instance:
             instance = super(TracerRepository, cls).__new__(cls)
             if cls._tracer is None:
@@ -66,9 +65,8 @@ class TracerRepository:
                     self.headers["traceparent"] = _headers["traceparent"]
                 break
 
-    def __call__(self, *args: functools.Any, **kwargs: functools.Any) -> functools.Any:
+    def __call__(self, traceparent: str = None) -> functools.Any:
         def decorator(func):
-            traceparent = kwargs.get("traceparent")
             return self.tracing(func, traceparent)
         return decorator
 
@@ -141,14 +139,28 @@ class TracerRepository:
 
 
 # node = TracerRepository(name="node")
-# # task = TracerRepositry(name="task")
 
 # @node()
 # def first(x: int, y: int):
 #     second(x, y)
 
 
-# @task(transparent="")
+# @node()
+# def second(x: int, y: int):
+#     print(x, y)
+    
+
+# first(1, 2)
+
+# node = TracerRepository(name="node")
+# task = TracerRepository(name="task")
+
+# @node()
+# def first(x: int, y: int):
+#     second(x, y)
+
+
+# @task(traceparent="task")
 # def second(x: int, y: int):
 #     print(x, y)
     
