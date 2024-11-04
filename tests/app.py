@@ -6,7 +6,6 @@ from fastapi import FastAPI
 
 import uvicorn
 
-
 # ############################################################################################################
 app = ArbiterNode(
     arbiter_config=ArbiterConfig(broker_config=NatsBrokerConfig()),
