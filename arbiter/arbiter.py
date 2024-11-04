@@ -7,6 +7,7 @@ import inspect
 import pickle
 import asyncio
 import redis.asyncio as aioredis
+from collections import defaultdict
 from pydantic import BaseModel
 from redis.asyncio.client import PubSub
 from typing import AsyncGenerator, Any, Callable, TypeVar, Optional, Type, get_args
@@ -26,7 +27,8 @@ class Arbiter:
     def __init__(
         self,
         arbiter_config: ArbiterConfig,
-    ):        
+    ):
+        self.headers: dict[str, Any] = None
         self.arbiter_config = arbiter_config
         self.broker_config = arbiter_config.broker_config
         
@@ -47,6 +49,13 @@ class Arbiter:
         else:
             raise NotImplementedError("Not implemented broker")   
 
+    @property
+    def name(self) -> str:
+        return self.arbiter_config.name
+
+    def set_headers(self, headers: dict[str, Any]):
+        self.headers = headers
+
     async def connect(self):
         await self.broker.connect()
 
@@ -59,7 +68,6 @@ class Arbiter:
         *args,
         **kwargs
     ) -> Any:
-
         """Request execution logic shared between task and stream."""
         timeout = kwargs.pop("timeout", self.arbiter_config.default_send_timeout)
         retry = 0
@@ -138,26 +146,47 @@ class Arbiter:
         # TODO Pass model parameter
         # validate model? not yet
         assert len(args) == 0 or len(kwargs) == 0, "currently, args and kwargs cannot be used together"
+        
+        # 주입식 headers 검사
+        if "headers" in kwargs:
+            headers = kwargs.pop("headers")
+
+            if "traceparent" in headers:
+                raise ValueError("traceparent is reserved keyword")
+            
+            if self.headers:
+                self.headers.update(headers)
+            else:
+                self.headers = headers          
+
+        # TODO short-circuiting
+        if self.headers:
+            headers = self.headers
+            self.headers = None
+        else:
+            headers = {"traceparent": str(uuid.uuid4())}
+            
         data: list | dict = None
         if len(args) > 0:
-            data = []
+            data = [headers]
             for arg in args:
                 # assert isinstance(arg, (str, int, float, bool)), "args must be str, int, float, bool"
                 if isinstance(arg, BaseModel):
                     data.append(arg.model_dump())
                 else:
                     data.append(arg)
+            return data
         elif len(kwargs) > 0:
-            data = {}
+            data = {'__header__': headers}
             for key, value in kwargs.items():
                 # assert isinstance(value, (str, int, float, bool)), "args must be str, int, float, bool"
                 if isinstance(value, BaseModel):
                     data[key] = value.model_dump()
                 else:
                     data[key] = value
-        else:
-            data = []
-        return data
+            return data
+            
+        return [headers]
     
     async def __results_unpacker(self, return_type: Any, results: Any):
         if is_optional_type(return_type):

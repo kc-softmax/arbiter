@@ -4,6 +4,7 @@ from dataclasses import dataclass
 @dataclass
 class ArbiterConfig:
     broker_config: BrokerConfig
+    #telemetry_config: TelemetryConfig
     name: str = "Danimoth"
     default_send_timeout: int = 5
     default_task_close_timeout: int = 5

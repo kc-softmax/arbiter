@@ -1,10 +1,10 @@
 import httpx
+import uvicorn
 from typing import Any
+from arbiter.telemetry import TracerRepository
 from arbiter import Arbiter, ArbiterRunner, ArbiterNode
 from arbiter.configs import NatsBrokerConfig, ArbiterNodeConfig, ArbiterConfig
 from fastapi import FastAPI
-
-import uvicorn
 
 topics = [
     "Employee Benefits",
@@ -69,18 +69,18 @@ async def get_llm_request_from_client(
     arbiter: Arbiter
 ) -> str:
     return "hi ho silva"
-    print("get_llm_request_from_client")
-    target_queue = topic_maps.get(topic)
-    if not target_queue:
-        return "Invalid topic"
-    response = await arbiter.async_task(
-        target=target_queue,
-        topic=topic, 
-        content=content,
-        timeout=10)
-    # if response and isinstance(response, str):
-    #     await arbiter.emit_message("store_request", topic, content, response)
-    return response
+    # print("get_llm_request_from_client")
+    # target_queue = topic_maps.get(topic)
+    # if not target_queue:
+    #     return "Invalid topic"
+    # response = await arbiter.async_task(
+    #     target=target_queue,
+    #     topic=topic, 
+    #     content=content,
+    #     timeout=10)
+    # # if response and isinstance(response, str):
+    # #     await arbiter.emit_message("store_request", topic, content, response)
+    # return response
 
 @app.async_task(queue='employee_benefits', timeout=3000)
 async def send_llm_requset_to_employee_benefits(topic: str, content: str) -> str:
@@ -96,12 +96,61 @@ async def send_llm_requset_to_remote_work_policies(topic: str, content: str) -> 
 
 @app.async_task(queue='employee_training', timeout=3000)
 async def send_llm_requset_to_employee_training(topic: str, content: str) -> str:
-    return send_llm_request(topic, content)
+    return "This is a test"
+    # return send_llm_request(topic, content)
 
-@app.async_task(queue='workplace_safety', timeout=3000)
-async def send_llm_requset_to_workplace_safety(topic: str, content: str) -> str:
-    return send_llm_request(topic, content)
 
+# node = TracerRepository(name="node")
+
+@app.http_task(queue='workplace_safety')
+async def send_llm_requset_to_workplace_safety(
+    topic: str,
+    content: str,
+    arbiter: Arbiter
+) -> str:
+    await arbiter.async_task(
+        "employee_training", 
+        topic,
+        content)
+    return "OK!"
+    # return send_llm_request(topic, content)
+    
+
+
+# @app.trace()
+# @app.async_task(queue='workplace_safety', timeout=3000)
+# async def send_llm_requset_to_workplace_safety(topic: str, content: str) -> str:
+#     return send_llm_request(topic, content)
+
+
+# node = TracerRepository(name="node")
+
+# @node()
+# def first(x: int, y: int):
+#     second(x, y)
+
+
+# @node()
+# def second(x: int, y: int):
+#     print(x, y)
+    
+
+# first(1, 2)
+
+# node = TracerRepository(name="node")
+# task = TracerRepository(name="task")
+
+# @node()
+# def first(x: int, y: int):
+#     second(x=x, y=y)
+
+
+# @task(traceparent="node")
+# def second(x: int, y: int):
+#     print(x, y)
+    
+
+# first(x=1, y=2)
 
 if __name__ == '__main__':
     ArbiterRunner.run(
