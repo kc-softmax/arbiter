@@ -11,6 +11,7 @@ from arbiter.configs import NatsBrokerConfig
 from arbiter.brokers.base import ArbiterBrokerInterface
 from arbiter.utils import get_pickled_data
 from arbiter.constants import ASYNC_TASK_CLOSE_MESSAGE
+from arbiter.logger import ArbiterLogger
 
 
 class ArbiterNatsBroker(ArbiterBrokerInterface):
@@ -26,16 +27,17 @@ class ArbiterNatsBroker(ArbiterBrokerInterface):
         super().__init__(name=name, log_level=log_level, log_format=log_format)
         self.config = config
         self.nats: nats.NATS = None
+        self.arbiter_logger = ArbiterLogger(name="broker")
 
     async def connect(self) -> None:
         async def disconnected_cb():
             pass
 
         async def reconnected_cb():
-            print(f'Got reconnected to {self.nats.connected_url.netloc}')
+            self.arbiter_logger.info(f'Got reconnected to {self.nats.connected_url.netloc}')
 
         async def error_cb(e: Exception):
-            print(f'There was an error: {e}')
+            self.arbiter_logger.error(f'There was an error: {e}')
 
         async def closed_cb():
             pass
@@ -68,9 +70,9 @@ class ArbiterNatsBroker(ArbiterBrokerInterface):
             response = await self.nats.request(target, pickle.dumps(message), timeout=timeout)
             return get_pickled_data(response.data)
         except asyncio.TimeoutError as e:
-            print(f"Timeout in request to {target} {e}")
+            self.arbiter_logger.error(f"Timeout in request to {target} {e}")
         except NoRespondersError as e:
-            print(f"No responders in request to {target} {e}")
+            self.arbiter_logger.error(f"No responders in request to {target} {e}")
             raise TaskNotRegisteredError(f"Task {target} is not registered")
 
         raise Exception(f"Unknown error in request to {target}")
@@ -93,7 +95,7 @@ class ArbiterNatsBroker(ArbiterBrokerInterface):
                     break
                 yield get_pickled_data(response.data)
             except Exception as e:
-                print(f"Error in stream: {e}")
+                self.arbiter_logger.error(f"Error in stream: {e}")
                 raise e
         await sub.unsubscribe()
         
@@ -136,10 +138,10 @@ class ArbiterNatsBroker(ArbiterBrokerInterface):
                     message = await message_queue.get()
                 yield message    
         except asyncio.TimeoutError:
-            print("Timeout in listen")
+            self.arbiter_logger.error("Timeout in listen")
             pass
         except Exception as e:
-            print(f"Error in listen: {e}")
+            self.arbiter_logger.error(f"Error in listen: {e}")
         finally:
             try:
                 await sub.unsubscribe()
@@ -191,6 +193,6 @@ class ArbiterNatsBroker(ArbiterBrokerInterface):
                     # 주기 동안 메시지가 없더라도 빈 리스트를 반환
                     yield (None, [])
         except Exception as e:
-            print(f"Error in periodic_listen: {e}")
+            self.arbiter_logger.error(f"Error in periodic_listen: {e}")
         finally:
             await sub.unsubscribe()

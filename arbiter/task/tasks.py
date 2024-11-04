@@ -153,11 +153,11 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
                     #     "Return type hint is recommended for better performance")
                 
         except IndentationError as e:
-            print(f"IndentationError: {e}")
+            self.arbiter_logger.error(f"IndentationError: {e}")
         except StopIteration:
-            print("StopIteration: No function definition found in the parsed AST.")
+            self.arbiter_logger.error("StopIteration: No function definition found in the parsed AST.")
         except Exception as e:
-            print(f"Unexpected error: {e}")
+            self.arbiter_logger.error(f"Unexpected error: {e}")
         
         if return_annotation == inspect.Signature.empty:
             if in_function_return:
