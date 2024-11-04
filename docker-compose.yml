@@ -1,0 +1,56 @@
+version: '3.9'
+services:
+  # Jaeger
+  jaeger-all-in-one:
+    image: jaegertracing/all-in-one:latest
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686"
+      - "14268:14268"
+      - "14250:14250"
+  
+  collector-gateway:
+    image: otel/opentelemetry-collector:latest-arm64
+    container_name: collector-gateway
+    volumes:
+      - ./collector-gateway.yaml:/etc/collector-gateway.yaml
+    command: [ "--config=/etc/collector-gateway.yaml" ]
+    ports:
+      - "1888:1888" # pprof extension
+      - "13133:13133" # health_check extension
+      - "8888:8888" # Prometheus metrics exposed by the collector
+      - "8889:8889" # Prometheus exporter metrics
+      - "4317:4317" # OTLP gRPC receiver
+      - "4318:4318" # OTLP HTTP receiver
+      - "55670:55679" # zpages extension
+    depends_on:
+      - jaeger-all-in-one
+  
+  prometheus:
+    #image: quay.io/prometheus/prometheus:v2.34.0
+    image: prom/prometheus:v2.43.0
+    container_name: prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus-config.yaml
+    volumes:
+      - ./prometheus.yaml:/etc/prometheus/prometheus-config.yaml
+    ports:
+      - "9090:9090"
+  
+  grafana:
+    image: grafana/grafana:9.0.1
+    container_name: grafana
+    volumes:
+      - ./grafana/grafana.ini:/etc/grafana/grafana.ini
+      - ./grafana/provisioning/:/etc/grafana/provisioning/
+    ports:
+      - "3000:3000"
+  
+  nats:
+    image: nats:latest
+    container_name: nats
+    ports:
+      - "4222:4222" # Client connections
+      - "6222:6222" # Cluster routes
+      - "8222:8222" # HTTP monitoring

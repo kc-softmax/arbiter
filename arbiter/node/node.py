@@ -10,7 +10,7 @@ from multiprocessing import Event, Process
 from multiprocessing.synchronize import Event as MPEvent
 from contextlib import asynccontextmanager
 from warnings import warn
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Callable
 from arbiter import Arbiter
 from arbiter.registry import Registry
 from arbiter.registry.gateway import register_gateway
@@ -90,6 +90,19 @@ class ArbiterNode(TaskRegister):
     @property
     def node_id(self) -> str:
         return self.registry.local_node.get_id()
+    
+    def trace(self, **kwargs) -> Callable:
+        def decorator(func: Callable):
+            # ArbiterAsyncTask 인스턴스 생성 및 등록
+            # find task who has func
+            if not self._tasks:
+                raise ValueError("No task registered")
+            for task in self._tasks:
+                if task.func == func:
+                    task.trace(**kwargs)
+                    break
+            return func
+        return decorator
     
     def regist_task(self, task: ArbiterAsyncTask):
         self._tasks.append(task)

@@ -69,9 +69,14 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
         self.stream = False
         self.node = ArbiterTaskNode(state=NodeState.INACTIVE)
 
+        self.trace_args: dict[str, Any] = None
         self.func: Callable = None        
         self.parameters: dict[str, inspect.Parameter] = None
         self.arbiter_parameter: tuple[str, Arbiter] = None
+
+    def trace(self, **kwargs):
+        from opentelemetry import trace # 검사를 위해 임포트
+        self.trace_args = kwargs
 
     def setup_task_node(self, func: Callable):
         setattr(func, 'is_task_function', True)
@@ -252,8 +257,16 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
             warnings.warn(f"Unexpected parameters: {request.keys()}")
         return parsed_request
     
-    def _parse_message(self, message: Any) -> tuple[str, Any]:
-        return get_pickled_data(message)
+    def _parse_message(self, message: Any) -> tuple[dict, dict | list]:
+        decoded_message = get_pickled_data(message)
+        if isinstance(decoded_message, dict):
+            headers = decoded_message.pop('__header__', None)
+        elif isinstance(decoded_message, list):
+            headers = decoded_message.pop(0)
+        else:
+            raise ValueError("Invalid message")
+        
+        return headers, decoded_message
     
     def _transform_parameters(self, parameters: dict[str, inspect.Parameter]) -> dict[str, list]:
         transformed_parameters: dict[str, list] = {}
@@ -288,23 +301,35 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
             raise ValueError("func should be provided only once")
         if func is not None and self.func is None:
             self.setup_task_node(func)
-        # parameters = copy.deepcopy(self.parameters)
+            
         @functools.wraps(self.func)
         async def wrapper(
             arbiter: Arbiter,
             executor: Callable = None,
         ):
+
+            # service name은 singleton으로 선언되어야한다            
+            from arbiter.telemetry import TracerRepository, StatusCode
+            
+            tracer = TracerRepository(name=arbiter.name)
+                
             async for reply, message in self._get_message_func(arbiter):
                 is_async_gen = False
+                status_code = StatusCode.OK
+                request = {}
+                headers = {}
                 try:
-                    parsed_message = self._parse_message(message)
+                    headers, parsed_message = self._parse_message(message)
                     request = self._parse_requset(parsed_message)
                     if self.arbiter_parameter:
                         request[self.arbiter_parameter[0]] = arbiter
+                        arbiter.set_headers(headers)
                     if executor:
-                        func_result = self.func(executor, **request)
-                    else:
-                        func_result = self.func(**request)
+                        if 'self' in request:
+                            raise ValueError("self parameter is reserved")
+                        request['self'] = executor
+                    
+                    func_result = self.func(**request)
                     # Determine if func_result is an async generator
                     is_async_gen = inspect.isasyncgen(func_result)
                     if is_async_gen:
@@ -312,22 +337,28 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
                     else:
                         # Wrap single awaitable result into an async generator
                         async_iterator = single_result_async_gen(func_result)
+                                     
                     async for results in async_iterator:
                         if not reply:
                             continue
                         packed_results = self._results_packing(results)
-                        await arbiter.broker.emit(reply, packed_results)
-                        # await arbiter.push_message(message_id, packed_results)
-                                                                
+                        await arbiter.broker.emit(reply, packed_results)                                                                
                 except Exception as e:
-                    if reply is None:
-                        pass
-                    else:
-                        await arbiter.broker.emit(reply, self._results_packing(e))
+                    reply and await arbiter.broker.emit(reply, self._results_packing(e))
+                    status_code = StatusCode.ERROR
                 finally:
                     if is_async_gen and reply is not None:
                         await arbiter.broker.emit(reply, ASYNC_TASK_CLOSE_MESSAGE)
-              
+                    try:
+                        await tracer.tracing(
+                            self.queue,
+                            request,
+                            headers,
+                            status_code
+                        )
+                    except Exception as e:
+                        print(e)
+                        
         return wrapper 
   
 class ArbiterHttpTask(ArbiterAsyncTask):
@@ -395,8 +426,7 @@ class ArbiterHttpTask(ArbiterAsyncTask):
                     raise ValueError("request parameter should be dict")
             
         return parameters, arbiter_parameter
-    
-    
+       
 class ArbiterPeriodicTask(ArbiterAsyncTask):
     """
         periodc task는 주기적으로 실행되는 task이다.

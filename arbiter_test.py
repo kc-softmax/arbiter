@@ -17,7 +17,9 @@ async def simple_subscribe_task(x: int):
     pass
 
 @ArbiterAsyncTask(queue='test_service_return_task')
-async def simple_async_task(x: int):
+async def simple_async_task(x: int, arbiter: Arbiter):
+    async for results in arbiter.async_stream('test_service_return_stream', 4):
+        print("async stream: ", results)
     return {"result": "success + " + str(x)}
         
 @ArbiterAsyncTask(queue='test_service_return_stream')
@@ -29,7 +31,7 @@ async def main():
     arbiter = Arbiter(ArbiterConfig(broker_config=NatsBrokerConfig()))
     
     await arbiter.connect()
-    print("async task: ", await arbiter.async_task('get_llm_request_from_client', 5, 4))
+    # print("async task: ", await arbiter.async_task('get_llm_request_from_client', 5, 4))
     task = asyncio.create_task(simple_async_task(arbiter=arbiter))
     stream = asyncio.create_task(simple_async_stream(arbiter=arbiter))
     periodic = asyncio.create_task(simple_periodic_task(arbiter=arbiter))
@@ -37,11 +39,9 @@ async def main():
     try:
         await asyncio.sleep(0.5)
         await arbiter.async_broadcast('simple_subscribe_task', 5)
-        print("async task: ", await arbiter.async_task('get_llm_request_from_client', 5, 4))
+        # print("async task: ", await arbiter.async_task('get_llm_request_from_client', 5, 4))
         results = await arbiter.async_task('test_service_return_task', 4)
         print("async task: ", results)
-        async for results in arbiter.async_stream('test_service_return_stream', 4):
-            print("async stream: ", results)
                 
         await arbiter.async_broadcast('simple_subscribe_task', 35)
         await arbiter.emit_message('simple_periodic_task', 6)
