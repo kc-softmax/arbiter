@@ -91,7 +91,14 @@ class ArbiterNode(TaskRegister):
     def node_id(self) -> str:
         return self.registry.local_node.get_id()
     
-    def trace(self, **kwargs) -> Callable:
+    def trace(
+        self, 
+        request: bool = True,
+        responses: bool = True,
+        error: bool = True,
+        execution_times: bool = True,
+        callback: Callable = None,
+    ) -> Callable:
         def decorator(func: Callable):
             # ArbiterAsyncTask 인스턴스 생성 및 등록
             # find task who has func
@@ -99,7 +106,13 @@ class ArbiterNode(TaskRegister):
                 raise ValueError("No task registered")
             for task in self._tasks:
                 if task.func == func:
-                    task.trace(**kwargs)
+                    task.trace(
+                        request=request,
+                        responses=responses,
+                        error=error,
+                        execution_times=execution_times,
+                        callback=callback
+                    )
                     break
             return func
         return decorator

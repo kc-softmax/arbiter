@@ -1,8 +1,4 @@
 from __future__ import annotations
-import copy
-import asyncio
-import contextlib
-import multiprocessing
 import re
 import pickle
 import ast
@@ -13,9 +9,9 @@ import time
 import uuid
 import warnings
 import pickle
+from dataclasses import asdict, replace
 from fastapi import Request
 from collections.abc import AsyncGenerator
-from multiprocessing.synchronize import Event as EventType
 from types import UnionType
 from typing import  (
     Any,
@@ -28,7 +24,6 @@ from typing import  (
     Dict
 )
 from pydantic import BaseModel
-from arbiter.configs import ArbiterConfig
 from arbiter.constants import (
     ASYNC_TASK_CLOSE_MESSAGE
 )
@@ -39,6 +34,7 @@ from arbiter.utils import (
     single_result_async_gen,
     get_pickled_data
 )
+from arbiter.configs import TraceConfig
 from arbiter.data.models import ArbiterTaskNode
 from arbiter.task.task_runner import AribterTaskNodeRunner
 from arbiter import Arbiter
@@ -70,14 +66,14 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
         self.stream = False
         self.node = ArbiterTaskNode(state=NodeState.INACTIVE)
 
-        self.trace_args: dict[str, Any] = None
+        self.trace_config: TraceConfig = None
         self.func: Callable = None        
         self.parameters: dict[str, inspect.Parameter] = None
         self.arbiter_parameter: tuple[str, Arbiter] = None
 
     def trace(self, **kwargs):
         from opentelemetry import trace # 검사를 위해 임포트
-        self.trace_args = kwargs
+        self.trace_config = TraceConfig(**kwargs)
 
     def setup_task_node(self, func: Callable):
         setattr(func, 'is_task_function', True)
@@ -181,14 +177,6 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
         :return: An asynchronous generator yielding messages.
         """
         return arbiter.broker.listen(self.queue)
- 
-    def _results_packing(self, data: Any) -> Any:
-        # MARK TODO Change
-        if isinstance(data, BaseModel):
-            packed_data = data.model_dump_json()
-        else:
-            packed_data = data
-        return pickle.dumps(packed_data)
    
     def _parse_requset(
         self,
@@ -294,6 +282,73 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
                 transformed_return_type.append(return_type.__name__)
         return transformed_return_type
     
+    async def __execute_with_tracing(
+        self,
+        func: AsyncIterator,
+        arbiter: Arbiter,
+        trace_config: TraceConfig,
+        headers: dict[str, Any],
+        request: dict[str, Any],
+        reply: bool
+    ):
+        from arbiter.telemetry import TracerRepository, StatusCode
+        from opentelemetry.propagate import inject, extract
+        tracer = TracerRepository(name=arbiter.name).tracer
+        
+        with tracer.start_as_current_span(
+            self.queue, 
+            extract(headers)
+        ) as span:
+            inject(headers)
+            try:
+                error = None
+                responses = []
+                elapsed_times = []
+                start_time = time.perf_counter()
+                async for results in func:
+                    end_time = time.perf_counter()
+                    elapsed_times.append(end_time - start_time)
+                    if not reply:
+                        continue
+                    if isinstance(results, BaseModel):
+                        response = results.model_dump_json()
+                    else:
+                        response = results
+                    responses.append(response)
+                    await arbiter.broker.emit(reply, pickle.dumps(response))
+                    start_time = time.perf_counter()
+
+                if trace_config.execution_times:
+                    span.set_attribute("execution_times", elapsed_times)
+                    
+                if trace_config.responses:
+                    span.set_attribute("responses", responses)
+                    
+                span.set_status(StatusCode.OK)
+            except Exception as e:
+                # 함수 안에서 에러가 발생할 경우 
+                # raise inTaskError
+                error = e
+                span.set_status(StatusCode.ERROR)
+                if trace_config.error:
+                    span.set_attribute("error", str(e))
+                
+            if trace_config.request:
+                for key, value in request.items():   
+                    if isinstance(value, BaseModel):
+                        span.set_attribute(key, value.model_dump_json())
+                    else:
+                        span.set_attribute(key, value)
+            
+            if trace_config.callback:
+                trace_config.callback(
+                    span,
+                    request, 
+                    response,
+                    error,
+                    elapsed_times
+                )
+    
     def __call__(self, func: Callable[..., Any] = None):
         if func is None and self.func is None:
             raise ValueError("func should be provided")
@@ -307,12 +362,7 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
             arbiter: Arbiter,
             executor: Callable = None,
         ):
-
-            # service name은 singleton으로 선언되어야한다            
-            from arbiter.telemetry import TracerRepository, StatusCode
-            from opentelemetry.propagate import inject, extract
-            tracer = TracerRepository(name=arbiter.name).tracer
-                
+            # service name은 singleton으로 선언되어야한다                
             async for reply, message in self._get_message_func(arbiter):
                 is_async_gen = False
                 request = {}
@@ -323,10 +373,13 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
                     
                     # Mapping request Error
                     request = self._parse_requset(parsed_message)
-                    
+                    raw_request = request.copy()
                     # Mapping request Error (arbiter_parameter)
                     if self.arbiter_parameter:
                         request[self.arbiter_parameter[0]] = arbiter
+                        trace_config = asdict(self.trace_config) if self.trace_config else {}
+                        trace_config and trace_config.pop("callback", None) # callback은 사용할 수 없다.
+                        trace_config and headers.update({"trace_config": trace_config})
                         arbiter.set_headers(headers)
                     
                     # Mapping request Error (executor, self)
@@ -349,30 +402,51 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
                     ############################################################
                     
                     ############################################################
-                    # 함수 실행 영역 InTaskError?
-                    with tracer.start_as_current_span(
-                        self.queue, 
-                        extract(headers)
-                    ) as span:
-                        inject(headers)
+                    # 함수 실행 영역
+
+                    if self.trace_config:
+                        trace_config = self.trace_config
+                    else:
+                        trace_config = None
+
+                    if config := headers.get("trace_config", None):
+                        parent_trace_config = TraceConfig(**config)
+                        if trace_config:
+                            # policy에 따라서 덮어쓰기
+                            # 현재는 policy가 없다. 그냥 덮어쓴다.
+                            trace_config = replace(
+                                trace_config, **{
+                                    k: v
+                                    for k, v in asdict(parent_trace_config).items()
+                                    if v is not None})
+                        else:
+                            trace_config = parent_trace_config
+                        
+                    if trace_config:
+                        await self.__execute_with_tracing(
+                            async_iterator,
+                            arbiter,
+                            trace_config,
+                            headers,
+                            raw_request,
+                            reply)
+                    else:
                         try:
                             async for results in async_iterator:
                                 if not reply:
                                     continue
-                                packed_results = self._results_packing(results)
-                                await arbiter.broker.emit(reply, packed_results)
-                            span.set_status(StatusCode.OK)
+                                if isinstance(results, BaseModel):
+                                    response = results.model_dump_json()
+                                else:
+                                    response = results
+                                await arbiter.broker.emit(reply, pickle.dumps(response))
                         except Exception as e:
+                            pass
                             # 함수 안에서 에러가 발생할 경우 
                             # raise inTaskError
-                            span.set_status(StatusCode.ERROR)
-                            
-                        for key, value in request.items():
-                            if type(value) in [str, int, bool, bytes]:
-                                span.set_attribute(key, value)
                     ############################################################
                 except Exception as e:     
-                    reply and await arbiter.broker.emit(reply, self._results_packing(e))
+                    reply and await arbiter.broker.emit(reply, pickle.dumps(str(e)))
                     print('prepare calc: ', e)
                 finally:
                     if is_async_gen and reply is not None:

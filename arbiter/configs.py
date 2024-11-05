@@ -1,5 +1,14 @@
 from __future__ import annotations
 from dataclasses import dataclass
+from typing import Callable
+
+@dataclass
+class TraceConfig:
+    request: bool
+    responses: bool
+    error: bool
+    execution_times: bool
+    callback: Callable = None    
 
 @dataclass
 class ArbiterConfig:

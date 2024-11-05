@@ -1,26 +1,17 @@
 from __future__ import annotations
-import json
-import nats
 import time
 import uuid
-import inspect
-import pickle
 import asyncio
-import redis.asyncio as aioredis
-from collections import defaultdict
 from pydantic import BaseModel
-from redis.asyncio.client import PubSub
-from typing import AsyncGenerator, Any, Callable, TypeVar, Optional, Type, get_args
+from typing import AsyncGenerator, Any, get_args
 from arbiter.configs import (
     ArbiterConfig,
-    BrokerConfig,
+    TraceConfig,
     NatsBrokerConfig,
     RedisBrokerConfig)
 from arbiter.brokers import ArbiterRedisBroker, ArbiterNatsBroker
 from arbiter.models import ArbiterTaskModel
-from arbiter.utils import is_optional_type, single_result_async_gen
-from arbiter.exceptions import AribterEncodeError
-from arbiter.constants import ASYNC_TASK_CLOSE_MESSAGE
+from arbiter.utils import is_optional_type
 
 class Arbiter:
     
@@ -37,15 +28,13 @@ class Arbiter:
                 config=self.broker_config,
                 name=self.arbiter_config.name,
                 log_level=self.arbiter_config.log_level,
-                log_format=self.arbiter_config.log_format
-            )
+                log_format=self.arbiter_config.log_format)
         elif isinstance(self.broker_config, RedisBrokerConfig):
             self.broker: ArbiterRedisBroker = ArbiterRedisBroker(
                 config=self.broker_config,
                 name=self.arbiter_config.name,
                 log_level=self.arbiter_config.log_level,
-                log_format=self.arbiter_config.log_format
-            )
+                log_format=self.arbiter_config.log_format)
         else:
             raise NotImplementedError("Not implemented broker")   
 
@@ -55,7 +44,7 @@ class Arbiter:
 
     def set_headers(self, headers: dict[str, Any]):
         self.headers = headers
-
+    
     async def connect(self):
         await self.broker.connect()
 
