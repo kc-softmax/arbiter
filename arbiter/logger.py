@@ -26,9 +26,9 @@ class LevelBasedFormatter(logging.Formatter):
         self.formats = {
             logging.DEBUG: logging.Formatter(fmt),  # 굵게
             logging.INFO: logging.Formatter(fmt),
-            logging.WARNING: logging.Formatter("\033[33m%(levelname)s - %(message)s\033[0m"),  # 노란색
-            logging.ERROR: logging.Formatter("\033[31m%(levelname)s - %(message)s\033[0m"),    # 빨간색
-            logging.CRITICAL: logging.Formatter("\033[1;41m%(levelname)s - %(message)s\033[0m")  # 빨간 배경
+            logging.WARNING: logging.Formatter("\033[33m%(levelname)s - %(name)s - %(message)s\033[0m"),  # 노란색
+            logging.ERROR: logging.Formatter("\033[31m%(levelname)s - %(name)s - %(message)s\033[0m"),    # 빨간색
+            logging.CRITICAL: logging.Formatter("\033[1;41m%(levelname)s - %(name)s - %(message)s\033[0m")  # 빨간 배경
         }
 
     def format(self, record):
@@ -47,11 +47,9 @@ class ArbiterLogger:
         self.logger = logging.getLogger(name)
         self.logger.setLevel(level)
         self.reset = "\033[0m"  # 기본 색상 (리셋)
-        
+
         # 콘솔 핸들러와 포맷터 설정
         console_handler = logging.StreamHandler()
-        # formatter = logging.Formatter(fmt=formatter)
-        # console_handler.setFormatter(formatter)
         console_handler.setFormatter(LevelBasedFormatter(formatter))
         self.logger.addHandler(console_handler)
 
