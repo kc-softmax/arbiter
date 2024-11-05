@@ -1,6 +1,7 @@
 import httpx
 import uvicorn
 from typing import Any
+from opentelemetry.trace import Span
 from arbiter.telemetry import TracerRepository
 from arbiter import Arbiter, ArbiterRunner, ArbiterNode
 from arbiter.configs import NatsBrokerConfig, ArbiterNodeConfig, ArbiterConfig
@@ -98,23 +99,27 @@ async def send_llm_requset_to_remote_work_policies(topic: str, content: str) -> 
 async def send_llm_requset_to_employee_training(topic: str, content: str) -> str:
     return "This is a test"
     # return send_llm_request(topic, content)
+def trace_callback(
+    span: Span, 
+    request: dict[str, Any],
+    responses: list[Any], 
+    error: Exception, 
+    execution_times: list[float]
+):
+    span.set_attribute("MY VALUE", sum(execution_times))
 
-# def trace_callback(span, request, response):
-#     span.set_attribute(key, value)
-#     pass
-
-@app.trace(request=True, response=True, cb=trace_callback)
+@app.trace(callback=trace_callback)
 @app.http_task(queue='workplace_safety')
 async def send_llm_requset_to_workplace_safety(
     topic: str,
     content: str,
     arbiter: Arbiter
 ) -> str:
-    await arbiter.async_task(
+    rs = await arbiter.async_task(
         "employee_training", 
         topic,
         content)
-    return "OK!"
+    return "OK!" + rs
     # return send_llm_request(topic, content)
     
 
