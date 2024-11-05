@@ -27,7 +27,7 @@ class ArbiterNatsBroker(ArbiterBrokerInterface):
         super().__init__(name=name, log_level=log_level, log_format=log_format)
         self.config = config
         self.nats: nats.NATS = None
-        self.logger = ArbiterLogger(name="broker")
+        self.logger = ArbiterLogger(name=self.__class__.__name__)
         self.logger.add_handler()
 
     async def connect(self) -> None:
