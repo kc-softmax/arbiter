@@ -153,11 +153,11 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
                     #     "Return type hint is recommended for better performance")
                 
         except IndentationError as e:
-            self.arbiter_logger.error(f"IndentationError: {e}")
+            self.logger.error(f"IndentationError: {e}")
         except StopIteration:
-            self.arbiter_logger.error("StopIteration: No function definition found in the parsed AST.")
+            self.logger.error("StopIteration: No function definition found in the parsed AST.")
         except Exception as e:
-            self.arbiter_logger.error(f"Unexpected error: {e}")
+            self.logger.error(f"Unexpected error: {e}")
         
         if return_annotation == inspect.Signature.empty:
             if in_function_return:
@@ -291,10 +291,10 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
         request: dict[str, Any],
         reply: bool
     ):
-        from arbiter.telemetry import TracerRepository, StatusCode
+        from arbiter.telemetry import TelemetryRepository, StatusCode
         from opentelemetry.propagate import inject, extract
-        tracer = TracerRepository(name=arbiter.name).tracer
-        
+        tracer = TelemetryRepository(name=arbiter.name).get_tracer()
+
         with tracer.start_as_current_span(
             self.queue, 
             extract(headers)
@@ -323,7 +323,7 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
                     
                 if trace_config.responses:
                     span.set_attribute("responses", responses)
-                    
+
                 span.set_status(StatusCode.OK)
             except Exception as e:
                 # 함수 안에서 에러가 발생할 경우 

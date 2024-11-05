@@ -70,7 +70,8 @@ class ArbiterNode(TaskRegister):
     
         self.log_level = log_level
         self.log_format = log_format
-        self.arbiter_logger = ArbiterLogger(name="NODE")
+        self.logger = ArbiterLogger(name="NODE")
+        self.logger.add_handler()
         
         self.is_alive_event = asyncio.Event()
         self.ready_to_listen_external_event = asyncio.Event()
@@ -255,7 +256,7 @@ class ArbiterNode(TaskRegister):
             warn('Warp In Queue is not empty')
             # remove all messages in the queue
             while not self._warp_in_queue.empty():
-                self.arbiter_logger.info("remove message", self._warp_in_queue.get_nowait())
+                self.logger.info("remove message", self._warp_in_queue.get_nowait())
                 await self._warp_in_queue.get()
         match phase:
             case WarpInPhase.PREPARATION:
@@ -312,7 +313,7 @@ class ArbiterNode(TaskRegister):
             yield self
         except Exception as e:
             # TODO logging
-            self.arbiter_logger.error("Raise error in warp - in", e)
+            self.logger.error("Raise error in warp - in", e)
         finally:
             await self._external_broadcast_queue.put((
                 ExternalEvent(
@@ -323,12 +324,12 @@ class ArbiterNode(TaskRegister):
                 self._external_broadcast_queue, 
                 self.node_config.disappearance_timeout):
                 # TODO logging
-                self.arbiter_logger.warning("Failed to empty broadcast queue")
+                self.logger.warning("Failed to empty broadcast queue")
             
             if not await check_queue_and_exit(
                 self._external_emit_queue, 
                 self.node_config.disappearance_timeout):
-                self.arbiter_logger.warning("Failed to empty emit queue")
+                self.logger.warning("Failed to empty emit queue")
 
             shutdown_event.set()
             await asyncio.to_thread(self._internal_health_check_queue.put, obj="exit")
@@ -375,7 +376,7 @@ class ArbiterNode(TaskRegister):
                     timeout=self.node_config.internal_health_check_timeout
                 )
         except (Exception, TimeoutError) as err:
-            self.arbiter_logger.error("failed internal health check", err)
+            self.logger.error("failed internal health check", err)
         finally:
             self.is_alive_event.set()
 
@@ -387,7 +388,7 @@ class ArbiterNode(TaskRegister):
                     self._refresh_gateway_process()
                 await asyncio.sleep(self.node_config.gateway_refresh_interval)
         except Exception as err:
-            self.arbiter_logger.error('failed external health check', err)
+            self.logger.error('failed external health check', err)
         finally:
             self.is_alive_event.set()
             
@@ -428,7 +429,7 @@ class ArbiterNode(TaskRegister):
                     case ExternalNodeEvent.NODE_CONNECT:
                         """It will execute when first connect with same broker"""
                         if self.registry.get_node(event.peer_node_id):
-                            self.arbiter_logger.warning("already connected peer node", event.peer_node_id)
+                            self.logger.warning("already connected peer node", event.peer_node_id)
                             continue
                         self.registry.register_node(event.data)
                     case ExternalNodeEvent.TASK_UPDATE:
@@ -437,7 +438,7 @@ class ArbiterNode(TaskRegister):
                         # unknown event
                         raise ValueError(f"Unknown ExternalNodeEvenType {event.event}")                    
         except Exception as err:
-            self.arbiter_logger.error("failed external event listener", err)
+            self.logger.error("failed external event listener", err)
         finally:
             self.is_alive_event.set()
         
@@ -460,7 +461,7 @@ class ArbiterNode(TaskRegister):
                 #     # check gateway need to reload
                 await asyncio.sleep(self.node_config.external_health_check_interval)
         except Exception as err:
-            self.arbiter_logger.error('failed external health check', err)
+            self.logger.error('failed external health check', err)
         finally:
             self.is_alive_event.set()
 
@@ -479,7 +480,7 @@ class ArbiterNode(TaskRegister):
                     case ExternalNodeEvent.NODE_CONNECT:
                         """It will execute when first connect with same broker"""
                         if self.registry.get_node(event.peer_node_id):
-                            self.arbiter_logger.warning("already connected peer node", event.peer_node_id)
+                            self.logger.warning("already connected peer node", event.peer_node_id)
                             continue
                         self.registry.register_node(event.data)
                         reply and await self._external_emit_queue.put((
@@ -514,6 +515,6 @@ class ArbiterNode(TaskRegister):
                         raise ValueError(f"Unknown ExternalNodeEvenType {event.event}")                    
                 
         except Exception as err:
-            self.arbiter_logger.error("failed external node event", err)
+            self.logger.error("failed external node event", err)
         finally:
             self.is_alive_event.set()
