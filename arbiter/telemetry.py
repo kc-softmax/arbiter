@@ -25,13 +25,13 @@ OTEL_SERVER_URL = "http://localhost:4317"
 class TracerRepository:
     
     _instance: dict[str, TracerRepository] = {}
-    _tracer: Tracer = None
+    tracer: Tracer = None
     
     def __new__(cls, name: str) -> TracerRepository:
         if name not in cls._instance:
             instance = super(TracerRepository, cls).__new__(cls)
-            if cls._tracer is None:
-                cls._tracer = instance._initialize_tracer(name)
+            if cls.tracer is None:
+                cls.tracer = instance._initialize_tracer(name)
             cls._instance[name] = instance
         return cls._instance[name]
     
@@ -51,26 +51,6 @@ class TracerRepository:
 
         # Tracer 인스턴스 생성
         return trace.get_tracer(__name__)
-
-    async def tracing(
-        self,
-        span_name: str,
-        request: dict[str, Any],
-        headers: dict[str, Any],
-        status_code: StatusCode
-    ) -> Callable:
-        context = extract(headers)
-        with self._tracer.start_as_current_span(span_name, context) as span:
-            span.get_span_context()
-            # span.add_event(func.__name__)
-            for key, value in request.items():
-                if type(value) in [str, int, bool, bytes]:
-                    span.set_attribute(key, value)
-            # traceparent를 주입한다
-            span.set_status(status_code)
-            # span.set_attribute("http.status", status_code)
-            
-
 
 # node = TracerRepository(name="node")
 

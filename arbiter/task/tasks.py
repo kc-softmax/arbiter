@@ -10,6 +10,7 @@ import inspect
 import json
 import functools
 import time
+import uuid
 import warnings
 import pickle
 from fastapi import Request
@@ -219,11 +220,10 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
             if len(without_default_params) > len(request):
                 raise ValueError("Invalid data length")
             # 순서대로 매핑하여 request_body를 만든다.
-            request = {k: v for k, v in zip( self.parameters.keys(), request)}
+            request = {k: v for k, v in zip(self.parameters.keys(), request)}
         elif not isinstance(request, dict):
             request: dict[str, Any] = json.loads(request)
         assert isinstance(request, dict), "Invalid request data"
-        
         """
             사용자로 부터 받은 데이터를 request_params에 맞게 파싱한다.
         """
@@ -310,16 +310,15 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
 
             # service name은 singleton으로 선언되어야한다            
             from arbiter.telemetry import TracerRepository, StatusCode
-            
-            tracer = TracerRepository(name=arbiter.name)
+            from opentelemetry.propagate import inject, extract
+            tracer = TracerRepository(name=arbiter.name).tracer
                 
             async for reply, message in self._get_message_func(arbiter):
                 is_async_gen = False
-                status_code = StatusCode.OK
                 request = {}
                 headers = {}
                 try:
-                    headers, parsed_message = self._parse_message(message)
+                    headers, parsed_message = self._parse_message(message)    
                     request = self._parse_requset(parsed_message)
                     if self.arbiter_parameter:
                         request[self.arbiter_parameter[0]] = arbiter
@@ -328,7 +327,6 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
                         if 'self' in request:
                             raise ValueError("self parameter is reserved")
                         request['self'] = executor
-                    
                     func_result = self.func(**request)
                     # Determine if func_result is an async generator
                     is_async_gen = inspect.isasyncgen(func_result)
@@ -337,28 +335,35 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
                     else:
                         # Wrap single awaitable result into an async generator
                         async_iterator = single_result_async_gen(func_result)
-                                     
-                    async for results in async_iterator:
-                        if not reply:
-                            continue
-                        packed_results = self._results_packing(results)
-                        await arbiter.broker.emit(reply, packed_results)                                                                
-                except Exception as e:
+                    ############################################################
+                    # 함수 실행 영역
+                    with tracer.start_as_current_span(
+                        self.queue, 
+                        extract(headers)
+                    ) as span:
+                        inject(headers)
+                        try:
+                            async for results in async_iterator:
+                                if not reply:
+                                    continue
+                                packed_results = self._results_packing(results)
+                                await arbiter.broker.emit(reply, packed_results)
+                            span.set_status(StatusCode.OK)
+                        except Exception as e:
+                            # 함수 안에서 에러가 발생할 경우 
+                            # raise inTaskError
+                            span.set_status(StatusCode.ERROR)
+                            
+                        for key, value in request.items():
+                            if type(value) in [str, int, bool, bytes]:
+                                span.set_attribute(key, value)
+                    ############################################################
+                except Exception as e:     
                     reply and await arbiter.broker.emit(reply, self._results_packing(e))
-                    status_code = StatusCode.ERROR
+                    print('prepare calc: ', e)
                 finally:
                     if is_async_gen and reply is not None:
-                        await arbiter.broker.emit(reply, ASYNC_TASK_CLOSE_MESSAGE)
-                    try:
-                        await tracer.tracing(
-                            self.queue,
-                            request,
-                            headers,
-                            status_code
-                        )
-                    except Exception as e:
-                        print(e)
-                        
+                        await arbiter.broker.emit(reply, ASYNC_TASK_CLOSE_MESSAGE)                        
         return wrapper 
   
 class ArbiterHttpTask(ArbiterAsyncTask):
@@ -464,30 +469,22 @@ class ArbiterPeriodicTask(ArbiterAsyncTask):
 
     def _parse_message(self, message: Any) -> tuple[str, Any]:
         assert isinstance(message, list), "Periodic task should have list type message"
-        return [
+        # [[header, data 1], [header, data 2], ...]
+        raw_messages = [
             get_pickled_data(data) for data in message
         ]
-    
+        # [header, data 1, data 2, ...]
+        if not raw_messages:
+            return {"traceparent": str(uuid.uuid4())}, []
+        # get first header
+        headers = raw_messages[0][0]
+        return headers, [data[1] for data in raw_messages]
+            
     def _parse_requset(
         self, 
         request: Any,
     ) -> dict[str, Any] | Any:
-        # TODO update this method
-        def merge_dicts(*dicts):
-            merged_dict = {}
-            for d in dicts:
-                for key, value in d.items():
-                    if key in merged_dict:
-                        merged_dict[key].extend(value)
-                    else:
-                        merged_dict[key] = value[:]
-            return merged_dict
-        
-        parsed_request = [
-            super()._parse_requset([data], self.parameters)
-            for data in request
-        ]    
-        return merge_dicts(*parsed_request)
+        return super()._parse_requset([request])
 
     def _check_parameters(
         self, 
