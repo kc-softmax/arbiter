@@ -99,9 +99,11 @@ async def send_llm_requset_to_employee_training(topic: str, content: str) -> str
     return "This is a test"
     # return send_llm_request(topic, content)
 
+# def trace_callback(span, request, response):
+#     span.set_attribute(key, value)
+#     pass
 
-# node = TracerRepository(name="node")
-
+@app.trace(request=True, response=True, cb=trace_callback)
 @app.http_task(queue='workplace_safety')
 async def send_llm_requset_to_workplace_safety(
     topic: str,

@@ -318,16 +318,27 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
                 request = {}
                 headers = {}
                 try:
+                    # Parse request Error
                     headers, parsed_message = self._parse_message(message)    
+                    
+                    # Mapping request Error
                     request = self._parse_requset(parsed_message)
+                    
+                    # Mapping request Error (arbiter_parameter)
                     if self.arbiter_parameter:
                         request[self.arbiter_parameter[0]] = arbiter
                         arbiter.set_headers(headers)
+                    
+                    # Mapping request Error (executor, self)
                     if executor:
                         if 'self' in request:
                             raise ValueError("self parameter is reserved")
                         request['self'] = executor
+                    
+                    ############################################################
+                    # get python Exception
                     func_result = self.func(**request)
+                    
                     # Determine if func_result is an async generator
                     is_async_gen = inspect.isasyncgen(func_result)
                     if is_async_gen:
@@ -336,7 +347,9 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
                         # Wrap single awaitable result into an async generator
                         async_iterator = single_result_async_gen(func_result)
                     ############################################################
-                    # 함수 실행 영역
+                    
+                    ############################################################
+                    # 함수 실행 영역 InTaskError?
                     with tracer.start_as_current_span(
                         self.queue, 
                         extract(headers)
