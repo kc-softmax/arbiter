@@ -2,7 +2,6 @@
  Simple temporary script to test the arbiter nats
 """
 import asyncio
-from arbiter.configs import NatsBrokerConfig, ArbiterConfig
 from arbiter.task import ArbiterAsyncTask, ArbiterSubscribeTask, ArbiterPeriodicTask
 from arbiter import Arbiter
 
@@ -28,7 +27,7 @@ async def simple_async_stream(x: int):
         yield {"result": "success_stream + " + str(x + i)}
 
 async def main():
-    arbiter = Arbiter(ArbiterConfig(broker_config=NatsBrokerConfig()))
+    arbiter = Arbiter()
     
     await arbiter.connect()
     # print("async task: ", await arbiter.async_task('get_llm_request_from_client', 5, 4))

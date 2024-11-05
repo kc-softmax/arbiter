@@ -7,7 +7,6 @@ from nats.errors import NoRespondersError
 from nats.aio.msg import Msg
 from typing import Any, AsyncGenerator
 from arbiter.exceptions import TaskNotRegisteredError
-from arbiter.configs import NatsBrokerConfig
 from arbiter.brokers.base import ArbiterBrokerInterface
 from arbiter.utils import get_pickled_data
 from arbiter.constants import ASYNC_TASK_CLOSE_MESSAGE
@@ -19,13 +18,21 @@ class ArbiterNatsBroker(ArbiterBrokerInterface):
     def __init__(
         self,
         *,
-        config: NatsBrokerConfig,
+        host: str,
+        port: int,
+        user: str,
+        password: str,
+        max_reconnect_attempts: int,
         name: str,
         log_level: str = "info",
         log_format: str = "[arbiter] - %(level)s - %(message)s - %(datetime)s",
     ) -> None:
         super().__init__(name=name, log_level=log_level, log_format=log_format)
-        self.config = config
+        self.host = host
+        self.port = port
+        self.user = user
+        self.password = password
+        self.max_reconnect_attempts = max_reconnect_attempts
         self.nats: nats.NATS = None
         self.logger = ArbiterLogger(name=self.__class__.__name__)
         self.logger.add_handler()
@@ -43,13 +50,13 @@ class ArbiterNatsBroker(ArbiterBrokerInterface):
         async def closed_cb():
             pass
             
-        connection_url = f"nats://{self.config.host}:{self.config.port}"
+        connection_url = f"nats://{self.host}:{self.port}"
         self.nats = await nats.connect(
             connection_url,
             name=self.name,
-            user=self.config.user,
-            password=self.config.password,
-            max_reconnect_attempts=self.config.max_reconnect_attempts,
+            user=self.user,
+            password=self.password,
+            max_reconnect_attempts=self.max_reconnect_attempts,
             
             disconnected_cb=disconnected_cb,
             reconnected_cb=reconnected_cb,

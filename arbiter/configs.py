@@ -8,19 +8,7 @@ class TraceConfig:
     responses: bool
     error: bool
     execution_times: bool
-    callback: Callable = None    
-
-@dataclass
-class ArbiterConfig:
-    broker_config: BrokerConfig
-    #telemetry_config: TelemetryConfig
-    name: str = "Danimoth"
-    default_send_timeout: int = 5
-    default_task_close_timeout: int = 5
-    retry_attempts: int = 3
-    retry_interval: float = 0.1
-    log_level: str = "INFO"
-    log_format: str = "%(name)% - %(level)s - %(message)s - %(datetime)s",
+    callback: Callable = None
 
 @dataclass
 class ArbiterNodeConfig:
@@ -42,19 +30,26 @@ class ArbiterNodeConfig:
     internal_event_timeout: int = 1
 
 @dataclass
-class BrokerConfig:
+class ArbiterConfig:
+    name: str = "Danimoth"
+    default_send_timeout: int = 5
+    default_task_close_timeout: int = 5
+    retry_attempts: int = 3
+    retry_interval: float = 0.1
+    log_level: str = "INFO"
+    log_format: str = "%(name)% - %(level)s - %(message)s - %(datetime)s",
     loading_timeout: int = 10
-    max_clients: int = 1000
+    max_tasks: int = 1000
 
 @dataclass
-class RedisBrokerConfig(BrokerConfig):
+class RedisArbiterConfig(ArbiterConfig):
     host: str = "localhost"
     port: int = 6379
     password: str = None
     db: int = 0
 
 @dataclass
-class NatsBrokerConfig(BrokerConfig):
+class NatsArbiterConfig(ArbiterConfig):
     host: str = "localhost"
     port: int = 4222
     user: str = None

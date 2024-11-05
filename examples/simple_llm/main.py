@@ -4,7 +4,6 @@ from typing import Any
 from opentelemetry.trace import Span
 from arbiter.telemetry import TelemetryRepository
 from arbiter import Arbiter, ArbiterRunner, ArbiterNode
-from arbiter.configs import NatsBrokerConfig, ArbiterNodeConfig, ArbiterConfig
 from fastapi import FastAPI
 
 topics = [
@@ -35,16 +34,7 @@ server_maps = {
 
 
 # ############################################################################################################
-app = ArbiterNode(
-    arbiter_config=ArbiterConfig(
-        broker_config=NatsBrokerConfig(
-            # port=45817,
-            # user="local",
-            # password="Ohe47FvRyPvH6gnEELJtX1ZFe7O70GEb"
-        )),
-    node_config=ArbiterNodeConfig(system_timeout=5),    
-    gateway=uvicorn.Config(app=FastAPI(), host="0.0.0.0", port=8080)
-)
+app = ArbiterNode()
 
 def send_llm_request(
     topic: str, 

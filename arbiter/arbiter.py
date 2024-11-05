@@ -6,9 +6,9 @@ from pydantic import BaseModel
 from typing import AsyncGenerator, Any, get_args
 from arbiter.configs import (
     ArbiterConfig,
-    TraceConfig,
-    NatsBrokerConfig,
-    RedisBrokerConfig)
+    NatsArbiterConfig,
+    RedisArbiterConfig
+)
 from arbiter.brokers import ArbiterRedisBroker, ArbiterNatsBroker
 from arbiter.models import ArbiterTaskModel
 from arbiter.utils import is_optional_type
@@ -19,24 +19,27 @@ class Arbiter:
         self,
         arbiter_config: ArbiterConfig,
     ):
-        self.headers: dict[str, Any] = None
-        self.arbiter_config = arbiter_config
-        self.broker_config = arbiter_config.broker_config
-        
-        if isinstance(self.broker_config, NatsBrokerConfig):
+        if isinstance(arbiter_config, NatsArbiterConfig):
             self.broker: ArbiterNatsBroker = ArbiterNatsBroker(
-                config=self.broker_config,
-                name=self.arbiter_config.name,
-                log_level=self.arbiter_config.log_level,
-                log_format=self.arbiter_config.log_format)
-        elif isinstance(self.broker_config, RedisBrokerConfig):
-            self.broker: ArbiterRedisBroker = ArbiterRedisBroker(
-                config=self.broker_config,
-                name=self.arbiter_config.name,
-                log_level=self.arbiter_config.log_level,
-                log_format=self.arbiter_config.log_format)
+                host=arbiter_config.host,
+                port=arbiter_config.port,
+                user=arbiter_config.user,
+                password=arbiter_config.password,
+                max_reconnect_attempts=arbiter_config.max_reconnect_attempts,
+                name=arbiter_config.name,
+                log_level=arbiter_config.log_level,
+                log_format=arbiter_config.log_format)
+        elif isinstance(arbiter_config, RedisArbiterConfig):
+            assert False, "Not implemented broker"
+            # self.broker: ArbiterRedisBroker = ArbiterRedisBroker(
+            #     config=self.broker_config,
+            #     name=arbiter_config.name,
+            #     log_level=arbiter_config.log_level,
+            #     log_format=arbiter_config.log_format)
         else:
             raise NotImplementedError("Not implemented broker")   
+        self.arbiter_config = arbiter_config
+        self.headers: dict[str, Any] = None        
 
     @property
     def name(self) -> str:

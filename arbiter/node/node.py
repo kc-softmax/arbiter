@@ -25,7 +25,7 @@ from arbiter.enums import (
     NodeState,
 )
 from arbiter.task_register import TaskRegister
-from arbiter.configs import ArbiterNodeConfig, ArbiterConfig
+from arbiter.configs import ArbiterNodeConfig, NatsArbiterConfig
 from arbiter.task import ArbiterAsyncTask
 from arbiter.task.gateway import ArbiterGateway
 from arbiter.task_register import TaskRegister
@@ -46,7 +46,7 @@ class ArbiterNode(TaskRegister):
     def __init__(
         self,
         *,
-        arbiter_config: ArbiterConfig,
+        arbiter_config: NatsArbiterConfig = NatsArbiterConfig(),
         node_config: ArbiterNodeConfig = ArbiterNodeConfig(),
         gateway: FastAPI | uvicorn.Config | None = FastAPI(),
         log_level: str | None = None,
@@ -330,6 +330,8 @@ class ArbiterNode(TaskRegister):
                 if find_arbiter_params:
                     assert len(find_arbiter_params) == 1, "Only one Arbiter instance can be passed"
                     params = {param: self.arbiter for param in find_arbiter_params}
+                else:
+                    params = {}
                 if asyncio.iscoroutinefunction(self._on_start_up):
                     await self._on_start_up(**params)
                 else:
@@ -341,13 +343,15 @@ class ArbiterNode(TaskRegister):
                 if find_arbiter_params:
                     assert len(find_arbiter_params) == 1, "Only one Arbiter instance can be passed"
                     params = {param: self.arbiter for param in find_arbiter_params}
+                else:                
+                    params = {}
                 if asyncio.iscoroutinefunction(self._on_shut_down):
                     await self._on_shut_down(**params)
                 else:
                     self._on_shut_down(**params)
         except Exception as e:
             # TODO logging
-            self.logger.error("Raise error in warp - in", e)
+            self.logger.error(f"Raise error in warp - in {e}")
         finally:
             await self._external_broadcast_queue.put((
                 ExternalEvent(
