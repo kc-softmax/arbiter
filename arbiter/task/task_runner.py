@@ -14,7 +14,8 @@ class AribterTaskNodeRunner:
     def __init__(self):
         self.arbiter: Arbiter = None
         self.node: ArbiterBaseNode = None
-        self.arbiter_logger = ArbiterLogger(name="task")
+        self.logger = ArbiterLogger(name="task")
+        self.logger.add_handler()
         
     def get_node_id(self) -> str:
         assert self.node is not None, "Node is not set, please set the node before running the service."
@@ -54,7 +55,7 @@ class AribterTaskNodeRunner:
         *args,
         **kwargs
     ):
-        self.arbiter_logger.error("Error in runnig process", error)
+        self.logger.error("Error in runnig process", error)
         self.node.state = NodeState.STOPPED
         event_queue.put(self.node.encode_node_state())
     
@@ -83,7 +84,7 @@ class AribterTaskNodeRunner:
                 )
             )
         except Exception as e:
-            self.arbiter_logger.error(f"Error in run {e} {self.__class__.__name__}")
+            self.logger.error(f"Error in run {e} {self.__class__.__name__}")
 
     async def _executor(
         self,
@@ -125,7 +126,7 @@ class AribterTaskNodeRunner:
             except asyncio.CancelledError:
                 pass    
             except Exception as e:
-                self.arbiter_logger.error(f"Error in health check {e}")
+                self.logger.error(f"Error in health check {e}")
             finally:
                 await self.on_shutdown(event_queue)
             

@@ -47,11 +47,11 @@ class ArbiterLogger:
         self.logger = logging.getLogger(name)
         self.logger.setLevel(level)
         self.reset = "\033[0m"  # 기본 색상 (리셋)
+        self.formatter = formatter
 
-        # 콘솔 핸들러와 포맷터 설정
-        console_handler = logging.StreamHandler()
-        console_handler.setFormatter(LevelBasedFormatter(formatter))
-        self.logger.addHandler(console_handler)
+    def add_handler(self, handler: logging.Handler = logging.StreamHandler()) -> None:
+        handler.setFormatter(LevelBasedFormatter(self.formatter))
+        self.logger.addHandler(handler)
 
     def debug(self, message: str):
         self.logger.debug(
