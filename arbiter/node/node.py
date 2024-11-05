@@ -30,8 +30,8 @@ from arbiter.task import ArbiterAsyncTask
 from arbiter.task.gateway import ArbiterGateway
 from arbiter.task_register import TaskRegister
 from arbiter.constants import EXTERNAL_EVENT_SUBJECT
-from arbiter.utils import check_queue_and_exit
 from arbiter.logger import ArbiterLogger
+from arbiter.utils import check_queue_and_exit, find_variables_with_annotation
 
 ArbiterProcess = tuple[Process, MPEvent]
 
@@ -76,6 +76,8 @@ class ArbiterNode(TaskRegister):
         self.is_alive_event = asyncio.Event()
         self.ready_to_listen_external_event = asyncio.Event()
 
+        self._on_start_up: Callable = None
+        self._on_shut_down: Callable = None
         self._tasks: list[ArbiterAsyncTask] = []
         self._warp_in_queue: asyncio.Queue = asyncio.Queue()
         self._external_broadcast_queue: asyncio.Queue[tuple[ExternalEvent, bool]] = asyncio.Queue()
@@ -93,6 +95,18 @@ class ArbiterNode(TaskRegister):
     @property
     def node_id(self) -> str:
         return self.registry.local_node.get_id()
+    
+    def on_start_up(self):
+        def decorator(func: Callable):
+            self._on_start_up = func
+            return func
+        return decorator
+
+    def on_shut_down(self):
+        def decorator(func: Callable):
+            self._on_shut_down = func
+            return func
+        return decorator
     
     def trace(
         self, 
@@ -310,7 +324,27 @@ class ArbiterNode(TaskRegister):
         internal_event = loop.run_in_executor(None, self.internal_event, shutdown_event)
 
         try:
+            # on stat up
+            if self._on_start_up:
+                find_arbiter_params = find_variables_with_annotation(self._on_start_up, Arbiter)
+                if find_arbiter_params:
+                    assert len(find_arbiter_params) == 1, "Only one Arbiter instance can be passed"
+                    params = {param: self.arbiter for param in find_arbiter_params}
+                if asyncio.iscoroutinefunction(self._on_start_up):
+                    await self._on_start_up(**params)
+                else:
+                    self._on_start_up(**params)
             yield self
+    
+            if self._on_shut_down:
+                find_arbiter_params = find_variables_with_annotation(self._on_start_up, Arbiter)
+                if find_arbiter_params:
+                    assert len(find_arbiter_params) == 1, "Only one Arbiter instance can be passed"
+                    params = {param: self.arbiter for param in find_arbiter_params}
+                if asyncio.iscoroutinefunction(self._on_shut_down):
+                    await self._on_shut_down(**params)
+                else:
+                    self._on_shut_down(**params)
         except Exception as e:
             # TODO logging
             self.logger.error("Raise error in warp - in", e)

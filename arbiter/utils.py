@@ -38,6 +38,21 @@ from typing import (
 from arbiter.constants import ALLOWED_TYPES
 from arbiter.parser import pydantic_from_schema
 
+def find_variables_with_annotation(func, annotation_type) -> list[str]:
+    """
+    Checks if a function has parameters with a specific annotation type.
+    
+    :param func: The function to inspect.
+    :param annotation_type: The annotation type to look for.
+    :return: A list of parameter names with the given annotation type.
+    """
+    sig = inspect.signature(func)
+    matching_params = [
+        param_name for param_name, param in sig.parameters.items()
+        if param.annotation == annotation_type
+    ]
+    return matching_params
+
 def get_app_reference(app: FastAPI) -> str:
     
     for module_name, module in sys.modules.items():
