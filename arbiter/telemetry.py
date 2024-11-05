@@ -61,7 +61,7 @@ class TelemetryRepository:
         LoggingInstrumentor().instrument(
             set_logging_format=True,
             logging_format=formatter,
-            log_level=logging.INFO
+            log_level=level
         )
 
         return arbiter_logger.logger
