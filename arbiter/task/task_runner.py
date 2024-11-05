@@ -14,7 +14,7 @@ class AribterTaskNodeRunner:
     def __init__(self):
         self.arbiter: Arbiter = None
         self.node: ArbiterBaseNode = None
-        self.logger = ArbiterLogger(name="task")
+        self.logger = ArbiterLogger(name=self.__class__.__name__)
         self.logger.add_handler()
         
     def get_node_id(self) -> str:

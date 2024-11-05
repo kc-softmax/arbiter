@@ -70,7 +70,7 @@ class ArbiterNode(TaskRegister):
     
         self.log_level = log_level
         self.log_format = log_format
-        self.logger = ArbiterLogger(name="NODE")
+        self.logger = ArbiterLogger(name=self.__class__.__name__)
         self.logger.add_handler()
         
         self.is_alive_event = asyncio.Event()

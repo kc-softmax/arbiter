@@ -36,7 +36,7 @@ class TelemetryRepository:
 
         return trace.get_tracer(self.name, tracer_provider=tracer_provider)
 
-    def get_logger(self, level: int = logging.INFO):
+    def get_logger(self, level: int = logging.INFO) -> logging.Logger:
         # OpenTelemetry Logs
         formatter = " ".join([
             "%(asctime)s %(levelname)s",
@@ -64,4 +64,4 @@ class TelemetryRepository:
             log_level=logging.INFO
         )
 
-        return arbiter_logger
+        return arbiter_logger.logger
