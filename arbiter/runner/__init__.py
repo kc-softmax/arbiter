@@ -10,8 +10,8 @@ from arbiter.enums import (
     WarpInTaskResult,
 )
 from arbiter.node import ArbiterNode
-from arbiter_runner.console import arbiter_console_context
-from arbiter_runner.utils import get_app, get_reload_dirs, get_module_path_from_main
+from arbiter.runner.console import arbiter_console_context
+from arbiter.runner.utils import get_app, get_reload_dirs, get_module_path_from_main
 
 console = Console()
 

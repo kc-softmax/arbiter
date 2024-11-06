@@ -1,5 +1,5 @@
 import typer
-from . import ArbiterRunner
+from arbiter.runner import ArbiterRunner
 
 main = typer.Typer()
 
