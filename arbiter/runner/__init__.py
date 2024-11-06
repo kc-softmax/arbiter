@@ -115,6 +115,10 @@ class ArbiterRunner:
         # 자식 프로세스에서 키보드 인터럽트 (SIGINT)를 무시하도록 설정
         signal.signal(signal.SIGINT, signal.SIG_IGN)
         app = get_app(module, app_name)
+
+        if isinstance(app, type):
+            app = app()
+
         assert isinstance(app, ArbiterNode), f"instance must be ArbiterNode, but {module} is {type(app)}"
         try:
             asyncio.run(cls.arbiter_run(app, shutdown_event, repl))
@@ -135,7 +139,7 @@ class ArbiterRunner:
         try:
             # 최초 실행
             process = Process(
-                target=cls.runner, 
+                target=cls.runner,
                 args=(cls.shutdown_event, module, app_name, repl)
             )
             process.start()
@@ -180,11 +184,11 @@ class ArbiterRunner:
             module = get_module_path_from_main()
             app_name = None
         ################## RUN #####################        
-        try:            
+        try:
             # add signal handler to main process        
             signal.signal(signal.SIGINT, cls.signal_handler)
             signal.signal(signal.SIGTERM, cls.signal_handler)
-            
+
             if not reload:
                 process = Process(
                     target=cls.runner, 

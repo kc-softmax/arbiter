@@ -181,8 +181,10 @@ def get_app(module: str, app: str = None) -> Any:
         raise Exception(f"No ArbiterNode instance found in module {module}")
     
     # app 이름이 주어졌을 때 해당 인스턴스를 가져온다
+    instance = module
     try:
-        instance = getattr(module, app)
+        for attr_str in app.split("."):
+            instance = getattr(instance, attr_str)
     except AttributeError:
         raise Exception(f"app name '{app}' is not found in module {module}")
 

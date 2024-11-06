@@ -65,7 +65,7 @@ class ArbiterNode(TaskRegister):
             gateway = gateway
         else:
             gateway = None
-            
+        
         gateway and register_gateway(self.name, gateway)
     
         self.log_level = log_level

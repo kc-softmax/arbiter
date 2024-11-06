@@ -1,5 +1,5 @@
 from arbiter import ArbiterRunner, ArbiterNode
-from arbiter.configs import NatsBrokerConfig, ArbiterNodeConfig, ArbiterConfig
+# from arbiter.configs import NatsBrokerConfig, ArbiterNodeConfig, ArbiterConfig
 # from tests.service import TestService, TestException, ArbiterService
 # from examples.simple_telemetry.main import TracerSingleton as tracer
 from fastapi import FastAPI
@@ -8,8 +8,8 @@ import uvicorn
 
 # ############################################################################################################
 app = ArbiterNode(
-    arbiter_config=ArbiterConfig(broker_config=NatsBrokerConfig()),
-    node_config=ArbiterNodeConfig(system_timeout=5),
+    # arbiter_config=ArbiterConfig(broker_config=NatsBrokerConfig()),
+    # node_config=ArbiterNodeConfig(system_timeout=5),
     # gateway=uvicorn.Config(app=None, port=8001),
     # gateway=None
     # gateway=uvicorn.Config(app=FastAPI(), port=8080)
