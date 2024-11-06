@@ -1,12 +1,12 @@
 [tool.poetry]
 name = "arbiter"
-version = "0.0.0.0.1"
+version = "0.0.0.0.2"
 description = ""
 authors = ["kc-softmax"]
 readme = "README.md"
 
 [tool.poetry.scripts]
-arbiter = "arbiter.runner.main:app"
+arbiter = "arbiter_runner.main:main"
 
 [tool.poetry.dependencies]
 python = "^3.10"
