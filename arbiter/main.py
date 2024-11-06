@@ -21,7 +21,7 @@ def dev(
     ArbiterRunner.run(module, reload=reload)
 
 @main.command()
-def _():
+def repl():
     pass
 
 if __name__ == "__main__":
