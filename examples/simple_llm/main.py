@@ -2,7 +2,7 @@ import httpx
 import uvicorn
 from typing import Any
 from opentelemetry.trace import Span
-from arbiter.telemetry import TelemetryRepository
+from arbiter.apm import TelemetryRepository
 from arbiter import Arbiter, ArbiterRunner, ArbiterNode
 from fastapi import FastAPI
 

@@ -1,6 +1,22 @@
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable
+from opentelemetry.trace import SpanKind
+
+
+@dataclass
+class TelemetryConfig:
+    name: str = "Danimoth"
+    otel_server_url: str = "http://localhost:4317"
+    log_format: list[str] = field(default_factory=lambda :[
+        "%(asctime)s %(levelname)s",
+        "[%(name)s] [%(filename)s:%(lineno)d]",
+        "[trace_id=%(otelTraceID)s span_id=%(otelSpanID)s"
+        "resource.service.name=%(otelServiceName)s] - %(message)s"
+    ])
+    log_level: str = "INFO"
+    set_logging_format: bool = True
+    insecure: bool = True  # SSL true or false
 
 @dataclass
 class TraceConfig:
@@ -8,6 +24,7 @@ class TraceConfig:
     responses: bool
     error: bool
     execution_times: bool
+    span_kind: SpanKind = SpanKind.INTERNAL # visualize grafana
     callback: Callable = None
 
 @dataclass
