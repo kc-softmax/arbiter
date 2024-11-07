@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from opentelemetry import trace
+from opentelemetry import trace, metrics
 from opentelemetry.trace import Tracer, StatusCode
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
@@ -14,6 +14,10 @@ from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.sdk.metrics import MeterProvider, Meter
+from opentelemetry.exporter.prometheus import PrometheusMetricReader
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader, MetricExporter
 
 from arbiter.logger import ArbiterLogger
 
@@ -65,3 +69,18 @@ class TelemetryRepository:
         )
 
         return arbiter_logger.logger
+
+    def get_meter(self) -> Meter:
+        otlp_metric_exporter = OTLPMetricExporter(OTEL_SERVER_URL, insecure=False)
+        # metric_exporter = MetricExporter()
+        metric_reader = PeriodicExportingMetricReader(otlp_metric_exporter)
+        meter_provider = MeterProvider(
+            resource=Resource.create(
+                {
+                    SERVICE_NAME: self.name,
+                    # "service.instance.id": "instance-12",
+                }
+            ),
+            metric_readers=[metric_reader]
+        )
+        return metrics.get_meter(name=self.name, meter_provider=meter_provider)
