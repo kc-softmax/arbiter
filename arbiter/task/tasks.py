@@ -34,7 +34,7 @@ from arbiter.utils import (
     single_result_async_gen,
     get_pickled_data
 )
-from arbiter.configs import TraceConfig
+from arbiter.configs import TraceConfig, TelemetryConfig
 from arbiter.data.models import ArbiterTaskNode
 from arbiter.task.task_runner import AribterTaskNodeRunner
 from arbiter import Arbiter
@@ -291,13 +291,14 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
         request: dict[str, Any],
         reply: bool
     ):
-        from arbiter.telemetry import TelemetryRepository, StatusCode
+        from arbiter.apm import TelemetryRepository, StatusCode
         from opentelemetry.propagate import inject, extract
-        tracer = TelemetryRepository(name=arbiter.name).get_tracer()
+        tracer = TelemetryRepository(telemetry_config=TelemetryConfig()).get_tracer()
 
         with tracer.start_as_current_span(
-            self.queue, 
-            extract(headers)
+            name=self.queue, 
+            context=extract(headers),
+            kind=trace_config.span_kind
         ) as span:
             inject(headers)
             try:
