@@ -6,7 +6,7 @@ from opentelemetry.trace import SpanKind
 
 @dataclass
 class TelemetryConfig:
-    name: str = "Danimoth"
+    name: str
     otel_server_url: str = "http://localhost:4317"
     log_format: list[str] = field(default_factory=lambda :[
         "%(asctime)s %(levelname)s",
