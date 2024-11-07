@@ -293,7 +293,9 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
     ):
         from arbiter.apm import TelemetryRepository, StatusCode
         from opentelemetry.propagate import inject, extract
-        tracer = TelemetryRepository(telemetry_config=TelemetryConfig()).get_tracer()
+        tracer = TelemetryRepository(
+            telemetry_config=TelemetryConfig(name=self.arbiter.name)
+        ).get_tracer()
 
         with tracer.start_as_current_span(
             name=self.queue, 
