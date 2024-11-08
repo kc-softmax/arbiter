@@ -6,7 +6,7 @@ from multiprocessing.synchronize import Event
 from arbiter.configs import ArbiterConfig
 from arbiter.data.models import ArbiterBaseNode
 from arbiter import Arbiter
-from arbiter.enums import NodeState
+from arbiter.enums import ModelState
 from arbiter.logger import ArbiterLogger
 
 class AribterTaskNodeRunner:
@@ -27,7 +27,7 @@ class AribterTaskNodeRunner:
         *args,
         **kwargs
     ):
-        self.node.state = NodeState.PENDING        
+        self.node.state = ModelState.PENDING        
         event_queue.put(self.node.encode_node_state())
     
     async def on_start(
@@ -36,7 +36,7 @@ class AribterTaskNodeRunner:
         *args,
         **kwargs
     ):
-        self.node.state = NodeState.ACTIVE
+        self.node.state = ModelState.ACTIVE
         event_queue.put(self.node.encode_node_state())
 
     async def on_shutdown(
@@ -45,7 +45,7 @@ class AribterTaskNodeRunner:
         *args,
         **kwargs
     ):
-        self.node.state = NodeState.STOPPED
+        self.node.state = ModelState.STOPPED
         event_queue.put(self.node.encode_node_state())
 
     async def on_error(
@@ -56,7 +56,7 @@ class AribterTaskNodeRunner:
         **kwargs
     ):
         self.logger.error("Error in runnig process", error)
-        self.node.state = NodeState.STOPPED
+        self.node.state = ModelState.STOPPED
         event_queue.put(self.node.encode_node_state())
     
     def run(

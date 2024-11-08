@@ -1,5 +1,6 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
+import asyncio
 from typing import Any, AsyncGenerator
 from typing import AsyncGenerator, Any
 
@@ -64,7 +65,8 @@ class ArbiterBrokerInterface(ABC):
     @abstractmethod
     async def listen(
         self,
-        queue: str,
+        subject: str,
+        message_queue: asyncio.Queue,
         timeout: int = 0
     ) -> AsyncGenerator[
         bytes,
@@ -75,14 +77,16 @@ class ArbiterBrokerInterface(ABC):
     @abstractmethod
     async def subscribe_listen(
         self,
-        queue: str,
+        subject: str,
+        message_queue: asyncio.Queue,
     ) -> AsyncGenerator[bytes, None]:
         raise NotImplementedError
 
     @abstractmethod
     async def periodic_listen(
         self,
-        queue: str,
+        subject: str,
+        message_queue: asyncio.Queue,
         interval: float = 1
     ) -> AsyncGenerator[list[bytes], None]:
         raise NotImplementedError

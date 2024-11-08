@@ -1,7 +1,7 @@
 # from __future__ import annotations
 # import inspect
 # from typing import  Any, Callable
-# from arbiter.enums import NodeState
+# from arbiter.enums import ModelState
 # from arbiter.task.task_runner import ProcessRunner
 
 # class ServiceMeta(type):
@@ -80,7 +80,7 @@
 #         self.name = name
 #         self.node = ArbiterServiceNode(
 #             name=self.name,
-#             state=NodeState.INACTIVE,
+#             state=ModelState.INACTIVE,
 #         )
         
 #     async def setup(self):
@@ -106,7 +106,7 @@
 #     #         task_node = ArbiterTaskNode(
 #     #             service_node_id=self.service_node_id,
 #     #             parent_model_id=task_model.id,
-#     #             state=NodeState.INACTIVE,
+#     #             state=ModelState.INACTIVE,
 #     #         )
 #     #         await self.arbiter.save_data(task_node)
 #     #         params.append(task_node)

@@ -128,22 +128,25 @@ class ArbiterNatsBroker(ArbiterBrokerInterface):
     
     async def listen(
         self,
-        queue: str,
-        timeout: int = 0
+        subject: str,
+        message_queue: asyncio.Queue,        
+        timeout: int = 0,
+        # add event
     ) -> AsyncGenerator[Msg, None]:
         async def message_handler(msg: Msg):
             # 메시지를 받을 때마다 큐에 추가
             await message_queue.put((msg.reply, msg.data))
         # 구독자 생성, subject
-        message_queue = asyncio.Queue()
         try:
-            sub = await self.nats.subscribe(queue, cb=message_handler)
+            sub = await self.nats.subscribe(subject, cb=message_handler)
             while True:
                 if timeout:
                     # 큐에서 메시지를 꺼내서 반환
                     message = await asyncio.wait_for(message_queue.get(), timeout=timeout)
                 else:
                     message = await message_queue.get()
+                if message is None:
+                    break
                 yield message    
         except asyncio.TimeoutError:
             self.logger.error("Timeout in listen")
@@ -158,16 +161,22 @@ class ArbiterNatsBroker(ArbiterBrokerInterface):
 
     async def subscribe_listen(
         self,
-        queue: str,
+        subject: str,
+        message_queue: asyncio.Queue,        
     ) -> AsyncGenerator[bytes, None]:
+        async def message_handler(msg: Msg):
+            # 메시지를 받을 때마다 큐에 추가
+            await message_queue.put((msg.reply, msg.data))
+        # 구독자 생성, subject
         try:
-            sub = await self.nats.subscribe(queue)
+            sub = await self.nats.subscribe(subject, cb=message_handler)
             while True:
-                message = await sub.next_msg(None)
-                yield (message.reply, message.data)
+                message = await message_queue.get()
+                if message is None:
+                    break
+                yield message    
         except Exception as e:
-            pass
-            # print(f"Error in subscribe_listen: {e}")
+            self.logger.error(f"Error in listen: {e}")
         finally:
             try:
                 await sub.unsubscribe()
@@ -176,12 +185,17 @@ class ArbiterNatsBroker(ArbiterBrokerInterface):
     
     async def periodic_listen(
         self,
-        queue: str,
+        subject: str,
+        message_queue: asyncio.Queue,        
         interval: float = 1
     ) -> AsyncGenerator[bytes, None]:
+        async def message_handler(msg: Msg):
+            # 메시지를 받을 때마다 큐에 추가
+            await message_queue.put(msg.data)
+        shutdown = False
         try:
-            sub = await self.nats.subscribe(queue)
-            while True:
+            sub = await self.nats.subscribe(subject, cb=message_handler)
+            while not shutdown:
                 collected_messages = []
                 start_time = time.monotonic()
                 while (time.monotonic() - start_time) < interval:
@@ -191,8 +205,16 @@ class ArbiterNatsBroker(ArbiterBrokerInterface):
                         break
                     # 비동기적으로 메시지를 가져옴
                     try:
-                        message = await sub.next_msg(1)
-                        collected_messages.append(message.data)
+                        # min timeout 0.03
+                        if timeout < 0.03:
+                            timeout = 0.03
+                        message_data = await asyncio.wait_for(
+                            message_queue.get(),
+                            timeout=timeout)
+                        if message_data is None:
+                            shutdown = True
+                            break
+                        collected_messages.append(message_data)
                     except Exception as e:
                         pass
                 if collected_messages:
@@ -203,4 +225,7 @@ class ArbiterNatsBroker(ArbiterBrokerInterface):
         except Exception as e:
             self.logger.error(f"Error in periodic_listen: {e}")
         finally:
-            await sub.unsubscribe()
+            try:
+                await sub.unsubscribe()
+            except Exception as e:
+                pass

@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from typing import Callable
 from arbiter.task.tasks import (
     ArbiterAsyncTask,
@@ -7,11 +8,12 @@ from arbiter.task.tasks import (
 )
 
 
-class TaskRegister:
+class TaskRegister(ABC):
 
+    @abstractmethod
     def regist_task(self, task: ArbiterAsyncTask):
-        raise NotImplementedError("handle_task method must be implemented")
-
+        pass
+        
     def async_task(
         self,
         queue: str = None,

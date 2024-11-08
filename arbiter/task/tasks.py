@@ -1,10 +1,10 @@
 from __future__ import annotations
+import asyncio
 import re
 import pickle
 import ast
 import inspect
 import json
-import functools
 import time
 import uuid
 import warnings
@@ -27,19 +27,19 @@ from pydantic import BaseModel
 from arbiter.constants import (
     ASYNC_TASK_CLOSE_MESSAGE
 )
-from arbiter.enums import NodeState
+from arbiter.enums import ModelState
 from arbiter.utils import (
     transform_type_from_annotation,
     convert_data_to_annotation,
     single_result_async_gen,
     get_pickled_data
 )
-from arbiter.configs import TraceConfig, TelemetryConfig
-from arbiter.data.models import ArbiterTaskNode
-from arbiter.task.task_runner import AribterTaskNodeRunner
+from arbiter.logger import ArbiterLogger
+from arbiter.configs import ArbiterConfig, TraceConfig, TelemetryConfig
+from arbiter.data.models import ArbiterTaskModel
 from arbiter import Arbiter
 
-class ArbiterAsyncTask(AribterTaskNodeRunner):
+class ArbiterAsyncTask:
 
     def __init__(
         self,
@@ -53,8 +53,8 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
         log_level: str | None = None,
         log_format: str | None = None
     ):
-        super().__init__()
         assert num_of_tasks > 0, "num_of_tasks should be greater than 0"
+        self.task_model = ArbiterTaskModel()
         self.timeout = timeout
         self.retries = retries
         self.retry_delay = retry_delay
@@ -64,12 +64,13 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
         self.queue = queue
         self.num_of_tasks = num_of_tasks
         self.stream = False
-        self.node = ArbiterTaskNode(state=NodeState.INACTIVE)
 
         self.trace_config: TraceConfig = None
         self.func: Callable = None        
         self.parameters: dict[str, inspect.Parameter] = None
         self.arbiter_parameter: tuple[str, Arbiter] = None
+        self.logger = ArbiterLogger(name=self.__class__.__name__)
+        self.logger.add_handler()
 
     def trace(self, **kwargs):
         from opentelemetry import trace # 검사를 위해 임포트
@@ -85,12 +86,12 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
         transformed_parameters = self._transform_parameters(parameters)
         transformed_return_type = self._transform_return_type(return_type)
         
-        assert self.node and isinstance(self.node, ArbiterTaskNode), "Invalid node"
-        self.node.name = func.__name__
-        self.node.queue = self.queue
-        self.node.transformed_parameters = json.dumps(transformed_parameters)
-        self.node.transformed_return_type = json.dumps(transformed_return_type)
-        self.node.timeout = self.timeout
+        self.task_model.name = func.__name__
+        self.task_model.queue = self.queue
+        self.task_model.transformed_parameters = json.dumps(transformed_parameters)
+        self.task_model.transformed_return_type = json.dumps(transformed_return_type)
+        self.task_model.timeout = self.timeout
+        
         self.parameters = parameters
         self.arbiter_parameter = arbiter_parameter
         self.func = func
@@ -168,6 +169,7 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
     def _get_message_func(
         self,
         arbiter: Arbiter,
+        message_queue: asyncio.Queue
     ) -> AsyncGenerator[Any, None]:
         """
         Protected method that returns an asynchronous iterable from arbiter.listen.
@@ -176,7 +178,9 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
         :param queue: The name of the queue to listen to.
         :return: An asynchronous generator yielding messages.
         """
-        return arbiter.broker.listen(self.queue)
+        return arbiter.broker.listen(
+            self.queue, 
+            message_queue)
    
     def _parse_requset(
         self,
@@ -294,7 +298,7 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
         from arbiter.apm import TelemetryRepository, StatusCode
         from opentelemetry.propagate import inject, extract
         tracer = TelemetryRepository(
-            telemetry_config=TelemetryConfig(name=self.arbiter.name)
+            telemetry_config=TelemetryConfig(name=arbiter.name)
         ).get_tracer()
 
         with tracer.start_as_current_span(
@@ -352,21 +356,23 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
                     elapsed_times
                 )
     
-    def __call__(self, func: Callable[..., Any] = None):
-        if func is None and self.func is None:
-            raise ValueError("func should be provided")
-        if func is not None and self.func is not None:
-            raise ValueError("func should be provided only once")
-        if func is not None and self.func is None:
-            self.setup_task_node(func)
-            
-        @functools.wraps(self.func)
-        async def wrapper(
-            arbiter: Arbiter,
-            executor: Callable = None,
-        ):
-            # service name은 singleton으로 선언되어야한다                
-            async for reply, message in self._get_message_func(arbiter):
+    async def run(
+        self,
+        arbiter_config: ArbiterConfig,
+        status_queue: asyncio.Queue,
+        message_queue: asyncio.Queue,
+        executor: Callable = None
+    ):
+        assert self.func, "Task function is not defined"
+        
+        arbiter = Arbiter(arbiter_config)
+        await arbiter.connect()
+
+        try:            
+            async for reply, message in self._get_message_func(
+                arbiter, 
+                message_queue
+            ):
                 is_async_gen = False
                 request = {}
                 headers = {}
@@ -454,7 +460,12 @@ class ArbiterAsyncTask(AribterTaskNodeRunner):
                 finally:
                     if is_async_gen and reply is not None:
                         await arbiter.broker.emit(reply, ASYNC_TASK_CLOSE_MESSAGE)                        
-        return wrapper 
+        except asyncio.CancelledError:
+            # Task가 취소되었을 때
+            pass
+        finally:
+            await arbiter.disconnect()
+    
   
 class ArbiterHttpTask(ArbiterAsyncTask):
     
@@ -486,10 +497,9 @@ class ArbiterHttpTask(ArbiterAsyncTask):
         
     def setup_task_node(self, func: Callable):
         super().setup_task_node(func)
-        assert isinstance(self.node, ArbiterTaskNode), "Invalid node"
-        self.node.http = True
-        self.node.file = self.file
-        self.node.request = self.request        
+        self.task_model.http = True
+        self.task_model.file = self.file
+        self.task_model.request = self.request        
     
     def _parse_requset(self, request: dict | Any) -> dict[str, Any] | Any:
         requset_data = {}
@@ -590,6 +600,7 @@ class ArbiterPeriodicTask(ArbiterAsyncTask):
     def _get_message_func(
         self,
         arbiter: Arbiter,
+        message_queue: asyncio.Queue
     ) -> AsyncGenerator[Any, None]:
         """
         Protected method that returns an asynchronous iterable from arbiter.listen.
@@ -598,7 +609,11 @@ class ArbiterPeriodicTask(ArbiterAsyncTask):
         :param queue: The name of the queue to listen to.
         :return: An asynchronous generator yielding messages.
         """
-        return arbiter.broker.periodic_listen(self.queue, self.interval)
+        return arbiter.broker.periodic_listen(
+            self.queue, 
+            message_queue, 
+            self.interval
+        )
 
 class ArbiterSubscribeTask(ArbiterAsyncTask):
     """
@@ -612,6 +627,7 @@ class ArbiterSubscribeTask(ArbiterAsyncTask):
     def _get_message_func(
         self,
         arbiter: Arbiter,
+        message_queue: asyncio.Queue
     ) -> AsyncGenerator[Any, None]:
         """
         Protected method that returns an asynchronous iterable from arbiter.listen.
@@ -620,4 +636,7 @@ class ArbiterSubscribeTask(ArbiterAsyncTask):
         :param queue: The name of the queue to listen to.
         :return: An asynchronous generator yielding messages.
         """
-        return arbiter.broker.subscribe_listen(self.queue)
+        return arbiter.broker.subscribe_listen(
+            self.queue,
+            message_queue
+        )

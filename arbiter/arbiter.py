@@ -9,11 +9,15 @@ from arbiter.configs import (
     NatsArbiterConfig,
     RedisArbiterConfig
 )
+from arbiter.registry import TaskRegistry
 from arbiter.brokers import ArbiterRedisBroker, ArbiterNatsBroker
 from arbiter.models import ArbiterTaskModel
 from arbiter.utils import is_optional_type
 
 class Arbiter:
+    
+    # 한 process에서 사용하는 task 들의 동기화를 위해 class 변수로 선언
+    task_registry: TaskRegistry = TaskRegistry()
     
     def __init__(
         self,

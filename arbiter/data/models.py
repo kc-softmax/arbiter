@@ -4,15 +4,15 @@ from typing import Any, Optional
 from pydantic import BaseModel, Field
 from datetime import datetime
 from arbiter.enums import (
-    NodeState,
+    ModelState,
 )
 
 ############################################
     
-class ArbiterBaseNode(BaseModel):
+class BaseNodeModel(BaseModel):
     node_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str = Field(default='')
-    state: NodeState
+    state: ModelState = Field(default=ModelState.PENDING)
     shutdown_code: str = Field(default_factory=lambda: str(uuid.uuid4()))
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
@@ -29,12 +29,12 @@ class ArbiterBaseNode(BaseModel):
     def __hash__(self) -> int:
         return hash(self.node_id)
     
-    def __eq__(self, other: ArbiterBaseNode) -> bool:
+    def __eq__(self, other: BaseNodeModel) -> bool:
         return self.node_id == other.node_id
     
 
 ############################################
-class ArbiterNode(ArbiterBaseNode):
+class ArbiterNodeModel(BaseNodeModel):
 
     def get_health_check_channel(self) -> str:
         return f"__health_check__{self.node_id}"
@@ -47,7 +47,7 @@ class ArbiterNode(ArbiterBaseNode):
     
 
 ############################################
-class ArbiterTaskNode(ArbiterBaseNode):
+class ArbiterTaskModel(BaseNodeModel):
     # 만약 지정된 gateway가 없다면, 모든 gateway에 등록
     gateway: str = Field(default='')
     queue: str = Field(default='')
@@ -61,7 +61,7 @@ class ArbiterTaskNode(ArbiterBaseNode):
     file: bool = Field(default=False)
     request: bool = Field(default=False)
             
-    def __eq__(self, other: ArbiterTaskNode) -> bool:
+    def __eq__(self, other: ArbiterTaskModel) -> bool:
         return (
             self.queue == other.queue
         ) and (
